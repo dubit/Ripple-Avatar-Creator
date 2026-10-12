@@ -19,7 +19,7 @@
 	animations last.
 
 	Outfit page: on the left the preview (your avatar wearing it, for a saved
-	outfit: OutfitPreview), the name (tap to rename a saved one), Wear all items and
+	outfit: OutfitPreview), the name (edit a saved one's, then press the orange pencil), Wear all items and
 	Delete (press twice). On the right "N items · M selected" with Select
 	all / none, a row per item with a checkbox (the row itself opens the item
 	page: Outfits › Name › Item), and Wear selected · Add to basket · Buy
@@ -55,6 +55,8 @@ local OutfitPreview = require(script.Parent:WaitForChild("OutfitPreview"))
 local RobloxOutfits = require(views:WaitForChild("catalogue"):WaitForChild("RobloxOutfits"))
 local Badge = require(components:WaitForChild("Badge"))
 local HudContext = require(views:WaitForChild("HudContext"))
+
+local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
 
 local e = React.createElement
 
@@ -570,44 +572,78 @@ local function Checkbox(props: { on: boolean, onToggle: () -> () })
 	})
 end
 
--- The outfit's name: a saved outfit's can be edited in place (renamed when
--- the box loses focus).
+-- The outfit's name. A saved outfit's can be edited in place: once the text
+-- differs from the saved name the pencil turns orange, and pressing it (or
+-- Enter) saves the new name, after which it goes back to black. Pressing
+-- the black pencil puts the cursor in the name.
 local function NameField(props: { name: string, editable: boolean, onRename: (name: string) -> () })
 	local skin = useSkin()
 	local style = { size = 24, weight = 900 }
+	local draft, setDraft = React.useState(props.name)
+	local boxRef = React.useRef(nil :: TextBox?)
+	-- A new saved name (ours arriving, or a rename elsewhere) replaces the draft.
+	React.useEffect(function()
+		setDraft(props.name)
+		return nil
+	end, { props.name })
 	if not props.editable then
 		return e(ShadowText, { text = props.name, style = style, maxWidth = skin.px(LEFT_WIDTH), layoutOrder = 2 })
 	end
+	local changed = draft ~= props.name and string.match(draft, "%S") ~= nil
+	local function save()
+		if changed then
+			props.onRename(draft)
+		end
+	end
+	local pencil = skin.px(Tokens.size.small.size)
 	return e("Frame", {
-		Size = UDim2.new(1, 0, 0, skin.textPx(24) + skin.px(6)),
+		Size = UDim2.new(1, 0, 0, math.max(skin.textPx(24) + skin.px(6), pencil)),
 		BackgroundTransparency = 1,
 		LayoutOrder = 2,
 	}, {
 		Box = e("TextBox", {
-			Size = UDim2.new(1, -skin.px(26), 1, 0),
+			Size = UDim2.new(1, -(pencil + skin.px(8)), 1, 0),
 			BackgroundTransparency = 1,
 			ClearTextOnFocus = false,
-			Text = props.name,
+			Text = draft,
 			TextColor3 = Tokens.color.white,
 			TextSize = skin.textPx(24),
 			FontFace = Tokens.font(900),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-			[React.Event.FocusLost] = function(box: TextBox)
+			ref = boxRef,
+			[React.Change.Text] = function(box: TextBox)
+				-- Names are capped (the server caps them too).
 				local text = box.Text
-				if text ~= props.name and string.match(text, "%S") then
-					props.onRename(text)
-				else
-					box.Text = props.name
+				if (utf8.len(text) or 0) > AvatarConfig.outfits.nameLength then
+					text = string.sub(text, 1, (utf8.offset(text, AvatarConfig.outfits.nameLength + 1) or (#text + 1)) - 1)
+					box.Text = text
+				end
+				setDraft(text)
+			end,
+			[React.Event.FocusLost] = function(_box: TextBox, enterPressed: boolean)
+				if enterPressed then
+					save()
 				end
 			end,
 		}),
-		Pencil = e(Icon, {
-			name = "edit",
-			size = 18,
-			transparency = 0.45,
+		Pencil = e(PillButton, {
+			variant = "round",
+			size = Tokens.size.small.size,
+			icon = "edit",
+			iconSize = Tokens.size.small.icon,
+			glowRadius = 0,
+			active = changed,
+			sound = if changed then "confirm" else nil,
 			anchorPoint = Vector2.new(1, 0.5),
 			position = UDim2.fromScale(1, 0.5),
+			onActivated = function()
+				if changed then
+					save()
+				elseif boxRef.current then
+					boxRef.current:CaptureFocus()
+				end
+			end,
 		}),
 	})
 end

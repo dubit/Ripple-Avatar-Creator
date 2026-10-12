@@ -34,6 +34,7 @@ SkinAssets.icons = {
 	content_copy = 101027253209192,
 	delete = 101639546014495,
 	delete_sweep = 96618116522731,
+	edit = 88379064804243,
 	expand_less = 123341703772881,
 	flight = 71395858478083,
 	ios_share = 90787313571068,

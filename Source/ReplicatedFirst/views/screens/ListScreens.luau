@@ -462,7 +462,7 @@ local function WearingScreen(props: { nav: any, look: any })
 			-- to that outfit instead, until the look changes.
 			if justSaved
 				then wideButton("Saved to Outfits", "check", 11, false, nil, false)
-				elseif current then wideButton("Go to " .. current.name, "chevron_right", 11, false, function()
+				elseif current then wideButton("Go to " .. current.name, "checkroom", 11, false, function()
 					props.nav.push({ kind = "outfit", id = { source = "Mine", index = current.id }, label = current.name })
 				end)
 				else wideButton("Save as new outfit", "bookmark_add", 11, false, function()
