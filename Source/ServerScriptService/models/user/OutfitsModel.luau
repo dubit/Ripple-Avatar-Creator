@@ -6,8 +6,9 @@
 	The player's saved outfits, oldest first: each an id, a name (already
 	text-filtered by OutfitsController) and the items that were worn, as the
 	same short records as the worn list. `nextId` hands out ids, so an
-	outfit keeps its id when others are deleted. `recent` holds the user ids
-	the player looked up on Outfits › Roblox (newest first).
+	outfit keeps its id when others are deleted. `following` holds the user
+	ids the player follows here (newest first): our own follow, private to
+	the player, since Roblox gives games no access to its follows.
 
 	One record for all of a player's outfits: at AvatarConfig.outfits limits
 	(50 outfits × 40 items, ~80 bytes an item) it stays a few hundred KB at
@@ -40,17 +41,17 @@ export type Outfit = {
 export type OutfitsModel = typeof(setmetatable({} :: {
 	outfits: { Outfit },
 	nextId: number,
-	recent: { number }, -- user ids looked up on the Roblox tab, newest first
+	following: { number }, -- user ids followed here (Outfits › Following), newest first
 }, OutfitsModel)) & AbstractModel.AbstractModel
 
-local MAX_RECENT = 12
+local MAX_FOLLOWING = 200
 
 function OutfitsModel.new(ownerId: string): OutfitsModel
 	local self = AbstractModel.new("OutfitsModel", ownerId, "User") :: any
 	setmetatable(self, OutfitsModel)
 	self.outfits = {}
 	self.nextId = 1
-	self.recent = {}
+	self.following = {}
 	return self :: OutfitsModel
 end
 
@@ -112,19 +113,20 @@ function OutfitsModel:overwrite(id: number, items: { OutfitItem }): Outfit?
 	return outfit
 end
 
--- Remember a Roblox-tab lookup (newest first, no repeats, capped).
-function OutfitsModel:addRecent(userId: number): ()
-	local index = table.find(self.recent, userId)
-	if index == 1 then
-		return
-	elseif index then
-		table.remove(self.recent, index)
-	end
-	table.insert(self.recent, 1, userId)
-	while #self.recent > MAX_RECENT do
-		table.remove(self.recent)
+-- Follow someone (newest first, capped), or unfollow if already following.
+-- Returns whether they're followed now.
+function OutfitsModel:toggleFollow(userId: number): boolean
+	local index = table.find(self.following, userId)
+	if index then
+		table.remove(self.following, index)
+	else
+		table.insert(self.following, 1, userId)
+		while #self.following > MAX_FOLLOWING do
+			table.remove(self.following)
+		end
 	end
 	self:syncState()
+	return index == nil
 end
 
 function OutfitsModel:rename(id: number, name: string): boolean

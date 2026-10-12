@@ -78,7 +78,9 @@ export type Look = {
 	own: { number }, -- the player's own Roblox avatar's items (what Reset puts back)
 	wearRobloxOutfit: (outfitId: number) -> (), -- an outfit saved on Roblox
 	wearUserLook: (userId: number) -> (), -- another user's look (their items, your body)
-	recent: { number }, -- user ids looked up on Outfits › Roblox, newest first
+	following: { number }, -- user ids followed here, newest first
+	isFollowing: (userId: number) -> boolean,
+	toggleFollow: (userId: number) -> (),
 	saveOutfit: () -> boolean, -- save what's worn; false if nothing is
 	overwriteOutfit: (id: number) -> (), -- replace its items with what's worn
 	renameOutfit: (id: number, name: string) -> (),
@@ -432,7 +434,13 @@ local function usePlaceholderLook(): Look
 		wearUserLook = function(userId: number)
 			intent:FireServer(actions.WearUserLook, userId)
 		end,
-		recent = outfitState.recent or {},
+		following = outfitState.following or {},
+		isFollowing = function(userId: number): boolean
+			return table.find(outfitState.following or {}, userId) ~= nil
+		end,
+		toggleFollow = function(userId: number)
+			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Follow, { userId = userId })
+		end,
 		saveOutfit = function(): boolean
 			if #worn == 0 then
 				return false

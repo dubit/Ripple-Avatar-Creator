@@ -15,15 +15,16 @@
 	wait:
 	  "FindRobloxUser"(name)  -> { ok, user = { userId, username, displayName } }
 	                             or { ok = false, error = "notfound" | "busy" | "failed" }
-	                             A found user is added to the player's recent
-	                             lookups (OutfitsModel.recent).
+	                             (an exact username: Roblox offers games no
+	                             partial or display-name search)
 	  "RobloxUserLook"(userId) -> { ok, look = { userId, username, displayName,
 	                             inServer, items } } or { ok = false, error }
 	  "RobloxUserInfos"(userIds) -> { User } for up to MAX_INFOS ids (names
-	                             for the recent-lookup cards; one batched,
+	                             for the Following cards; one batched,
 	                             cached call, outside the budget)
 
 	API (AvatarController, OutfitsController):
+		user(userId) -> User?                       name lookup (cached)
 		look(userId) -> Look?                       cached
 		description(userId) -> HumanoidDescription? for the outfit page preview
 ]]
@@ -36,7 +37,6 @@ local UserService = game:GetService("UserService")
 local Bolt = require(ReplicatedStorage.Bolt)
 local AvatarService = require(script.Parent.AvatarService)
 local AvatarModel = require(ServerScriptService.models.user.AvatarModel)
-local OutfitsModel = require(ServerScriptService.models.user.OutfitsModel)
 
 local RobloxAvatarLookupService = {}
 
@@ -85,10 +85,20 @@ local function userInfo(userId: number): User?
 	local ok, infos = pcall(function()
 		return UserService:GetUserInfosByUserIdsAsync({ userId })
 	end)
-	if not ok or not infos or not infos[1] then
+	if ok and infos and infos[1] then
+		local user = { userId = userId, username = infos[1].Username, displayName = infos[1].DisplayName }
+		users[userId] = user
+		return user
+	end
+	-- Some accounts (old or restricted ones, e.g. "mouse") get nothing back
+	-- from GetUserInfosByUserIdsAsync though their name and avatar resolve.
+	local named, name = pcall(function()
+		return Players:GetNameFromUserIdAsync(userId)
+	end)
+	if not named or type(name) ~= "string" then
 		return nil
 	end
-	local user = { userId = userId, username = infos[1].Username, displayName = infos[1].DisplayName }
+	local user = { userId = userId, username = name, displayName = name }
 	users[userId] = user
 	return user
 end
@@ -118,6 +128,10 @@ local function roblox(userId: number): { description: HumanoidDescription?, item
 	local entry = { description = description, items = items, at = os.clock() }
 	avatars[userId] = entry
 	return entry
+end
+
+function RobloxAvatarLookupService.user(userId: number): User?
+	return userInfo(userId)
 end
 
 function RobloxAvatarLookupService.look(userId: number): Look?
@@ -187,10 +201,6 @@ local function findUser(player: Player, name: any): any
 	if not user then
 		return { ok = false, error = "failed" }
 	end
-	local outfits = OutfitsModel.get(tostring(player.UserId))
-	if outfits and userId ~= player.UserId then
-		outfits:addRecent(userId)
-	end
 	return { ok = true, user = user }
 end
 
@@ -234,6 +244,15 @@ local function userInfos(_player: Player, ids: any): { User }
 				local user = { userId = info.Id, username = info.Username, displayName = info.DisplayName }
 				users[info.Id] = user
 				table.insert(result, user)
+			end
+		end
+		-- Any the batch skipped: one at a time (see userInfo).
+		for _, id in missing do
+			if not users[id] then
+				local user = userInfo(id)
+				if user then
+					table.insert(result, user)
+				end
 			end
 		end
 	end

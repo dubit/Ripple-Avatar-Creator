@@ -13,9 +13,13 @@
 	    (RobloxOutfits). Roblox only lists them once you allow it, so until
 	    then a "Show my Roblox outfits" card asks. Search: by name.
 	  · Friends: your Roblox friends' current avatars. Search: by name.
-	  · Roblox: anyone. Search finds a username; with nothing searched it
-	    shows the players in this server (what they're wearing here) and your
-	    recent lookups.
+	  · Following: people you follow here (our own follow, private to you:
+	    Roblox gives games no access to its follows). Follow / Following
+	    is on a person's page. Search: by name.
+	  · Roblox: anyone, by exact username (all Roblox lets a game look up),
+	    plus partial matches among people in this server, people you follow
+	    and friends. With nothing searched: the players in this server
+	    (what they're wearing here).
 	  · Community: placeholder outfits until Task 16.
 	The outfit you're wearing exactly gets the orange ring. People are cards
 	with their avatar picture (UserLooks); Roblox only lets a game read
@@ -411,7 +415,8 @@ local SOURCES = {
 	{ id = "Wardrobe", label = "Wardrobe", search = "Search my outfits" },
 	{ id = "Creations", label = "Creations", search = "Search my creations" },
 	{ id = "Friends", label = "Friends", search = "Search friends" },
-	{ id = "Roblox", label = "Roblox", search = "Search a username" },
+	{ id = "Following", label = "Following", search = "Search people you follow" },
+	{ id = "Roblox", label = "Roblox", search = "Exact Roblox username" },
 	{ id = "Community", label = "Community", search = "Search community outfits" },
 } :: { { id: string, label: string, search: string? } }
 local SOURCE_IDS: { [string]: boolean } = {}
@@ -420,7 +425,7 @@ for _, entry in SOURCES do
 end
 
 local ERRORS = {
-	notfound = "No Roblox user with that name",
+	notfound = "No one has that exact username",
 	busy = "Too many lookups. Try again in a moment",
 	failed = "Couldn't reach Roblox. Try again",
 }
@@ -623,7 +628,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 	end
 
 	useRobloxOutfits(source == "Creations")
-	usePeople(source == "Friends" or source == "Roblox")
+	usePeople(source == "Friends" or source == "Following" or source == "Roblox")
 	local found, searchError, searching = useUserSearch(query, source == "Roblox")
 	local needle = string.lower(query)
 	local function matches(name: string): boolean
@@ -726,19 +731,44 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				addPerson(user, "@" .. user.username)
 			end
 		end
+	elseif source == "Following" then
+		UserLooks.prefetch(look.following)
+		for _, userId in look.following do
+			local user = UserLooks.known(userId)
+			if user and (matches(user.displayName) or matches(user.username)) then
+				addPerson(user, "@" .. user.username)
+			end
+		end
 	elseif source == "Roblox" then
+		-- Roblox only lets games look up an exact username; so under that
+		-- match come partial matches among people we already know.
 		if found then
 			addPerson(found, "@" .. found.username)
 		end
-		-- With nothing searched: who's here, and who you've looked up before.
+		local inServer = {}
+		for _, player in game:GetService("Players"):GetPlayers() do
+			table.insert(inServer, { userId = player.UserId, username = player.Name, displayName = player.DisplayName })
+		end
 		if needle == "" then
-			for _, player in game:GetService("Players"):GetPlayers() do
-				addPerson({ userId = player.UserId, username = player.Name, displayName = player.DisplayName }, "In this server")
+			for _, user in inServer do
+				addPerson(user, "In this server")
 			end
-			UserLooks.prefetch(look.recent)
-			for _, userId in look.recent do
+		else
+			for _, user in inServer do
+				if matches(user.displayName) or matches(user.username) then
+					addPerson(user, "@" .. user.username .. " · in this server")
+				end
+			end
+			for _, userId in look.following do
 				local user = UserLooks.known(userId)
-				addPerson(user, if user then "@" .. user.username .. " · recent" else "")
+				if user and (matches(user.displayName) or matches(user.username)) then
+					addPerson(user, "@" .. user.username .. " · following")
+				end
+			end
+			for _, user in UserLooks.friends() do
+				if matches(user.displayName) or matches(user.username) then
+					addPerson(user, "@" .. user.username .. " · friend")
+				end
 			end
 		end
 	else
@@ -747,13 +777,15 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		end
 	end
 	local message: string? = nil
-	if source == "Roblox" and needle ~= "" then
+	if source == "Roblox" and needle ~= "" and count == 0 then
 		message = if searching then "Looking for " .. query .. "…"
 			elseif searchError then ERRORS[searchError] or ERRORS.failed
 			elseif #(string.match(query, "^%s*@?(.-)%s*$") or "") < 3 then "Usernames are at least 3 characters"
 			else nil
 	elseif source == "Roblox" and count == 0 then
-		message = "Search for anyone on Roblox to see their avatar"
+		message = "Type someone's exact Roblox username to see their avatar"
+	elseif source == "Following" and count == 0 then
+		message = if needle ~= "" then "Nobody you follow has that name" else "Follow people from their page to see them here"
 	elseif source == "Friends" and count == 0 then
 		message = if needle ~= "" then "No friends with that name" else "Your friends will show here"
 	elseif source == "Creations" and count == 0 and RobloxOutfits.status() == "ready" then
@@ -1071,7 +1103,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 			}),
 			Preview = e("Frame", {
 				-- Whatever height the details below leave.
-				Size = UDim2.new(1, 0, 1, -(skin.textPx(24) + skin.px(6) + skin.px(18) + buttonsHeight * (if saved then 2 else 1) + skin.px(10) * (if saved then 4 else 3))),
+				Size = UDim2.new(1, 0, 1, -(skin.textPx(24) + skin.px(6) + skin.px(18) + buttonsHeight * (if saved or kind == "user" then 2 else 1) + skin.px(10) * (if saved or kind == "user" then 4 else 3))),
 				BackgroundTransparency = 1,
 				LayoutOrder = 1,
 			}, {
@@ -1112,6 +1144,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				iconSize = 18,
 				label = if kind == "own" then "Reset to this" else "Wear all items",
 				active = true,
+				disabled = kind ~= "own" and #items == 0,
 				sound = false, -- the look change plays its own sound
 				layoutOrder = 4,
 				onActivated = function()
@@ -1128,6 +1161,20 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					end
 				end,
 			}),
+			Follow = if kind == "user" and outfitId
+				then e(PillButton, {
+					variant = "pill",
+					size = Tokens.size.ctaHeight,
+					icon = if look.isFollowing(outfitId) then "check" else "person_add",
+					iconSize = 18,
+					label = if look.isFollowing(outfitId) then "Following" else "Follow",
+					sound = false, -- following plays its own sound
+					layoutOrder = 5,
+					onActivated = function()
+						look.toggleFollow(outfitId)
+					end,
+				})
+				else nil,
 			Delete = if saved
 				then e(ConfirmButton, {
 					label = "Delete outfit",
@@ -1156,7 +1203,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					text = #items .. " items · " .. #selected .. " selected",
 					style = { size = 17, weight = 900 },
 				}),
-				Toggle = e("TextButton", {
+				Toggle = if #items == 0 then nil else e("TextButton", {
 					AnchorPoint = Vector2.new(1, 0),
 					Position = UDim2.fromScale(1, 0),
 					Size = UDim2.new(0, skin.px(110), 1, 0),

@@ -47,7 +47,7 @@ local NetworkConfig = {
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
 		Favourites = { "Toggle" },
-		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected" },
+		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected", "Follow" },
 		Purchase = { "Buy", "Finished", "Check" },
 		Shrine = { "Donate" },
 		SlashCommand = {},  -- No actions, just the intent
@@ -102,7 +102,7 @@ local NetworkConfig = {
 			ownerId = "",
 			outfits = {},
 			nextId = 1,
-			recent = {},
+			following = {},
 		},
 		-- What the player owns, as far as we've checked, and their latest
 		-- purchase (session only; OwnershipModel). `owned` holds "Asset:123" /
@@ -155,7 +155,7 @@ export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"
 export type FavouritesAction = "Toggle"
 export type PurchaseAction = "Buy" | "Finished" | "Check"
-export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected"
+export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected" | "Follow"
 export type ShrineAction = "Donate"
 export type WorldOptionsAction = "Set" | "Reset"
 
@@ -206,7 +206,7 @@ export type OutfitsState = {
 	ownerId: string,
 	outfits: { Outfit }, -- oldest first
 	nextId: number,
-	recent: { number }, -- user ids looked up on Outfits › Roblox, newest first
+	following: { number }, -- user ids followed here (Outfits › Following), newest first
 }
 
 export type PurchaseResult = {

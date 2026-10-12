@@ -19,6 +19,8 @@
 		WearAll({ id })            wear exactly the outfit (replaces the look;
 		                           undoable)
 		WearSelected({ id, indices })   put those items on over the current look
+		Follow({ userId })         follow someone here, or unfollow (a real
+		                           Roblox user; private to the player)
 
 	The outfit page's 3D preview asks over the "OutfitPreview" remote function
 	(Bolt) with (kind, id): "saved" + a saved outfit's id, "own" (the player's
@@ -201,6 +203,19 @@ local function wearSelected(player: Player, model: any, raw: any)
 	track(player, "outfit_wear", { outfit_id = outfit.id, item_count = #items, partial = true })
 end
 
+local function follow(player: Player, model: any, raw: any)
+	local userId = if type(raw) == "table" then raw.userId else nil
+	if type(userId) ~= "number" or userId ~= userId or userId <= 0 or userId % 1 ~= 0 or userId == player.UserId then
+		return
+	end
+	-- Unfollowing needs no check; following must be a real user.
+	if not table.find(model.following, userId) and not RobloxAvatarLookupService.user(userId) then
+		return
+	end
+	local on = model:toggleFollow(userId)
+	track(player, if on then "user_follow" else "user_unfollow", { followed_user_id = userId })
+end
+
 local ACTIONS = {
 	[Network.Actions.Outfits.Save] = save,
 	[Network.Actions.Outfits.Overwrite] = overwrite,
@@ -208,6 +223,7 @@ local ACTIONS = {
 	[Network.Actions.Outfits.Delete] = delete,
 	[Network.Actions.Outfits.WearAll] = wearAll,
 	[Network.Actions.Outfits.WearSelected] = wearSelected,
+	[Network.Actions.Outfits.Follow] = follow,
 }
 
 function OutfitsController:executeAction(player: Player, action: Network.OutfitsAction, raw: any)
