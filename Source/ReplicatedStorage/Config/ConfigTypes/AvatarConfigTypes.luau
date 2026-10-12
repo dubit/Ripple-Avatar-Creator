@@ -23,6 +23,12 @@ export type AvatarConfig = {
     maxWearMany: number, -- most items in one Wear-all request
     basketLimit: number, -- most items the basket holds (the oldest drop off)
     basketBudget: { requests: number, seconds: number }, -- basket changes allowed per window
+    outfits: {
+        maxOutfits: number, -- saved outfits per player
+        maxItems: number, -- items kept per outfit
+        nameLength: number, -- characters in an outfit name
+        cooldown: number, -- seconds between a player's outfit requests
+    },
 }
 
 return nil

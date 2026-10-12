@@ -13,6 +13,9 @@
 	tone "orange" uses the glossy orange gradient with the dark-orange border;
 	tone "white" uses the white badge gradient with a dark icon.
 
+	A count without an icon is padded evenly and never narrower than it is
+	tall, so a single digit sits centred in a circle.
+
 	Props:
 		kind: "count" | "marker"
 		tone: "orange" | "white"
@@ -57,7 +60,10 @@ local function Badge(props: Props)
 	local textWidth = useTextWidth(props.text or "", font, textSize)
 	local iconSize = skin.px(if isMarker then 15 else 17)
 	local gap = skin.px(2)
-	local countWidth = skin.px(5) + (if props.icon then iconSize + gap else 0) + textWidth + skin.px(9)
+	-- With an icon the design pads 5 left / 9 right; text alone pads evenly.
+	local padLeft = skin.px(if props.icon then 5 else 7)
+	local padRight = skin.px(if props.icon then 9 else 7)
+	local countWidth = math.max(height, padLeft + (if props.icon then iconSize + gap else 0) + textWidth + padRight)
 
 	local children: { [string]: any } = {
 		Corner = e("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
@@ -102,8 +108,8 @@ local function Badge(props: Props)
 			ZIndex = z + 1,
 		})
 		children.Padding = e("UIPadding", {
-			PaddingLeft = UDim.new(0, skin.px(5)),
-			PaddingRight = UDim.new(0, skin.px(9)),
+			PaddingLeft = UDim.new(0, padLeft),
+			PaddingRight = UDim.new(0, padRight),
 		})
 	end
 

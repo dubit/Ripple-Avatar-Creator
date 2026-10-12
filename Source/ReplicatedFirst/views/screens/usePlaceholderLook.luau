@@ -28,6 +28,9 @@
 	    buy sends PurchaseController.Buy with a request id; the result comes
 	    back as `purchase` (state, reason, keys bought) carrying that id.
 
+	  · Outfits are real (Task 12): Network.State.Outfits (persisted), changed
+	    through OutfitsController by outfit id (the server holds the items).
+
 	Mock items (the prototype's placeholder data, no thumbnail) can't be
 	worn, put in the basket or bought: the intents skip them and report it.
 ]]
@@ -43,6 +46,12 @@ local CatalogueClient = require(views:WaitForChild("catalogue"):WaitForChild("Ca
 local useBoltState = require(views:WaitForChild("hooks"):WaitForChild("useBoltState"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
+
+export type SavedOutfit = {
+	id: number,
+	name: string,
+	items: { number }, -- item ids, in the order they were put on
+}
 
 export type Look = {
 	worn: { number }, -- item ids, in the order put on
@@ -64,12 +73,23 @@ export type Look = {
 	checkOwned: (ids: { number }) -> (), -- ask the server, once a session each
 	buy: (ids: { number }) -> number?, -- the request id; nil if nothing to buy
 	purchase: Network.PurchaseResult, -- the latest purchase's outcome
+	outfits: { SavedOutfit }, -- the player's saved outfits, oldest first
+	currentOutfit: SavedOutfit?, -- the saved outfit being worn exactly, if any
+	own: { number }, -- the player's own Roblox avatar's items (what Reset puts back)
+	wearRobloxOutfit: (outfitId: number) -> (), -- an outfit saved on Roblox
+	saveOutfit: () -> boolean, -- save what's worn; false if nothing is
+	overwriteOutfit: (id: number) -> (), -- replace its items with what's worn
+	renameOutfit: (id: number, name: string) -> (),
+	deleteOutfit: (id: number) -> (),
+	wearOutfit: (id: number) -> (), -- exactly the outfit (replaces the look)
+	wearOutfitItems: (id: number, indices: { number }) -> (), -- over the look
 	basketTotal: number, -- Robux for unowned basket items
 }
 
 local DEFAULT_AVATAR = { worn = {}, canUndo = false }
 local DEFAULT_FAVOURITES = { items = {} }
 local DEFAULT_BASKET = { items = {} }
+local DEFAULT_OUTFITS = { outfits = {} }
 local DEFAULT_OWNERSHIP = { owned = {}, purchase = { id = 0, state = "idle", reason = "", bought = {} } }
 local MAX_CHECK = 50 -- items per ownership check (PurchaseController's limit)
 local MAX_BUY = 20 -- items per purchase prompt (PurchaseController's limit)
@@ -130,6 +150,15 @@ local function usePlaceholderLook(): Look
 	end
 	local basketState = useBoltState(Network.State.Basket, DEFAULT_BASKET :: any)
 	local ownership = useBoltState(Network.State.Ownership, DEFAULT_OWNERSHIP :: any)
+	local outfitState = useBoltState(Network.State.Outfits, DEFAULT_OUTFITS :: any)
+	local outfits: { SavedOutfit } = {}
+	for _, outfit in outfitState.outfits or {} do
+		local ids = {}
+		for _, entry in outfit.items or {} do
+			table.insert(ids, CatalogueClient.remember(entry).id)
+		end
+		table.insert(outfits, { id = outfit.id, name = outfit.name, items = ids })
+	end
 	-- Known-owned items show as owned wherever they appear (items are shared).
 	for _, key in ownership.owned or {} do
 		local kind, targetId = string.match(key, "^(%a+):(%d+)$")
@@ -210,6 +239,11 @@ local function usePlaceholderLook(): Look
 		end
 	end, {})
 
+	local own = {}
+	for _, entry in avatar.own or {} do
+		table.insert(own, CatalogueClient.remember(entry).id)
+	end
+
 	local worn = {}
 	local wornSet = {}
 	for _, entry in avatar.worn or {} do
@@ -252,6 +286,24 @@ local function usePlaceholderLook(): Look
 		checkOwned(ids)
 		return nil
 	end, { avatar, basketState })
+
+	-- The saved outfit being worn exactly (same items, nothing more or less).
+	local currentOutfit: SavedOutfit? = nil
+	for _, outfit in outfits do
+		if #outfit.items == #worn and #worn > 0 then
+			local all = true
+			for _, id in outfit.items do
+				if not wornSet[id] then
+					all = false
+					break
+				end
+			end
+			if all then
+				currentOutfit = outfit
+				break
+			end
+		end
+	end
 
 	local function isWorn(id: number): boolean
 		return wornSet[id] == true
@@ -369,6 +421,38 @@ local function usePlaceholderLook(): Look
 			return lastRequestId
 		end,
 		purchase = ownership.purchase or DEFAULT_OWNERSHIP.purchase,
+		outfits = outfits,
+		currentOutfit = currentOutfit,
+		own = own,
+		wearRobloxOutfit = function(outfitId: number)
+			intent:FireServer(actions.WearRobloxOutfit, outfitId)
+		end,
+		saveOutfit = function(): boolean
+			if #worn == 0 then
+				return false
+			end
+			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Save)
+			return true
+		end,
+		overwriteOutfit = function(id: number)
+			if #worn > 0 then
+				Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Overwrite, { id = id })
+			end
+		end,
+		renameOutfit = function(id: number, name: string)
+			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Rename, { id = id, name = name })
+		end,
+		deleteOutfit = function(id: number)
+			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Delete, { id = id })
+		end,
+		wearOutfit = function(id: number)
+			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearAll, { id = id })
+		end,
+		wearOutfitItems = function(id: number, indices: { number })
+			if #indices > 0 then
+				Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearSelected, { id = id, indices = indices })
+			end
+		end,
 		basketTotal = total,
 	}
 end

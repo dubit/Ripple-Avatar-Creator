@@ -41,6 +41,7 @@ export type WornItem = {
 export type AvatarModel = typeof(setmetatable({} :: {
 	worn: { WornItem },
 	seeded: boolean,
+	own: { WornItem }, -- the player's own Roblox avatar's items (refreshed every join)
 	canUndo: boolean,
 	_undo: { { WornItem } },
 }, AvatarModel)) & AbstractModel.AbstractModel
@@ -96,6 +97,7 @@ function AvatarModel.new(ownerId: string): AvatarModel
 	setmetatable(self, AvatarModel)
 	self.worn = {}
 	self.seeded = false
+	self.own = {}
 	self.canUndo = false
 	self._undo = {}
 	return self :: AvatarModel
@@ -167,6 +169,13 @@ function AvatarModel:undo(): boolean
 	self.canUndo = #self._undo > 0
 	self:syncState()
 	return true
+end
+
+-- The player's own Roblox avatar's items, for the Outfits "Your avatar" card
+-- (what Reset puts back).
+function AvatarModel:setOwn(list: { WornItem }): ()
+	self.own = list
+	self:syncState()
 end
 
 -- First join: the player's own avatar, without an undo step.

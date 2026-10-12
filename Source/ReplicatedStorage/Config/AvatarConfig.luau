@@ -63,6 +63,12 @@ local config: AvatarConfig = {
 	maxWearMany = 20,
 	basketLimit = 100,
 	basketBudget = { requests = 10, seconds = 2 },
+	outfits = {
+		maxOutfits = 50,
+		maxItems = 40,
+		nameLength = 30,
+		cooldown = 0.3,
+	},
 }
 
 return config

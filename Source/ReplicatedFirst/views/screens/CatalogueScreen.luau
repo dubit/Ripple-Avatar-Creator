@@ -32,6 +32,7 @@ local useSkin = require(hooks:WaitForChild("useSkin"))
 local TextTab = require(components:WaitForChild("TextTab"))
 local Chip = require(components:WaitForChild("Chip"))
 local Icon = require(components:WaitForChild("Icon"))
+local SearchBox = require(components:WaitForChild("SearchBox"))
 local PillButton = require(components:WaitForChild("PillButton"))
 local GlassPanel = require(components:WaitForChild("GlassPanel"))
 local Parts = require(script.Parent:WaitForChild("Parts"))
@@ -69,7 +70,6 @@ local function CatalogueScreen(props: { nav: any, look: any })
 	local category, setCategory = useSessionState("catalogue.category", CatalogueConfig.categories[1].name)
 	local sub, setSub = useSessionState("catalogue.sub", "All")
 	local query, setQuery = useSessionState("catalogue.query", "")
-	local searchFocused, setSearchFocused = React.useState(false)
 	local pasteFocused, setPasteFocused = React.useState(false)
 	local filters, setFilters = useSessionState("catalogue.filters", CatalogueFilters.defaults)
 	local popover, setPopover = React.useState(nil :: CatalogueFilters.Popover?)
@@ -307,62 +307,13 @@ local function CatalogueScreen(props: { nav: any, look: any })
 				BackgroundTransparency = 0.9,
 				BorderSizePixel = 0,
 			}),
-			Search = e("Frame", {
-				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.fromScale(1, 0.5),
-				Size = UDim2.fromOffset(searchWidth, skin.px(40)),
-				BackgroundColor3 = Tokens.color.inputWell,
-				BorderSizePixel = 0,
-			}, {
-				Corner = e("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
-				Stroke = e("UIStroke", { Color = Tokens.color.black, Thickness = skin.stroke(1) }),
-				Icon = e(Icon, {
-					name = "search",
-					size = 20,
-					transparency = 0.45,
-					anchorPoint = Vector2.new(0, 0.5),
-					position = UDim2.new(0, skin.px(14), 0.5, 0),
-				}),
-				Box = e("TextBox", {
-					Position = UDim2.fromOffset(skin.px(40), 0),
-					-- Leaves room on the right for the clear button.
-					Size = UDim2.new(1, -skin.px(76), 1, 0),
-					BackgroundTransparency = 1,
-					ClearTextOnFocus = false,
-					Text = query,
-					-- Hidden while typing, so focus reads as an empty box ready for input.
-					PlaceholderText = if searchFocused then "" else "Search catalogue",
-					PlaceholderColor3 = Color3.fromRGB(150, 150, 150),
-					TextColor3 = Tokens.color.white,
-					TextSize = skin.textPx(Tokens.type.search.size),
-					FontFace = Tokens.font(Tokens.type.search.weight),
-					TextXAlignment = Enum.TextXAlignment.Left,
-					[React.Change.Text] = function(box: TextBox)
-						setQuery(box.Text)
-					end,
-					[React.Event.Focused] = function()
-						setSearchFocused(true)
-					end,
-					[React.Event.FocusLost] = function()
-						setSearchFocused(false)
-					end,
-				}),
-				-- Clears the search; only there when there's something to clear.
-				Clear = if query ~= ""
-					then e(PillButton, {
-						variant = "round",
-						size = Tokens.size.small.size - 8,
-						icon = "close",
-						iconSize = Tokens.size.small.icon - 4,
-						glowRadius = 0,
-						sound = "back",
-						anchorPoint = Vector2.new(1, 0.5),
-						position = UDim2.new(1, -skin.px(6), 0.5, 0),
-						onActivated = function()
-							setQuery("")
-						end,
-					})
-					else nil,
+			Search = e(SearchBox, {
+				text = query,
+				placeholder = "Search catalogue",
+				onChange = setQuery,
+				anchorPoint = Vector2.new(1, 0.5),
+				position = UDim2.fromScale(1, 0.5),
+				size = UDim2.fromOffset(searchWidth, skin.px(40)),
 			}),
 		}),
 		Chips = if #subs == 0 then nil else e("Frame", {

@@ -16,6 +16,9 @@
 		TakeOffAll()       wear nothing (the body stays)
 		Undo()             step back one change
 		Reset()            back to the player's own Roblox avatar
+		WearRobloxOutfit(outfitId)   wear an outfit saved on Roblox (its
+		                   clothing, accessories, emotes and makeup; the body
+		                   stays the player's own)
 
 	Each change re-dresses the character through AvatarService. Try-ons,
 	take-offs and resets are tracked as analytics events with the item's id
@@ -144,6 +147,19 @@ local function reset(player: Player, model: any, _raw: any)
 	track(player, "reset")
 end
 
+local function wearRobloxOutfit(player: Player, model: any, raw: any)
+	if type(raw) ~= "number" or raw ~= raw or raw <= 0 or raw % 1 ~= 0 then
+		return
+	end
+	local description, items = AvatarService.robloxOutfit(raw)
+	if not description then
+		return
+	end
+	model:setWorn(items)
+	AvatarService.apply(player)
+	track(player, "outfit_wear", { outfit_id = raw, item_count = #items, partial = false, source = "roblox" })
+end
+
 local ACTIONS = {
 	[Network.Actions.Avatar.TryOn] = tryOn,
 	[Network.Actions.Avatar.TakeOff] = takeOff,
@@ -151,6 +167,7 @@ local ACTIONS = {
 	[Network.Actions.Avatar.TakeOffAll] = takeOffAll,
 	[Network.Actions.Avatar.Undo] = undo,
 	[Network.Actions.Avatar.Reset] = reset,
+	[Network.Actions.Avatar.WearRobloxOutfit] = wearRobloxOutfit,
 }
 
 function AvatarController:executeAction(player: Player, action: Network.AvatarAction, raw: any)

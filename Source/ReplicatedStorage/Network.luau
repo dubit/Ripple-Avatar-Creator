@@ -42,11 +42,12 @@ local NetworkBuilder = require(script.Parent:WaitForChild("NetworkBuilder"))
 -- Network Configuration: Single source of truth for all controllers and state
 local NetworkConfig = {
 	Controllers = {
-		Avatar = { "TryOn", "TakeOff", "WearMany", "TakeOffAll", "Undo", "Reset" },
+		Avatar = { "TryOn", "TakeOff", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit" },
 		Basket = { "Add", "Remove", "AddMany", "RemoveMany", "Clear" },
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
 		Favourites = { "Toggle" },
+		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected" },
 		Purchase = { "Buy", "Finished", "Check" },
 		Shrine = { "Donate" },
 		SlashCommand = {},  -- No actions, just the intent
@@ -60,6 +61,7 @@ local NetworkConfig = {
 			ownerId = "",
 			worn = {},
 			seeded = false,
+			own = {},
 			canUndo = false,
 		},
 		-- What the player means to buy (persisted; BasketModel): a list of
@@ -93,6 +95,13 @@ local NetworkConfig = {
 			gold = 0,
 			treasure = 0,
 			favourIds = {},
+		},
+		-- The player's saved outfits (persisted; OutfitsModel), oldest first:
+		-- { id, name, items = { { targetId, kind, typeName, name } } }.
+		Outfits = {
+			ownerId = "",
+			outfits = {},
+			nextId = 1,
 		},
 		-- What the player owns, as far as we've checked, and their latest
 		-- purchase (session only; OwnershipModel). `owned` holds "Asset:123" /
@@ -139,12 +148,13 @@ local Network = NetworkBuilder.build(NetworkConfig, Bolt)
 -- ============================================================================
 
 -- Action Type Exports (manually defined for type safety)
-export type AvatarAction = "TryOn" | "TakeOff" | "WearMany" | "TakeOffAll" | "Undo" | "Reset"
+export type AvatarAction = "TryOn" | "TakeOff" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit"
 export type BasketAction = "Add" | "Remove" | "AddMany" | "RemoveMany" | "Clear"
 export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"
 export type FavouritesAction = "Toggle"
 export type PurchaseAction = "Buy" | "Finished" | "Check"
+export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected"
 export type ShrineAction = "Donate"
 export type WorldOptionsAction = "Set" | "Reset"
 
@@ -161,6 +171,7 @@ export type AvatarState = {
 	ownerId: string,
 	worn: { WornItem }, -- in the order put on
 	seeded: boolean, -- filled from the player's own avatar on first join
+	own: { WornItem }, -- the player's own Roblox avatar's items (refreshed every join)
 	canUndo: boolean,
 }
 
@@ -182,6 +193,18 @@ export type CandlesState = {
 export type FavouritesState = {
 	ownerId: string,
 	items: { string }, -- "Asset:123" / "Bundle:45", most recent last
+}
+
+export type Outfit = {
+	id: number,
+	name: string, -- text-filtered
+	items: { WornItem }, -- what was worn, in the order put on (`owned` unset)
+}
+
+export type OutfitsState = {
+	ownerId: string,
+	outfits: { Outfit }, -- oldest first
+	nextId: number,
 }
 
 export type PurchaseResult = {

@@ -34,6 +34,17 @@
 		                                      it can't be found
 		ownLook(player) -> { WornItem }        the player's own avatar's items
 		apply(player)                          re-dress the character from `worn`
+
+	Also used by OutfitsController (the outfit page's 3D preview) and
+	AvatarController (wearing an outfit saved on Roblox):
+		describeLook(player, worn) -> HumanoidDescription   `worn` on the
+		                                      player's own base (gear left out)
+		ownDescription(player) -> HumanoidDescription?      the player's own
+		                                      Roblox avatar as it is
+		robloxOutfit(outfitId) -> (HumanoidDescription?, { WornItem })   an
+		                                      outfit saved on Roblox and its
+		                                      wearable items (not its body:
+		                                      the look keeps the player's own)
 ]]
 
 local AssetService = game:GetService("AssetService")
@@ -316,6 +327,20 @@ local function fetchOwn(player: Player): HumanoidDescription?
 	return description
 end
 
+function AvatarService.ownDescription(player: Player): HumanoidDescription?
+	return fetchOwn(player)
+end
+
+function AvatarService.robloxOutfit(outfitId: number): (HumanoidDescription?, { WornItem })
+	local ok, description = pcall(function()
+		return Players:GetHumanoidDescriptionFromOutfitId(outfitId)
+	end)
+	if not ok or not description then
+		return nil, {}
+	end
+	return description, itemsOf(description)
+end
+
 function AvatarService.ownLook(player: Player): { WornItem }
 	local own = fetchOwn(player)
 	if not own then
@@ -425,6 +450,11 @@ local function describe(player: Player, worn: { WornItem }): (HumanoidDescriptio
 	return description, gear
 end
 
+function AvatarService.describeLook(player: Player, worn: { WornItem }): HumanoidDescription
+	local description = describe(player, worn)
+	return description
+end
+
 local function holdGear(character: Model, gearId: number?)
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local player = Players:GetPlayerFromCharacter(character)
@@ -500,6 +530,7 @@ local function onPlayer(player: Player)
 	if own then
 		bases[player] = baseOf(own)
 		local ownItems = itemsOf(own)
+		model:setOwn(table.clone(ownItems))
 		if not model.seeded then
 			model:seed(ownItems)
 		else

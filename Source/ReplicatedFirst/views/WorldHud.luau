@@ -3,17 +3,20 @@
 --[[
 	WorldHud (design frame 5a: the HUD over the world)
 
-	Tab bar top centre; bottom-left the Basket button (Robux total badge) and
-	Create avatar / Save to Roblox / Reset; bottom-right the World options
+	Tab bar top centre; bottom-left the Basket button, then Wearing, Create
+	avatar and Save to Roblox; bottom-right the World options
 	toggle and its side panel. The top-left is left clear for Roblox's own
 	top-bar buttons (the tab bar is centred, so nothing reaches it).
 
 	Hidden while the full panel is open — the design's panel covers it. When it
 	comes back, the bottom buttons rise into place; World options slides in and
 	out from the right; the Basket badge total rolls.
-	Create avatar (save the look as a new Roblox outfit) and Save to Roblox
-	(make it their Roblox avatar) open Roblox's own prompts (AccountPrompts);
-	Reset puts the player's own Roblox avatar back on.
+	Basket and Wearing carry a callout once they hold anything: the basket's
+	Robux total (or its item count when everything in it is free), and how
+	many items are being worn. Create avatar (save the look as a new Roblox
+	outfit) and Save to Roblox (make it their Roblox avatar) open Roblox's own
+	prompts (AccountPrompts). There's no Reset here: Outfits › Mine's "Your
+	avatar" does it.
 
 	Props:
 		nav, look
@@ -42,6 +45,11 @@ local Sounds = require(views:WaitForChild("Sounds"))
 
 local e = React.createElement
 
+-- Callouts on Basket / Wearing: how far past the button's top-right corner
+-- (design px).
+local CALLOUT_RIGHT = 6
+local CALLOUT_UP = 6
+
 export type Props = {
 	nav: any,
 	look: any,
@@ -61,6 +69,8 @@ local function WorldHud(props: Props)
 	local action = Tokens.size.action
 	local edge = skin.px(Tokens.size.edgeInset)
 	local total = useSpringNumber(props.look.basketTotal, Tokens.spring.count)
+	local basketCount = useSpringNumber(#props.look.basket, Tokens.spring.count)
+	local wornCount = useSpringNumber(#props.look.worn, Tokens.spring.count)
 	local rise = useAppear(Tokens.spring.slide)
 	local worldTransitions = useTransition(worldOpen, {
 		from = { t = 0 },
@@ -81,6 +91,18 @@ local function WorldHud(props: Props)
 			onClose = function()
 				setWorld(false)
 			end,
+		})
+	end
+
+	-- A callout pinned over a big round button's top-right corner.
+	local function callout(text: string)
+		return e(Badge, {
+			kind = "count",
+			tone = "orange",
+			text = text,
+			anchorPoint = Vector2.new(1, 0),
+			position = UDim2.fromOffset(skin.px(CALLOUT_RIGHT), -skin.px(CALLOUT_UP)),
+			zIndex = 6,
 		})
 	end
 
@@ -117,7 +139,7 @@ local function WorldHud(props: Props)
 			Position = rise:map(function(t: number)
 				return UDim2.new(0, edge, 1, -edge + (1 - t) * skin.px(basket.size + edge))
 			end),
-			Size = UDim2.fromOffset(skin.px(basket.size + 12 * 3 + action.size * 3), skin.px(basket.size)),
+			Size = UDim2.fromOffset(skin.px(basket.size * 2 + 12 * 3 + action.size * 2), skin.px(basket.size)),
 			BackgroundTransparency = 1,
 			ZIndex = 2,
 		}, {
@@ -139,22 +161,27 @@ local function WorldHud(props: Props)
 				onActivated = function()
 					props.nav.openRoot("Basket")
 				end,
-				-- Design: badge sits top -8px, right -18px of the 84 button.
-				badge = if total > 0
-					then e(Badge, {
-						kind = "count",
-						tone = "orange",
-						text = Tokens.robux(total),
-						anchorPoint = Vector2.new(1, 0),
-						position = UDim2.fromOffset(skin.px(18), -skin.px(8)),
-						zIndex = 6,
-					})
-					else nil,
+				badge = if #props.look.basket == 0 then nil
+					elseif props.look.basketTotal > 0 then callout(Tokens.robux(total))
+					else callout(tostring(basketCount)),
 			}),
-			CreateAvatar = actionButton("person_add", 2, AccountPrompts.createOutfit),
-			SaveToRoblox = actionButton("cloud_upload", 3, AccountPrompts.saveAvatar),
-			-- Back to the player's own Roblox avatar (undoable).
-			Reset = actionButton("restart_alt", 4, props.look.reset, false),
+			-- As big as Basket: the other way into your look.
+			Wearing = e(PillButton, {
+				variant = "round",
+				size = basket.size,
+				icon = "checkroom",
+				iconSize = basket.icon,
+				glowRadius = basket.glow,
+				layoutOrder = 2,
+				zIndex = 2,
+				sound = false, -- opening the panel plays its own sound
+				onActivated = function()
+					props.nav.openRoot("Wearing")
+				end,
+				badge = if #props.look.worn > 0 then callout(tostring(wornCount)) else nil,
+			}),
+			CreateAvatar = actionButton("person_add", 3, AccountPrompts.createOutfit),
+			SaveToRoblox = actionButton("cloud_upload", 4, AccountPrompts.saveAvatar),
 		}),
 		WorldToggle = e(PillButton, {
 			variant = "round",
