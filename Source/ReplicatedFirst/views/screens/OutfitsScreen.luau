@@ -13,8 +13,14 @@
 	    (RobloxOutfits), marked with a "Roblox" badge. Roblox only lists them
 	    once you allow it, so until then a "Show my Roblox outfits" card asks.
 	The outfit you're wearing exactly gets the orange ring. Search filters by
-	name. Community and Roblox still show placeholder outfits (Tasks 13 and
-	16). Cards show a 2×2 mosaic of item thumbnails, the most telling first:
+	name. Community still shows placeholder outfits (Task 16).
+
+	Roblox: other people's looks (UserLooks). Roblox only lets a game read
+	another user's current avatar, not their saved outfits. The search box
+	finds a username; below the result come the players in this server (what
+	they're wearing here), your recent lookups, then your friends. Each is a
+	card with their avatar picture; its page shows their items, worn over
+	your own body. Cards show a 2×2 mosaic of item thumbnails, the most telling first:
 	bodies, then heads, layered clothing, accessories, classic clothing, and
 	animations last.
 
@@ -53,7 +59,9 @@ local Parts = require(script.Parent:WaitForChild("Parts"))
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
 local OutfitPreview = require(script.Parent:WaitForChild("OutfitPreview"))
 local RobloxOutfits = require(views:WaitForChild("catalogue"):WaitForChild("RobloxOutfits"))
+local UserLooks = require(views:WaitForChild("catalogue"):WaitForChild("UserLooks"))
 local Badge = require(components:WaitForChild("Badge"))
+local Spinner = require(components:WaitForChild("Spinner"))
 local HudContext = require(views:WaitForChild("HudContext"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
@@ -65,9 +73,9 @@ local LEFT_WIDTH = 300
 
 -- An outfit as the screens see it, whichever source it came from.
 type OutfitView = {
-	kind: "saved" | "own" | "roblox" | "placeholder",
+	kind: "saved" | "own" | "roblox" | "user" | "placeholder",
 	id: number?, -- the saved / Roblox outfit's id
-	source: string, -- nav source: "Mine" (saved), "Own", "RobloxSaved", or a placeholder tab
+	source: string, -- nav source: "Mine" (saved), "Own", "RobloxSaved", "User", or a placeholder tab
 	index: number, -- nav index: the id, or the placeholder list position
 	name: string,
 	by: string,
@@ -395,6 +403,179 @@ local function ActionCard(props: {
 	})
 end
 
+local SEARCH_DELAY = 0.6 -- seconds after typing stops before a username lookup
+
+local ERRORS = {
+	notfound = "No Roblox user with that name",
+	busy = "Too many lookups. Try again in a moment",
+	failed = "Couldn't reach Roblox. Try again",
+}
+
+-- A person on the Roblox tab: their avatar picture, name, and where they're from.
+local function PersonCard(props: { user: UserLooks.User, sub: string, onActivated: () -> (), layoutOrder: number })
+	local skin = useSkin()
+	local interaction = useInteraction()
+	return e("TextButton", {
+		Name = "PersonCard",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		AutoButtonColor = false,
+		Text = "",
+		LayoutOrder = props.layoutOrder,
+		[React.Event.InputBegan] = Press.began(props.onActivated),
+		[React.Event.Activated] = Press.activated(props.onActivated),
+		[React.Event.MouseEnter] = interaction.onEnter,
+		[React.Event.MouseLeave] = interaction.onLeave,
+	}, {
+		Thumb = e(Parts.Thumb, {
+			colour = Parts.swatch(""),
+			radius = 14,
+			hovered = interaction.hovered,
+			image = "rbxthumb://type=Avatar&id=" .. props.user.userId .. "&w=150&h=150",
+		}, {
+			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
+		}),
+		Meta = e("Frame", {
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.fromScale(0, 1),
+			Size = UDim2.new(1, 0, 0, skin.px(36)),
+			BackgroundTransparency = 1,
+		}, {
+			Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(2)) }),
+			Name = e("TextLabel", {
+				Size = UDim2.new(1, 0, 0, skin.textPx(13.5) + skin.px(2)),
+				BackgroundTransparency = 1,
+				Text = props.user.displayName,
+				TextColor3 = Tokens.color.white,
+				TextSize = skin.textPx(13.5),
+				FontFace = Tokens.font(800),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				LayoutOrder = 1,
+			}),
+			Sub = e("TextLabel", {
+				Size = UDim2.new(1, 0, 0, skin.textPx(12) + skin.px(2)),
+				BackgroundTransparency = 1,
+				Text = props.sub,
+				TextColor3 = Tokens.color.white,
+				TextTransparency = Tokens.alpha.textDim,
+				TextSize = skin.textPx(12),
+				FontFace = Tokens.font(700),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				LayoutOrder = 2,
+			}),
+		}),
+	})
+end
+
+-- A full-width line in the grid's place (search messages).
+local function GridMessage(props: { text: string })
+	return e("Frame", {
+		Size = UDim2.new(1, 0, 0, 60),
+		BackgroundTransparency = 1,
+	}, {
+		Text = e(ShadowText, {
+			text = props.text,
+			style = Tokens.type.cardTitle,
+			transparency = Tokens.alpha.textDim,
+			shadow = false,
+		}),
+	})
+end
+
+-- The username search: the user found for `query` (after a pause in typing).
+local function useUserSearch(query: string, active: boolean): (UserLooks.User?, string?, boolean)
+	local result, setResult = React.useState(nil :: { query: string, user: UserLooks.User?, error: string? }?)
+	local name = string.match(query, "^%s*@?(.-)%s*$") or ""
+	React.useEffect(function()
+		if not active or #name < 3 then
+			return nil
+		end
+		local alive = true
+		local thread = task.delay(SEARCH_DELAY, function()
+			local user, err = UserLooks.find(name)
+			if alive then
+				setResult({ query = name, user = user, error = err })
+			end
+		end)
+		return function()
+			alive = false
+			task.cancel(thread)
+		end
+	end, { name, active } :: { any })
+	if not active or #name < 3 then
+		return nil, nil, false
+	end
+	if not result or result.query ~= name then
+		return nil, nil, true -- still looking
+	end
+	return result.user, result.error, false
+end
+
+-- Re-render when names / friends arrive, and players come and go.
+local function usePeople(active: boolean)
+	local _version, setVersion = React.useState(0)
+	React.useEffect(function()
+		if not active then
+			return nil
+		end
+		local function bump()
+			setVersion(function(v: number)
+				return v + 1
+			end)
+		end
+		local connections = {
+			UserLooks.changed:Connect(bump),
+			game:GetService("Players").PlayerAdded:Connect(bump),
+			game:GetService("Players").PlayerRemoving:Connect(function()
+				task.defer(bump)
+			end),
+		}
+		return function()
+			for _, connection in connections do
+				connection:Disconnect()
+			end
+		end
+	end, { active })
+end
+
+-- Another user's look, loaded for their outfit page.
+local function useUserLook(userId: number?): (UserLooks.Look?, string?)
+	local state, setState = React.useState(nil :: { userId: number, look: UserLooks.Look?, error: string? }?)
+	React.useEffect(function()
+		if not userId then
+			return nil
+		end
+		local alive = true
+		task.spawn(function()
+			local look, err = UserLooks.look(userId)
+			if alive then
+				setState({ userId = userId, look = look, error = err })
+			end
+		end)
+		return function()
+			alive = false
+		end
+	end, { userId })
+	if not userId or not state or state.userId ~= userId then
+		return nil, nil
+	end
+	return state.look, state.error
+end
+
+local function userView(look: UserLooks.Look): OutfitView
+	return {
+		kind = "user",
+		id = look.userId,
+		source = "User",
+		index = look.userId,
+		name = look.displayName,
+		by = "@" .. look.username .. (if look.inServer then " · wearing here" else " · Roblox avatar"),
+		items = look.items,
+	}
+end
+
 local function OutfitsScreen(props: { nav: any, look: any })
 	local skin = useSkin()
 	local look = props.look
@@ -421,6 +602,8 @@ local function OutfitsScreen(props: { nav: any, look: any })
 
 	local mine = source == "Mine"
 	useRobloxOutfits(mine)
+	usePeople(source == "Roblox")
+	local found, searchError, searching = useUserSearch(query, source == "Roblox")
 	local needle = string.lower(query)
 	local function matches(name: string): boolean
 		return needle == "" or string.find(string.lower(name), needle, 1, true) ~= nil
@@ -492,10 +675,58 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				end,
 			})
 		end
+	elseif source == "Roblox" then
+		local seen: { [number]: boolean } = { [game:GetService("Players").LocalPlayer.UserId] = true }
+		local function addPerson(user: UserLooks.User?, sub: string)
+			if not user or seen[user.userId] then
+				return
+			end
+			seen[user.userId] = true
+			count += 1
+			cards["Person" .. count] = e(PersonCard, {
+				user = user,
+				sub = sub,
+				layoutOrder = count,
+				onActivated = function()
+					Sounds.play("press")
+					props.nav.push({
+						kind = "outfit",
+						id = { source = "User", index = user.userId },
+						label = user.displayName,
+					})
+				end,
+			})
+		end
+		if found then
+			addPerson(found, "@" .. found.username)
+		end
+		-- The rest only while not searching, so a search shows just its result.
+		if needle == "" then
+			for _, player in game:GetService("Players"):GetPlayers() do
+				addPerson({ userId = player.UserId, username = player.Name, displayName = player.DisplayName }, "In this server")
+			end
+			UserLooks.prefetch(look.recent)
+			for _, userId in look.recent do
+				local user = UserLooks.known(userId)
+				addPerson(user, if user then "@" .. user.username .. " · recent" else "")
+			end
+			for _, user in UserLooks.friends() do
+				addPerson(user, "@" .. user.username .. " · friend")
+			end
+		end
 	else
 		for _, outfit in outfitsFor(look, source) do
 			addOutfit(outfit, "by " .. outfit.by)
 		end
+	end
+	local message: string? = nil
+	if source == "Roblox" and needle ~= "" then
+		message = if searching then "Looking for " .. query .. "…"
+			elseif searchError then ERRORS[searchError] or ERRORS.failed
+			elseif #(string.match(query, "^%s*@?(.-)%s*$") or "") < 3 then "Usernames are at least 3 characters"
+			else nil
+	elseif source == "Roblox" and count == 0 then
+		message = "Search for anyone on Roblox to see their avatar"
 	end
 
 	local tabsHeight = skin.px(Tokens.size.textTabHeight)
@@ -538,6 +769,13 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			size = UDim2.new(1, 0, 1, -(tabsHeight + skin.px(14))),
 			scrollKey = "outfits|" .. source .. "|" .. query,
 		}, cards),
+		Message = if message
+			then e("Frame", {
+				Position = UDim2.fromOffset(0, tabsHeight + skin.px(14) + (if count > 0 then skin.px(260) else 0)),
+				Size = UDim2.new(1, 0, 0, skin.px(40)),
+				BackgroundTransparency = 1,
+			}, { Text = e(GridMessage, { text = message }) })
+			else nil,
 	})
 end
 
@@ -657,7 +895,10 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local hud = React.useContext(HudContext)
 	local look = props.look
 	useRobloxOutfits(props.source == "RobloxSaved")
-	local outfit = findOutfit(look, props.source, props.index)
+	local userLook, userError = useUserLook(if props.source == "User" then props.index else nil)
+	local outfit = if props.source == "User"
+		then (if userLook then userView(userLook) else nil)
+		else findOutfit(look, props.source, props.index)
 	-- Selected rows by position; everything starts selected.
 	local deselected, setDeselected = React.useState({} :: { [number]: boolean })
 
@@ -667,7 +908,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 			look.checkOwned(outfit.items)
 		end
 		return nil
-	end, { props.source, props.index })
+	end, { props.source, props.index, userLook ~= nil } :: { any })
 
 	-- Keep the breadcrumb in step with a rename.
 	React.useEffect(function()
@@ -679,8 +920,17 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	end, { outfit and outfit.name })
 
 	if not outfit then
-		-- Deleted (or gone): nothing to show; the Delete handler goes back.
-		return e("Frame", { Name = "OutfitScreen", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 })
+		-- Another user's look still loading (or unavailable); a deleted outfit
+		-- shows nothing (the Delete handler goes back).
+		local note = if props.source ~= "User" then nil
+			elseif userError then (if userError == "busy" then ERRORS.busy else "This avatar isn't available")
+			else nil
+		return e("Frame", { Name = "OutfitScreen", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, {
+			Spinner = if props.source == "User" and not note
+				then e(Spinner, { size = 40, anchorPoint = Vector2.new(0.5, 0.5), position = UDim2.fromScale(0.5, 0.4) })
+				else nil,
+			Note = if note then e(GridMessage, { text = note }) else nil,
+		})
 	end
 
 	local items = outfit.items
@@ -838,6 +1088,8 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 						look.reset()
 					elseif kind == "roblox" and outfitId then
 						look.wearRobloxOutfit(outfitId)
+					elseif kind == "user" and outfitId then
+						look.wearUserLook(outfitId)
 					elseif kind == "saved" and outfitId then
 						look.wearOutfit(outfitId)
 					else

@@ -41,6 +41,8 @@
 		                                      player's own base (gear left out)
 		ownDescription(player) -> HumanoidDescription?      the player's own
 		                                      Roblox avatar as it is
+		userAvatar(userId) -> (HumanoidDescription?, { WornItem })   another
+		                                      user's current Roblox avatar
 		robloxOutfit(outfitId) -> (HumanoidDescription?, { WornItem })   an
 		                                      outfit saved on Roblox and its
 		                                      wearable items (not its body:
@@ -239,7 +241,7 @@ end
 
 -- The player's own avatar, as a list of wearable items (owned: they're on
 -- the player's Roblox avatar).
-local function itemsOf(description: HumanoidDescription): { WornItem }
+local function itemsOf(description: HumanoidDescription, owned: boolean?): { WornItem }
 	local items: { WornItem } = {}
 	for _, accessory in description:GetAccessories(true) do
 		local typeName = TYPE_OF_ACCESSORY[accessory.AccessoryType]
@@ -269,8 +271,10 @@ local function itemsOf(description: HumanoidDescription): { WornItem }
 			end
 		end
 	end
-	for _, item in items do
-		item.owned = true
+	if owned ~= false then
+		for _, item in items do
+			item.owned = true
+		end
 	end
 	-- Names, in one batch.
 	local ids = {}
@@ -325,6 +329,18 @@ local function fetchOwn(player: Player): HumanoidDescription?
 		return nil
 	end
 	return description
+end
+
+-- Another Roblox user's current avatar and its wearable items (not owned:
+-- they're someone else's). Not cached here; RobloxAvatarLookupService caches.
+function AvatarService.userAvatar(userId: number): (HumanoidDescription?, { WornItem })
+	local ok, description = pcall(function()
+		return Players:GetHumanoidDescriptionFromUserId(userId)
+	end)
+	if not ok or not description then
+		return nil, {}
+	end
+	return description, itemsOf(description, false)
 end
 
 function AvatarService.ownDescription(player: Player): HumanoidDescription?

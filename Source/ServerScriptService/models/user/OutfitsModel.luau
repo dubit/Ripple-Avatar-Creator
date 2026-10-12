@@ -6,7 +6,8 @@
 	The player's saved outfits, oldest first: each an id, a name (already
 	text-filtered by OutfitsController) and the items that were worn, as the
 	same short records as the worn list. `nextId` hands out ids, so an
-	outfit keeps its id when others are deleted.
+	outfit keeps its id when others are deleted. `recent` holds the user ids
+	the player looked up on Outfits › Roblox (newest first).
 
 	One record for all of a player's outfits: at AvatarConfig.outfits limits
 	(50 outfits × 40 items, ~80 bytes an item) it stays a few hundred KB at
@@ -39,13 +40,17 @@ export type Outfit = {
 export type OutfitsModel = typeof(setmetatable({} :: {
 	outfits: { Outfit },
 	nextId: number,
+	recent: { number }, -- user ids looked up on the Roblox tab, newest first
 }, OutfitsModel)) & AbstractModel.AbstractModel
+
+local MAX_RECENT = 12
 
 function OutfitsModel.new(ownerId: string): OutfitsModel
 	local self = AbstractModel.new("OutfitsModel", ownerId, "User") :: any
 	setmetatable(self, OutfitsModel)
 	self.outfits = {}
 	self.nextId = 1
+	self.recent = {}
 	return self :: OutfitsModel
 end
 
@@ -105,6 +110,21 @@ function OutfitsModel:overwrite(id: number, items: { OutfitItem }): Outfit?
 	outfit.items = keep(items)
 	self:syncState()
 	return outfit
+end
+
+-- Remember a Roblox-tab lookup (newest first, no repeats, capped).
+function OutfitsModel:addRecent(userId: number): ()
+	local index = table.find(self.recent, userId)
+	if index == 1 then
+		return
+	elseif index then
+		table.remove(self.recent, index)
+	end
+	table.insert(self.recent, 1, userId)
+	while #self.recent > MAX_RECENT do
+		table.remove(self.recent)
+	end
+	self:syncState()
 end
 
 function OutfitsModel:rename(id: number, name: string): boolean

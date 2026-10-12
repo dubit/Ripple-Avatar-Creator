@@ -42,7 +42,7 @@ local NetworkBuilder = require(script.Parent:WaitForChild("NetworkBuilder"))
 -- Network Configuration: Single source of truth for all controllers and state
 local NetworkConfig = {
 	Controllers = {
-		Avatar = { "TryOn", "TakeOff", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit" },
+		Avatar = { "TryOn", "TakeOff", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit", "WearUserLook" },
 		Basket = { "Add", "Remove", "AddMany", "RemoveMany", "Clear" },
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
@@ -102,6 +102,7 @@ local NetworkConfig = {
 			ownerId = "",
 			outfits = {},
 			nextId = 1,
+			recent = {},
 		},
 		-- What the player owns, as far as we've checked, and their latest
 		-- purchase (session only; OwnershipModel). `owned` holds "Asset:123" /
@@ -148,7 +149,7 @@ local Network = NetworkBuilder.build(NetworkConfig, Bolt)
 -- ============================================================================
 
 -- Action Type Exports (manually defined for type safety)
-export type AvatarAction = "TryOn" | "TakeOff" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit"
+export type AvatarAction = "TryOn" | "TakeOff" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit" | "WearUserLook"
 export type BasketAction = "Add" | "Remove" | "AddMany" | "RemoveMany" | "Clear"
 export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"
@@ -205,6 +206,7 @@ export type OutfitsState = {
 	ownerId: string,
 	outfits: { Outfit }, -- oldest first
 	nextId: number,
+	recent: { number }, -- user ids looked up on Outfits › Roblox, newest first
 }
 
 export type PurchaseResult = {

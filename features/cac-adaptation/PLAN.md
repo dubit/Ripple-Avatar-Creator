@@ -529,7 +529,7 @@ Each needs a user decision (or a recorded finding) before or during the named ta
 12. **Card imagery (Task 8).** Thumbnails (cheap, static) vs ViewportFrame previews (lively, heavier on phones).
 13. ~~**What Create avatar does (Task 11).**~~ Decided (user, 2026-10-09): save the current look as a new Roblox outfit (`PromptCreateOutfit`).
 14. ~~**Purchase and ownership specifics (Task 11).**~~ Found: bulk Buy all works (`PromptBulkPurchase`, server-only; result client-only); bundle ownership via `PlayerOwnsBundle`. See Task 11 outcome.
-15. **Roblox username lookup depth (Task 13).** Whether another user's saved outfits are retrievable, or only their current avatar.
+15. ~~**Roblox username lookup depth (Task 13).**~~ Found: only another user's current avatar is retrievable in-game (`Players:GetUserIdFromNameAsync`, `GetHumanoidDescriptionFromUserId`, `UserService:GetUserInfosByUserIdsAsync`); `AvatarEditorService:GetOutfits` lists only the local player's outfits (after `PromptAllowInventoryReadAccess`) and HttpService can't reach Roblox's own web APIs. Decided (user, 2026-10-12): the Roblox tab shows the username search result, then players in this server (what they wear here), recent lookups, then friends.
 16. **Cross-server storage technology (Task 14).** DataStore, OrderedDataStore, MemoryStore, external service, or a mix; consistency, budgets and moderation hooks. Also used by Tasks 16 and 17.
 17. **Moderation (Tasks 12, 14, 16, 17, 19).** Approach to user-named outfits and stores, and takedown/report workflow.
 18. **Deep links and QR (Task 15).** What launch-data/deep-link route Roblox supports for landing on a specific screen, and how it coexists with the existing LaunchData acquisition attribution.

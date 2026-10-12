@@ -22,7 +22,8 @@
 
 	The outfit page's 3D preview asks over the "OutfitPreview" remote function
 	(Bolt) with (kind, id): "saved" + a saved outfit's id, "own" (the player's
-	own Roblox avatar) or "roblox" + an outfit saved on Roblox. The server
+	own Roblox avatar), "roblox" + an outfit saved on Roblox, or "user" + a
+	user id (another user's look: RobloxAvatarLookupService). The server
 	builds the look
 	(AvatarService.describeLook, the same code that dresses characters) and
 	parents the HumanoidDescription into the player's PlayerGui (so only they
@@ -44,6 +45,7 @@ local AbstractController = require(script.Parent.AbstractController)
 local OutfitsModel = require(script.Parent.Parent.models.user.OutfitsModel)
 local AvatarModel = require(script.Parent.Parent.models.user.AvatarModel)
 local AvatarService = require(ServerScriptService.services.game.AvatarService)
+local RobloxAvatarLookupService = require(ServerScriptService.services.game.RobloxAvatarLookupService)
 local Network = require(ReplicatedStorage.Network)
 local Bolt = require(ReplicatedStorage.Bolt)
 
@@ -253,6 +255,8 @@ local function preview(player: Player, kind: any, id: any): string?
 		description = AvatarService.ownDescription(player)
 	elseif kind == "roblox" then
 		description = AvatarService.robloxOutfit(id)
+	elseif kind == "user" then
+		description = RobloxAvatarLookupService.description(id)
 	end
 	if not description then
 		return nil

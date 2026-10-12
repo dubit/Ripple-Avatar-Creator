@@ -19,6 +19,9 @@
 		WearRobloxOutfit(outfitId)   wear an outfit saved on Roblox (its
 		                   clothing, accessories, emotes and makeup; the body
 		                   stays the player's own)
+		WearUserLook(userId)   wear another user's look the same way: what a
+		                   player in this server is wearing here, or anyone
+		                   else's current Roblox avatar
 
 	Each change re-dresses the character through AvatarService. Try-ons,
 	take-offs and resets are tracked as analytics events with the item's id
@@ -32,6 +35,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local AbstractController = require(script.Parent.AbstractController)
 local AvatarModel = require(script.Parent.Parent.models.user.AvatarModel)
 local AvatarService = require(ServerScriptService.services.game.AvatarService)
+local RobloxAvatarLookupService = require(ServerScriptService.services.game.RobloxAvatarLookupService)
 local Network = require(ReplicatedStorage.Network)
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
@@ -160,6 +164,19 @@ local function wearRobloxOutfit(player: Player, model: any, raw: any)
 	track(player, "outfit_wear", { outfit_id = raw, item_count = #items, partial = false, source = "roblox" })
 end
 
+local function wearUserLook(player: Player, model: any, raw: any)
+	if type(raw) ~= "number" or raw ~= raw or raw <= 0 or raw % 1 ~= 0 then
+		return
+	end
+	local look = RobloxAvatarLookupService.look(raw)
+	if not look or #look.items == 0 then
+		return
+	end
+	model:setWorn(table.clone(look.items))
+	AvatarService.apply(player)
+	track(player, "outfit_wear", { item_count = #look.items, partial = false, source = if look.inServer then "server_player" else "roblox_user" })
+end
+
 local ACTIONS = {
 	[Network.Actions.Avatar.TryOn] = tryOn,
 	[Network.Actions.Avatar.TakeOff] = takeOff,
@@ -168,6 +185,7 @@ local ACTIONS = {
 	[Network.Actions.Avatar.Undo] = undo,
 	[Network.Actions.Avatar.Reset] = reset,
 	[Network.Actions.Avatar.WearRobloxOutfit] = wearRobloxOutfit,
+	[Network.Actions.Avatar.WearUserLook] = wearUserLook,
 }
 
 function AvatarController:executeAction(player: Player, action: Network.AvatarAction, raw: any)
