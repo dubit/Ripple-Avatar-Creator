@@ -771,6 +771,14 @@ local function OutfitsScreen(props: { nav: any, look: any })
 
 	useRobloxOutfits(source == "Creations")
 	usePeople(source == "Friends" or source == "Roblox")
+	-- Current shows your Roblox avatar as it is now (it may have changed
+	-- since you joined).
+	React.useEffect(function()
+		if source == "Current" then
+			look.refreshOwn()
+		end
+		return nil
+	end, { source })
 	local needle = string.lower(query)
 	local function matches(name: string): boolean
 		return needle == "" or string.find(string.lower(name), needle, 1, true) ~= nil

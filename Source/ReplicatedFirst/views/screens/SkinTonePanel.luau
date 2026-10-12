@@ -6,10 +6,13 @@
 	Colour your body part by part. On the left, a figure of the six parts in
 	the colours you're wearing (your own where you haven't chosen one): tap
 	parts to select them (all are selected to start), or use All parts.
-	On the right, the palette (AvatarConfig.skinTones) after "Your own":
-	picking one colours the selected parts at once ("Your own" puts their
-	own colour back). A swatch has the orange ring when every selected part
-	wears it. Changes are undoable; outfits save them.
+	On the right, the palette (AvatarConfig.skinTones: Roblox's avatar
+	editor colours) between "Your own" and Custom: picking one colours the
+	selected parts at once ("Your own" puts back your Roblox avatar's colour,
+	re-read when the panel opens). A swatch has the orange ring when every
+	selected part wears it. Custom opens a colour editor (hue, saturation,
+	brightness, or a hex code) with Apply. Changes are undoable; outfits save
+	them.
 
 	Props:
 		look: the HUD look (skin, ownSkin, setSkin)
@@ -30,6 +33,7 @@ local Icon = require(views:WaitForChild("components"):WaitForChild("Icon"))
 local ShadowText = require(views:WaitForChild("components"):WaitForChild("ShadowText"))
 local PillButton = require(views:WaitForChild("components"):WaitForChild("PillButton"))
 local BodyFigure = require(views:WaitForChild("components"):WaitForChild("BodyFigure"))
+local Slider = require(views:WaitForChild("components"):WaitForChild("Slider"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
 
@@ -39,8 +43,8 @@ local SWATCH = 64 -- design px
 local LEFT = 230 -- design px: the figure's column
 
 local function Swatch(props: {
-	name: string,
-	colour: Color3?, -- nil = "your own"
+	colour: Color3?, -- nil = "your own" (or Custom, with `icon`)
+	icon: string?, -- drawn on a colourless swatch
 	selected: boolean,
 	onPick: () -> (),
 	layoutOrder: number,
@@ -50,7 +54,7 @@ local function Swatch(props: {
 	local size = skin.px(SWATCH)
 	return e("TextButton", {
 		Name = "Swatch",
-		Size = UDim2.fromOffset(size, size + skin.px(22)),
+		Size = UDim2.fromOffset(size, size),
 		BackgroundTransparency = 1,
 		AutoButtonColor = false,
 		Text = "",
@@ -74,24 +78,13 @@ local function Swatch(props: {
 			}),
 			Own = if props.colour == nil
 				then e(Icon, {
-					name = "restart_alt",
+					name = props.icon or "restart_alt",
 					size = 26,
 					transparency = 0.2,
 					anchorPoint = Vector2.new(0.5, 0.5),
 					position = UDim2.fromScale(0.5, 0.5),
 				})
 				else nil,
-		}),
-		Label = e("TextLabel", {
-			Position = UDim2.fromOffset(0, size + skin.px(4)),
-			Size = UDim2.new(1, 0, 0, skin.px(16)),
-			BackgroundTransparency = 1,
-			Text = props.name,
-			TextColor3 = Tokens.color.white,
-			TextTransparency = if props.selected then 0 else Tokens.alpha.textSoft,
-			TextSize = skin.textPx(11),
-			FontFace = Tokens.font(800),
-			TextTruncate = Enum.TextTruncate.AtEnd,
 		}),
 	})
 end
@@ -104,11 +97,180 @@ local function allParts(): { [string]: boolean }
 	return set
 end
 
+local function hexOf(h: number, sat: number, v: number): string
+	return "#" .. string.upper(Color3.fromHSV(h / 360, sat / 100, v / 100):ToHex())
+end
+
+-- Any colour: hue, saturation and brightness sliders, or a hex code; a big
+-- preview; Apply colours the selected parts.
+local function CustomColour(props: {
+	start: string,
+	parts: number,
+	onApply: (hex: string) -> (),
+	onClose: () -> (),
+	position: UDim2,
+	size: UDim2,
+})
+	local skin = useSkin()
+	local hsv, setHsv = React.useState(function()
+		local h, sat, v = Color3.fromHex(props.start):ToHSV()
+		return { h = math.floor(h * 360 + 0.5), s = math.floor(sat * 100 + 0.5), v = math.floor(v * 100 + 0.5) }
+	end)
+	local hex = hexOf(hsv.h, hsv.s, hsv.v)
+	local function slider(label: string, key: string, max: number, order: number)
+		return e("Frame", {
+			Size = UDim2.new(1, 0, 0, skin.px(52)),
+			BackgroundTransparency = 1,
+			LayoutOrder = order,
+		}, {
+			Label = e(ShadowText, {
+				text = label .. "  " .. hsv[key],
+				style = Tokens.type.meta,
+				transparency = Tokens.alpha.textSoft,
+				shadow = false,
+			}),
+			Track = e("Frame", {
+				Position = UDim2.fromOffset(0, skin.px(22)),
+				Size = UDim2.new(1, 0, 0, skin.px(30)),
+				BackgroundTransparency = 1,
+			}, {
+				Slider = e(Slider, {
+					value = hsv[key],
+					min = 0,
+					max = max,
+					step = 1,
+					onChange = function(value: number)
+						setHsv(function(current)
+							local next = table.clone(current)
+							next[key] = value
+							return next
+						end)
+					end,
+					onCommit = function() end,
+				}),
+			}),
+		})
+	end
+	local preview = skin.px(120)
+	return e("Frame", {
+		Name = "CustomColour",
+		Position = props.position,
+		Size = props.size,
+		BackgroundTransparency = 1,
+	}, {
+		Preview = e("Frame", {
+			Size = UDim2.fromOffset(preview, preview),
+			BackgroundColor3 = Color3.fromHex(hex),
+			BorderSizePixel = 0,
+		}, {
+			Corner = e("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+			Ring = e("UIStroke", { Color = Tokens.color.white, Transparency = 0.7, Thickness = skin.stroke(1.5) }),
+		}),
+		Controls = e("Frame", {
+			Position = UDim2.fromOffset(preview + skin.px(24), 0),
+			Size = UDim2.new(1, -(preview + skin.px(24)), 1, 0),
+			BackgroundTransparency = 1,
+		}, {
+			Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(8)) }),
+			Hue = slider("Hue", "h", 360, 1),
+			Saturation = slider("Saturation", "s", 100, 2),
+			Brightness = slider("Brightness", "v", 100, 3),
+			Hex = e("Frame", {
+				Size = UDim2.new(1, 0, 0, skin.px(40)),
+				BackgroundTransparency = 1,
+				LayoutOrder = 4,
+			}, {
+				Well = e("Frame", {
+					Size = UDim2.new(0, skin.px(150), 1, 0),
+					BackgroundColor3 = Tokens.color.inputWell,
+					BorderSizePixel = 0,
+				}, {
+					Corner = e("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+					Box = e("TextBox", {
+						Position = UDim2.fromOffset(skin.px(14), 0),
+						Size = UDim2.new(1, -skin.px(28), 1, 0),
+						BackgroundTransparency = 1,
+						ClearTextOnFocus = false,
+						Text = hex,
+						TextColor3 = Tokens.color.white,
+						TextSize = skin.textPx(Tokens.type.search.size),
+						FontFace = Tokens.font(800),
+						TextXAlignment = Enum.TextXAlignment.Left,
+						[React.Event.FocusLost] = function(box: TextBox)
+							local text = string.match(box.Text, "^%s*#?(%x%x%x%x%x%x)%s*$")
+							if text then
+								local h, sat, v = Color3.fromHex("#" .. text):ToHSV()
+								setHsv({ h = math.floor(h * 360 + 0.5), s = math.floor(sat * 100 + 0.5), v = math.floor(v * 100 + 0.5) })
+							else
+								box.Text = hex
+							end
+						end,
+					}),
+				}),
+				Name = e("Frame", {
+					Position = UDim2.fromOffset(skin.px(164), skin.px(11)),
+					Size = UDim2.new(1, -skin.px(164), 0, skin.px(18)),
+					BackgroundTransparency = 1,
+				}, {
+					Text = e(ShadowText, {
+						text = "Near " .. SkinColours.name(hex),
+						style = Tokens.type.meta,
+						transparency = Tokens.alpha.textSoft,
+						shadow = false,
+					}),
+				}),
+			}),
+			Buttons = e("Frame", {
+				Size = UDim2.new(1, 0, 0, skin.px(Tokens.size.ctaHeight)),
+				BackgroundTransparency = 1,
+				LayoutOrder = 5,
+			}, {
+				Layout = e("UIListLayout", {
+					FillDirection = Enum.FillDirection.Horizontal,
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					Padding = UDim.new(0, skin.px(8)),
+				}),
+				Apply = e(PillButton, {
+					variant = "pill",
+					size = Tokens.size.ctaHeight,
+					width = 220,
+					icon = "check",
+					iconSize = 18,
+					label = if props.parts == 0 then "Pick parts first" else "Apply to " .. props.parts .. " part" .. (if props.parts == 1 then "" else "s"),
+					active = props.parts > 0,
+					disabled = props.parts == 0,
+					sound = false, -- the change plays its own sound
+					layoutOrder = 1,
+					onActivated = function()
+						props.onApply(hex)
+					end,
+				}),
+				Back = e(PillButton, {
+					variant = "pill",
+					size = Tokens.size.ctaHeight,
+					width = 160,
+					label = "Palette",
+					sound = "back",
+					layoutOrder = 2,
+					onActivated = props.onClose,
+				}),
+			}),
+		}),
+	})
+end
+
 local function SkinTonePanel(props: { look: any, size: UDim2, position: UDim2 })
 	local skin = useSkin()
 	local chosen = SkinColours.normalise(props.look.skin)
 	local own = SkinColours.normalise(props.look.ownSkin)
 	local selected, setSelected = React.useState(allParts)
+	local custom, setCustom = React.useState(false)
+	-- Your own colours: re-read your Roblox avatar, which may have changed
+	-- since you joined.
+	React.useEffect(function()
+		props.look.refreshOwn()
+		return nil
+	end, {})
 
 	-- What each part shows: the chosen colour, else your own.
 	local shown: { [string]: string } = {}
@@ -146,8 +308,8 @@ local function SkinTonePanel(props: { look: any, size: UDim2, position: UDim2 })
 
 	local swatches: { [string]: any } = {
 		Layout = e("UIGridLayout", {
-			CellSize = UDim2.fromOffset(skin.px(SWATCH), skin.px(SWATCH + 22)),
-			CellPadding = UDim2.fromOffset(skin.px(16), skin.px(12)),
+			CellSize = UDim2.fromOffset(skin.px(SWATCH), skin.px(SWATCH)),
+			CellPadding = UDim2.fromOffset(skin.px(14), skin.px(14)),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
 		Padding = e("UIPadding", {
@@ -155,7 +317,6 @@ local function SkinTonePanel(props: { look: any, size: UDim2, position: UDim2 })
 			PaddingLeft = UDim.new(0, skin.px(6)),
 		}),
 		Own = e(Swatch, {
-			name = "Your own",
 			colour = nil,
 			selected = allWear(""),
 			layoutOrder = 0,
@@ -167,7 +328,6 @@ local function SkinTonePanel(props: { look: any, size: UDim2, position: UDim2 })
 	for index, tone in AvatarConfig.skinTones do
 		local hex = string.upper(tone.hex)
 		swatches["Tone" .. index] = e(Swatch, {
-			name = tone.name,
 			colour = Color3.fromHex(hex),
 			selected = allWear(hex),
 			layoutOrder = index,
@@ -177,8 +337,37 @@ local function SkinTonePanel(props: { look: any, size: UDim2, position: UDim2 })
 		})
 	end
 
+	-- Custom: selected unless every selected part wears a palette colour.
+	local inPalette: { [string]: boolean } = {}
+	for _, tone in AvatarConfig.skinTones do
+		inPalette[string.upper(tone.hex)] = true
+	end
+	local customWorn = count > 0
+	for _, part in SkinColours.PARTS do
+		if selected[part] and (chosen[part] == nil or inPalette[chosen[part]]) then
+			customWorn = false
+		end
+	end
+	swatches.Custom = e(Swatch, {
+		colour = nil,
+		icon = "edit",
+		selected = customWorn,
+		layoutOrder = #AvatarConfig.skinTones + 1,
+		onPick = function()
+			setCustom(true)
+		end,
+	})
+
 	local left = skin.px(LEFT)
 	local everything = count == #SkinColours.PARTS
+	-- The custom editor starts from the first selected part's colour.
+	local startHex = "#AF9483"
+	for _, part in SkinColours.PARTS do
+		if selected[part] and shown[part] then
+			startHex = shown[part]
+			break
+		end
+	end
 	return e("Frame", {
 		Name = "SkinTonePanel",
 		Position = props.position,
@@ -228,7 +417,21 @@ local function SkinTonePanel(props: { look: any, size: UDim2, position: UDim2 })
 				end,
 			}),
 		}),
-		Palette = e("ScrollingFrame", {
+		Custom = if custom
+			then e(CustomColour, {
+				start = startHex,
+				parts = count,
+				position = UDim2.fromOffset(left + skin.px(20), 0),
+				size = UDim2.new(1, -(left + skin.px(20)), 1, 0),
+				onApply = function(hex: string)
+					apply(hex)
+				end,
+				onClose = function()
+					setCustom(false)
+				end,
+			})
+			else nil,
+		Palette = if custom then nil else e("ScrollingFrame", {
 			Position = UDim2.fromOffset(left + skin.px(20), 0),
 			Size = UDim2.new(1, -(left + skin.px(20)), 1, 0),
 			BackgroundTransparency = 1,

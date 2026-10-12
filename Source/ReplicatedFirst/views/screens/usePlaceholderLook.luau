@@ -67,6 +67,7 @@ export type Look = {
 	skin: SkinColours.Colours, -- chosen skin colours by body part (a part left out is your own)
 	ownSkin: SkinColours.Colours, -- your own avatar's colours, all six parts
 	setSkin: (skin: SkinColours.Colours) -> (),
+	refreshOwn: () -> (), -- re-read your Roblox avatar (it may have changed since you joined)
 	takeOffAll: () -> (),
 	undo: () -> (),
 	reset: () -> (), -- back to the player's own Roblox avatar
@@ -350,6 +351,9 @@ local function usePlaceholderLook(): Look
 		ownSkin = SkinColours.normalise(avatar.ownSkin),
 		setSkin = function(skin: SkinColours.Colours)
 			intent:FireServer(actions.SetSkin, skin)
+		end,
+		refreshOwn = function()
+			intent:FireServer(actions.RefreshOwn)
 		end,
 		wearAll = function(ids: { number }, skin: SkinColours.Colours?): number
 			local refs = {}

@@ -33,6 +33,7 @@
 		resolve(targetId, kind) -> WornItem?   look an item up (cached); nil if
 		                                      it can't be found
 		ownLook(player) -> { WornItem }        the player's own avatar's items
+		                                      (re-read; updates base / own / ownSkin)
 		apply(player)                          re-dress the character from `worn`
 
 	Also used by OutfitsController (the outfit page's 3D preview) and
@@ -394,13 +395,21 @@ function AvatarService.robloxOutfit(outfitId: number): (HumanoidDescription?, { 
 	return description, itemsOf(description)
 end
 
+-- Re-read the player's own Roblox avatar (it may have changed since they
+-- joined: the Roblox app, Save to Roblox) and keep base, `own` and
+-- `ownSkin` in step. Returns its items.
 function AvatarService.ownLook(player: Player): { WornItem }
 	local own = fetchOwn(player)
 	if not own then
 		return {}
 	end
 	bases[player] = baseOf(own)
-	return itemsOf(own)
+	local items = itemsOf(own)
+	local model = AvatarModel.get(tostring(player.UserId))
+	if model then
+		model:setOwn(table.clone(items), AvatarService.skinOf(own))
+	end
+	return items
 end
 
 -- `worn` on top of the base.

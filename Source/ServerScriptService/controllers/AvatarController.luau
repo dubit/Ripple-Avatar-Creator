@@ -16,6 +16,9 @@
 		                   maxWearMany; `skin` also sets the skin colours
 		SetSkin(skin)      the skin colours: { [part] = "#RRGGBB" } (a part left
 		                   out is the player's own; {} = all their own)
+		RefreshOwn()       re-read the player's own Roblox avatar (it may have
+		                   changed since they joined), at most every
+		                   REFRESH_SECONDS; re-dresses them, as their base did
 		TakeOffAll()       wear nothing (the body stays)
 		Undo()             step back one change
 		Reset()            back to the player's own Roblox avatar
@@ -127,6 +130,19 @@ local function skinOf(raw: any): SkinColours.Colours?
 	return SkinColours.normalise(raw)
 end
 
+local REFRESH_SECONDS = 15
+local lastRefresh: { [Player]: number } = {}
+
+local function refreshOwn(player: Player, _model: any, _raw: any)
+	local now = os.clock()
+	if now - (lastRefresh[player] or -math.huge) < REFRESH_SECONDS then
+		return
+	end
+	lastRefresh[player] = now
+	AvatarService.ownLook(player)
+	AvatarService.apply(player)
+end
+
 local function setSkin(player: Player, model: any, raw: any)
 	local skin = skinOf(raw)
 	if skin then
@@ -212,6 +228,7 @@ local ACTIONS = {
 	[Network.Actions.Avatar.WearRobloxOutfit] = wearRobloxOutfit,
 	[Network.Actions.Avatar.WearUserLook] = wearUserLook,
 	[Network.Actions.Avatar.SetSkin] = setSkin,
+	[Network.Actions.Avatar.RefreshOwn] = refreshOwn,
 }
 
 function AvatarController:executeAction(player: Player, action: Network.AvatarAction, raw: any, extra: any)
