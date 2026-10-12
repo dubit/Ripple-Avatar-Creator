@@ -1283,13 +1283,23 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					end
 				end,
 			}),
-			Follow = if kind == "user" and outfitId
-				then e(PillButton, {
+			-- Follow at once; unfollow takes a second press.
+			Follow = if kind == "user" and outfitId and look.isFollowing(outfitId)
+				then e(ConfirmButton, {
+					label = "Following",
+					icon = "check",
+					armedLabel = "Tap again to unfollow",
+					layoutOrder = 5,
+					onConfirm = function()
+						look.toggleFollow(outfitId)
+					end,
+				})
+				elseif kind == "user" and outfitId then e(PillButton, {
 					variant = "pill",
 					size = Tokens.size.ctaHeight,
-					icon = if look.isFollowing(outfitId) then "check" else "person_add",
+					icon = "person_add",
 					iconSize = 18,
-					label = if look.isFollowing(outfitId) then "Following" else "Follow",
+					label = "Follow",
 					sound = false, -- following plays its own sound
 					layoutOrder = 5,
 					onActivated = function()
