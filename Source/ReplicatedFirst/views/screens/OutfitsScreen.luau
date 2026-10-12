@@ -5,9 +5,10 @@
 
 	Root: tabs for where the outfits come from, beside a search box whose
 	meaning follows the tab:
-	  · My Wardrobe: Save what I'm wearing, Your avatar (your own Roblox
-	    avatar as it is; restart badge; its Wear button reads "Reset to
-	    this"), then the outfits saved here (look.outfits). Search: by name.
+	  · Current: Your avatar, your own Roblox avatar as it is (restart badge;
+	    its Wear button reads "Reset to this"). No search.
+	  · Wardrobe (the default): Save what I'm wearing, then the outfits saved
+	    here (look.outfits). Search: by name.
 	  · Creations: the outfits saved on Roblox itself, outside experiences
 	    (RobloxOutfits). Roblox only lists them once you allow it, so until
 	    then a "Show my Roblox outfits" card asks. Search: by name.
@@ -406,12 +407,13 @@ local SEARCH_DELAY = 0.6 -- seconds after typing stops before a username lookup
 
 -- The tabs: where the outfits come from. Each sets what the search box does.
 local SOURCES = {
-	{ id = "Wardrobe", label = "My Wardrobe", search = "Search my outfits" },
+	{ id = "Current", label = "Current", search = nil }, -- just your own avatar: no search
+	{ id = "Wardrobe", label = "Wardrobe", search = "Search my outfits" },
 	{ id = "Creations", label = "Creations", search = "Search my creations" },
 	{ id = "Friends", label = "Friends", search = "Search friends" },
 	{ id = "Roblox", label = "Roblox", search = "Search a username" },
 	{ id = "Community", label = "Community", search = "Search community outfits" },
-}
+} :: { { id: string, label: string, search: string? } }
 local SOURCE_IDS: { [string]: boolean } = {}
 for _, entry in SOURCES do
 	SOURCE_IDS[entry.id] = true
@@ -594,7 +596,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 	local storedSource, setSource = useSessionState("outfits.source", "Wardrobe")
 	local source = if SOURCE_IDS[storedSource] then storedSource else "Wardrobe"
 	local query, setQuery = useSessionState("outfits.query", "")
-	local searchHint = "Search"
+	local searchHint: string? = nil
 
 	local tabs: { [string]: any } = {
 		Layout = e("UIListLayout", {
@@ -678,7 +680,12 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		})
 	end
 
-	if source == "Wardrobe" then
+	if source == "Current" then
+		-- Your own Roblox avatar as it is: wearing it is a reset.
+		if #look.own > 0 then
+			addOutfit(ownView(look), "Reset to your avatar", e(Badge, { kind = "marker", tone = "white", icon = "restart_alt" }))
+		end
+	elseif source == "Wardrobe" then
 		if needle == "" then
 			addAction("Save", {
 				icon = "add_circle",
@@ -687,10 +694,6 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				sub = #look.worn .. " items",
 				onActivated = look.saveOutfit,
 			})
-		end
-		-- Your own Roblox avatar: wearing it is a reset.
-		if #look.own > 0 then
-			addOutfit(ownView(look), "Reset to your avatar", e(Badge, { kind = "marker", tone = "white", icon = "restart_alt" }))
 		end
 		for _, outfit in outfitsFor(look, "Mine") do
 			addOutfit(outfit, #outfit.items .. " items")
@@ -780,7 +783,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				BackgroundTransparency = 0.9,
 				BorderSizePixel = 0,
 			}),
-			Search = e(SearchBox, {
+			Search = if searchHint == nil then nil else e(SearchBox, {
 				text = query,
 				placeholder = searchHint,
 				onChange = setQuery,
