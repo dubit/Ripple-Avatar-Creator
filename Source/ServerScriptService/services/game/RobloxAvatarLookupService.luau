@@ -13,7 +13,7 @@
 	Results are cached (CACHE_SECONDS) and each player gets BUDGET lookups per
 	window across both remote functions (Bolt), past which they're told to
 	wait:
-	  "FindRobloxUser"(name)  -> { ok, user = { userId, username, displayName } }
+	  "FindRobloxUser"(name or id) -> { ok, user = { userId, username, displayName } }
 	                             or { ok = false, error = "notfound" | "busy" | "failed" }
 	                             (an exact username: Roblox offers games no
 	                             partial or display-name search)
@@ -171,6 +171,18 @@ local function findUser(player: Player, name: any): any
 		return { ok = false, error = "notfound" }
 	end
 	name = string.match(name, "^%s*@?(.-)%s*$") or ""
+	-- A user id works too.
+	if string.match(name, "^%d+$") and #name <= 16 then
+		local id = tonumber(name) :: number
+		if not allowed(player) then
+			return { ok = false, error = "busy" }
+		end
+		local user = if id > 0 then userInfo(id) else nil
+		if not user then
+			return { ok = false, error = "notfound" }
+		end
+		return { ok = true, user = user }
+	end
 	if #name < 3 or #name > MAX_NAME or not string.match(name, "^[%w_]+$") then
 		return { ok = false, error = "notfound" }
 	end

@@ -13,13 +13,12 @@
 	    (RobloxOutfits). Roblox only lists them once you allow it, so until
 	    then a "Show my Roblox outfits" card asks. Search: by name.
 	  · Friends: your Roblox friends' current avatars. Search: by name.
-	  · Following: people you follow here (our own follow, private to you:
-	    Roblox gives games no access to its follows). Follow / Following
-	    is on a person's page. Search: by name.
-	  · Roblox: anyone, by exact username (all Roblox lets a game look up),
-	    plus partial matches among people in this server, people you follow
-	    and friends. With nothing searched: the players in this server
-	    (what they're wearing here).
+	  · Roblox: the people you follow here (our own follow, private to you:
+	    Roblox gives games no access to its follows), then the players in
+	    this server (what they're wearing here). The first card, Add a
+	    person, finds someone by exact username or user id (all Roblox lets
+	    a game look up), shows who it found, and follows on confirm. Follow /
+	    Following is also on a person's page. Search: the people listed.
 	  · Community: placeholder outfits until Task 16.
 	The outfit you're wearing exactly gets the orange ring. People are cards
 	with their avatar picture (UserLooks); Roblox only lets a game read
@@ -57,6 +56,8 @@ local TextTab = require(components:WaitForChild("TextTab"))
 local PillButton = require(components:WaitForChild("PillButton"))
 local ConfirmButton = require(components:WaitForChild("ConfirmButton"))
 local SearchBox = require(components:WaitForChild("SearchBox"))
+local GlassPanel = require(components:WaitForChild("GlassPanel"))
+local useBackInput = require(hooks:WaitForChild("useBackInput"))
 local ShadowText = require(components:WaitForChild("ShadowText"))
 local Icon = require(components:WaitForChild("Icon"))
 local Parts = require(script.Parent:WaitForChild("Parts"))
@@ -415,8 +416,7 @@ local SOURCES = {
 	{ id = "Wardrobe", label = "Wardrobe", search = "Search my outfits" },
 	{ id = "Creations", label = "Creations", search = "Search my creations" },
 	{ id = "Friends", label = "Friends", search = "Search friends" },
-	{ id = "Following", label = "Following", search = "Search people you follow" },
-	{ id = "Roblox", label = "Roblox", search = "Exact Roblox username" },
+	{ id = "Roblox", label = "Roblox", search = "Search people you follow" },
 	{ id = "Community", label = "Community", search = "Search community outfits" },
 } :: { { id: string, label: string, search: string? } }
 local SOURCE_IDS: { [string]: boolean } = {}
@@ -425,7 +425,7 @@ for _, entry in SOURCES do
 end
 
 local ERRORS = {
-	notfound = "No one has that exact username",
+	notfound = "No one has that username or id",
 	busy = "Too many lookups. Try again in a moment",
 	failed = "Couldn't reach Roblox. Try again",
 }
@@ -507,8 +507,9 @@ end
 local function useUserSearch(query: string, active: boolean): (UserLooks.User?, string?, boolean)
 	local result, setResult = React.useState(nil :: { query: string, user: UserLooks.User?, error: string? }?)
 	local name = string.match(query, "^%s*@?(.-)%s*$") or ""
+	local long = #name >= 3 or (#name > 0 and string.match(name, "^%d+$") ~= nil) -- a name, or any user id
 	React.useEffect(function()
-		if not active or #name < 3 then
+		if not active or not long then
 			return nil
 		end
 		local alive = true
@@ -523,7 +524,7 @@ local function useUserSearch(query: string, active: boolean): (UserLooks.User?, 
 			task.cancel(thread)
 		end
 	end, { name, active } :: { any })
-	if not active or #name < 3 then
+	if not active or not long then
 		return nil, nil, false
 	end
 	if not result or result.query ~= name then
@@ -595,6 +596,133 @@ local function userView(look: UserLooks.Look): OutfitView
 	}
 end
 
+-- Over the Roblox grid: find someone by username or user id, see who it
+-- is, then confirm with Follow. Back or the close button shuts it.
+local function AddPersonPanel(props: { look: any, onClose: () -> (), onOpen: (user: UserLooks.User) -> () })
+	local skin = useSkin()
+	local query, setQuery = React.useState("")
+	local user, err, searching = useUserSearch(query, true)
+	useBackInput(function()
+		props.onClose()
+		return true
+	end)
+	local name = string.match(query, "^%s*@?(.-)%s*$") or ""
+	local status = if name == "" then "Type someone's exact username, or their user id"
+		elseif searching then "Looking…"
+		elseif err then ERRORS[err] or ERRORS.failed
+		elseif not user and #name < 3 and not string.match(name, "^%d+$") then "Usernames are at least 3 characters"
+		else nil
+	local isSelf = user ~= nil and user.userId == game:GetService("Players").LocalPlayer.UserId
+	local following = user ~= nil and props.look.isFollowing(user.userId)
+	local picture = skin.px(220)
+
+	local result = if user and not searching
+		then e("Frame", {
+			Position = UDim2.fromOffset(0, skin.px(110)),
+			Size = UDim2.new(1, 0, 0, picture),
+			BackgroundTransparency = 1,
+		}, {
+			Picture = e(Parts.Thumb, {
+				colour = Parts.swatch(""),
+				radius = 18,
+				image = "rbxthumb://type=Avatar&id=" .. user.userId .. "&w=420&h=420",
+				size = UDim2.fromOffset(picture, picture),
+			}),
+			Info = e("Frame", {
+				Position = UDim2.fromOffset(picture + skin.px(20), 0),
+				Size = UDim2.new(1, -(picture + skin.px(20)), 1, 0),
+				BackgroundTransparency = 1,
+			}, {
+				Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(8)) }),
+				Name = e(ShadowText, { text = user.displayName, style = { size = 24, weight = 900 }, layoutOrder = 1 }),
+				Handle = e(ShadowText, {
+					text = "@" .. user.username .. " · user " .. user.userId,
+					style = Tokens.type.meta,
+					transparency = Tokens.alpha.textSoft,
+					shadow = false,
+					layoutOrder = 2,
+				}),
+				Gap = e("Frame", { Size = UDim2.new(1, 0, 0, skin.px(8)), BackgroundTransparency = 1, LayoutOrder = 3 }),
+				Follow = if isSelf
+					then e(ShadowText, { text = "That's you!", style = Tokens.type.cardTitle, layoutOrder = 4 })
+					else e(PillButton, {
+						variant = "pill",
+						size = Tokens.size.ctaHeight,
+						width = 220,
+						icon = if following then "check" else "person_add",
+						iconSize = 18,
+						label = if following then "Already following" else "Follow",
+						active = not following,
+						disabled = following,
+						sound = false, -- following plays its own sound
+						layoutOrder = 4,
+						onActivated = function()
+							props.look.toggleFollow(user.userId)
+							props.onClose()
+						end,
+					}),
+				Open = if isSelf then nil else e(PillButton, {
+					variant = "pill",
+					size = Tokens.size.ctaHeight,
+					width = 220,
+					icon = "checkroom",
+					iconSize = 18,
+					label = "See their avatar",
+					layoutOrder = 5,
+					onActivated = function()
+						props.onOpen(user)
+					end,
+				}),
+			}),
+		})
+		else nil
+
+	return e(GlassPanel, {
+		variant = "bar",
+		cornerRadius = 18,
+		shadow = true,
+		position = UDim2.fromOffset(0, skin.px(Tokens.size.textTabHeight) + skin.px(14)),
+		size = UDim2.new(1, 0, 1, -(skin.px(Tokens.size.textTabHeight) + skin.px(14))),
+		zIndex = 5,
+	}, {
+		Padding = e("UIPadding", {
+			PaddingTop = UDim.new(0, skin.px(16)),
+			PaddingBottom = UDim.new(0, skin.px(16)),
+			PaddingLeft = UDim.new(0, skin.px(18)),
+			PaddingRight = UDim.new(0, skin.px(14)),
+		}),
+		Title = e(ShadowText, { text = "Add a person", style = Tokens.type.cardTitle }),
+		Close = e(PillButton, {
+			variant = "round",
+			size = Tokens.size.small.size,
+			icon = "close",
+			iconSize = Tokens.size.small.icon,
+			glowRadius = 0,
+			sound = "back",
+			anchorPoint = Vector2.new(1, 0),
+			position = UDim2.fromScale(1, 0),
+			onActivated = props.onClose,
+		}),
+		Search = e(SearchBox, {
+			text = query,
+			placeholder = "Username or user id",
+			onChange = setQuery,
+			position = UDim2.fromOffset(0, skin.px(44)),
+			size = UDim2.fromOffset(skin.px(SEARCH_WIDTH + 60), skin.px(40)),
+		}),
+		Status = if status
+			then e("Frame", {
+				Position = UDim2.fromOffset(0, skin.px(110)),
+				Size = UDim2.new(1, 0, 0, skin.px(30)),
+				BackgroundTransparency = 1,
+			}, {
+				Text = e(ShadowText, { text = status, style = Tokens.type.cardTitle, transparency = Tokens.alpha.textDim, shadow = false }),
+			})
+			else nil,
+		Result = result,
+	})
+end
+
 local function OutfitsScreen(props: { nav: any, look: any })
 	local skin = useSkin()
 	local look = props.look
@@ -602,6 +730,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 	local source = if SOURCE_IDS[storedSource] then storedSource else "Wardrobe"
 	local query, setQuery = useSessionState("outfits.query", "")
 	local searchHint: string? = nil
+	local adding, setAdding = React.useState(false) -- the Add a person panel (Roblox tab)
 
 	local tabs: { [string]: any } = {
 		Layout = e("UIListLayout", {
@@ -621,6 +750,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			onActivated = function()
 				if entry.id ~= source then
 					setQuery("") -- each tab's search means something different
+					setAdding(false)
 				end
 				setSource(entry.id)
 			end,
@@ -628,8 +758,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 	end
 
 	useRobloxOutfits(source == "Creations")
-	usePeople(source == "Friends" or source == "Following" or source == "Roblox")
-	local found, searchError, searching = useUserSearch(query, source == "Roblox")
+	usePeople(source == "Friends" or source == "Roblox")
 	local needle = string.lower(query)
 	local function matches(name: string): boolean
 		return needle == "" or string.find(string.lower(name), needle, 1, true) ~= nil
@@ -731,7 +860,20 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				addPerson(user, "@" .. user.username)
 			end
 		end
-	elseif source == "Following" then
+	elseif source == "Roblox" then
+		-- People you follow here; the first card adds someone.
+		if needle == "" then
+			addAction("AddPerson", {
+				icon = "person_add",
+				label = "Add a person",
+				title = "Follow someone",
+				sub = "By username or id",
+				onActivated = function()
+					Sounds.play("press")
+					setAdding(true)
+				end,
+			})
+		end
 		UserLooks.prefetch(look.following)
 		for _, userId in look.following do
 			local user = UserLooks.known(userId)
@@ -739,36 +881,11 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				addPerson(user, "@" .. user.username)
 			end
 		end
-	elseif source == "Roblox" then
-		-- Roblox only lets games look up an exact username; so under that
-		-- match come partial matches among people we already know.
-		if found then
-			addPerson(found, "@" .. found.username)
-		end
-		local inServer = {}
+		-- Then whoever's in this server, to follow someone you've just seen.
 		for _, player in game:GetService("Players"):GetPlayers() do
-			table.insert(inServer, { userId = player.UserId, username = player.Name, displayName = player.DisplayName })
-		end
-		if needle == "" then
-			for _, user in inServer do
+			local user = { userId = player.UserId, username = player.Name, displayName = player.DisplayName }
+			if matches(user.displayName) or matches(user.username) then
 				addPerson(user, "In this server")
-			end
-		else
-			for _, user in inServer do
-				if matches(user.displayName) or matches(user.username) then
-					addPerson(user, "@" .. user.username .. " · in this server")
-				end
-			end
-			for _, userId in look.following do
-				local user = UserLooks.known(userId)
-				if user and (matches(user.displayName) or matches(user.username)) then
-					addPerson(user, "@" .. user.username .. " · following")
-				end
-			end
-			for _, user in UserLooks.friends() do
-				if matches(user.displayName) or matches(user.username) then
-					addPerson(user, "@" .. user.username .. " · friend")
-				end
 			end
 		end
 	else
@@ -778,14 +895,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 	end
 	local message: string? = nil
 	if source == "Roblox" and needle ~= "" and count == 0 then
-		message = if searching then "Looking for " .. query .. "…"
-			elseif searchError then ERRORS[searchError] or ERRORS.failed
-			elseif #(string.match(query, "^%s*@?(.-)%s*$") or "") < 3 then "Usernames are at least 3 characters"
-			else nil
-	elseif source == "Roblox" and count == 0 then
-		message = "Type someone's exact Roblox username to see their avatar"
-	elseif source == "Following" and count == 0 then
-		message = if needle ~= "" then "Nobody you follow has that name" else "Follow people from their page to see them here"
+		message = "Nobody you follow has that name"
 	elseif source == "Friends" and count == 0 then
 		message = if needle ~= "" then "No friends with that name" else "Your friends will show here"
 	elseif source == "Creations" and count == 0 and RobloxOutfits.status() == "ready" then
@@ -824,7 +934,19 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				size = UDim2.fromOffset(searchWidth, skin.px(40)),
 			}),
 		}),
-		Grid = e(Parts.CardGrid, {
+		AddPerson = if adding and source == "Roblox"
+			then e(AddPersonPanel, {
+				look = look,
+				onClose = function()
+					setAdding(false)
+				end,
+				onOpen = function(user: UserLooks.User)
+					setAdding(false)
+					props.nav.push({ kind = "outfit", id = { source = "User", index = user.userId }, label = user.displayName })
+				end,
+			})
+			else nil,
+		Grid = if adding and source == "Roblox" then nil else e(Parts.CardGrid, {
 			columns = 5,
 			extraHeight = 40,
 			count = count,
