@@ -69,6 +69,7 @@ type OutfitView = {
 	name: string,
 	by: string,
 	items: { number },
+	labels: { [number]: string }?, -- row names that differ from the item's own
 }
 
 -- Card / page order of a type's thumbnail: the most telling first.
@@ -113,7 +114,16 @@ local function ownView(look: any): OutfitView
 end
 
 local function robloxView(outfit: RobloxOutfits.Outfit): OutfitView
-	return { kind = "roblox", id = outfit.id, source = "RobloxSaved", index = outfit.id, name = outfit.name, by = "Saved on Roblox", items = outfit.items }
+	return {
+		kind = "roblox",
+		id = outfit.id,
+		source = "RobloxSaved",
+		index = outfit.id,
+		name = outfit.name,
+		by = "Saved on Roblox",
+		items = outfit.items,
+		labels = outfit.labels,
+	}
 end
 
 local function outfitsFor(look: any, source: string): { OutfitView }
@@ -669,7 +679,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 		end
 		local on = not deselected[index]
 		rows["Row" .. index] = e(Parts.ListRow, {
-			title = item.name,
+			title = (outfit.labels and outfit.labels[id]) or item.name,
 			subtitle = item.main .. " · " .. item.sub,
 			colour = Parts.swatch(item.colour),
 			image = Parts.image(item),

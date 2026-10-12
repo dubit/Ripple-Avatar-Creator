@@ -45,6 +45,11 @@ local Sounds = require(views:WaitForChild("Sounds"))
 
 local e = React.createElement
 
+-- Callouts on Basket / Wearing: how far past the button's top-right corner
+-- (design px).
+local CALLOUT_RIGHT = 6
+local CALLOUT_UP = 6
+
 export type Props = {
 	nav: any,
 	look: any,
@@ -89,23 +94,21 @@ local function WorldHud(props: Props)
 		})
 	end
 
-	-- A callout pinned to a round button's top-right (design: top -8, right -18
-	-- on the 84 Basket button; scaled down for the smaller ones).
-	local function callout(text: string, size: number)
+	-- A callout pinned over a big round button's top-right corner.
+	local function callout(text: string)
 		return e(Badge, {
 			kind = "count",
 			tone = "orange",
 			text = text,
 			anchorPoint = Vector2.new(1, 0),
-			position = UDim2.fromOffset(skin.px(18 * size / basket.size), -skin.px(8)),
+			position = UDim2.fromOffset(skin.px(CALLOUT_RIGHT), -skin.px(CALLOUT_UP)),
 			zIndex = 6,
 		})
 	end
 
-	local function actionButton(icon: string, order: number, onActivated: (() -> ())?, sound: any?, badge: any?)
+	local function actionButton(icon: string, order: number, onActivated: (() -> ())?, sound: any?)
 		return e(PillButton, {
 			sound = sound,
-			badge = badge,
 			variant = "round",
 			size = action.size,
 			icon = icon,
@@ -136,7 +139,7 @@ local function WorldHud(props: Props)
 			Position = rise:map(function(t: number)
 				return UDim2.new(0, edge, 1, -edge + (1 - t) * skin.px(basket.size + edge))
 			end),
-			Size = UDim2.fromOffset(skin.px(basket.size + 12 * 3 + action.size * 3), skin.px(basket.size)),
+			Size = UDim2.fromOffset(skin.px(basket.size * 2 + 12 * 3 + action.size * 2), skin.px(basket.size)),
 			BackgroundTransparency = 1,
 			ZIndex = 2,
 		}, {
@@ -159,12 +162,24 @@ local function WorldHud(props: Props)
 					props.nav.openRoot("Basket")
 				end,
 				badge = if #props.look.basket == 0 then nil
-					elseif props.look.basketTotal > 0 then callout(Tokens.robux(total), basket.size)
-					else callout(tostring(basketCount), basket.size),
+					elseif props.look.basketTotal > 0 then callout(Tokens.robux(total))
+					else callout(tostring(basketCount)),
 			}),
-			Wearing = actionButton("checkroom", 2, function()
-				props.nav.openRoot("Wearing")
-			end, false, if #props.look.worn > 0 then callout(tostring(wornCount), action.size) else nil),
+			-- As big as Basket: the other way into your look.
+			Wearing = e(PillButton, {
+				variant = "round",
+				size = basket.size,
+				icon = "checkroom",
+				iconSize = basket.icon,
+				glowRadius = basket.glow,
+				layoutOrder = 2,
+				zIndex = 2,
+				sound = false, -- opening the panel plays its own sound
+				onActivated = function()
+					props.nav.openRoot("Wearing")
+				end,
+				badge = if #props.look.worn > 0 then callout(tostring(wornCount)) else nil,
+			}),
 			CreateAvatar = actionButton("person_add", 3, AccountPrompts.createOutfit),
 			SaveToRoblox = actionButton("cloud_upload", 4, AccountPrompts.saveAvatar),
 		}),
