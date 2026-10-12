@@ -3,24 +3,23 @@
 --[[
 	OutfitsScreen (design frame 5d: Outfits root and the outfit page)
 
-	Root: source tabs (Mine · Community · Roblox) beside a search box, and a
-	grid of outfit cards. Mine holds, in order:
-	  · Save what I'm wearing
-	  · Your avatar: your own Roblox avatar as it is (a restart badge; its
-	    Wear button reads "Reset to this": it's what Reset puts back)
-	  · your saved outfits (look.outfits)
-	  · the outfits saved on Roblox itself, outside experiences
-	    (RobloxOutfits), marked with a "Roblox" badge. Roblox only lists them
-	    once you allow it, so until then a "Show my Roblox outfits" card asks.
-	The outfit you're wearing exactly gets the orange ring. Search filters by
-	name. Community still shows placeholder outfits (Task 16).
-
-	Roblox: other people's looks (UserLooks). Roblox only lets a game read
-	another user's current avatar, not their saved outfits. The search box
-	finds a username; below the result come the players in this server (what
-	they're wearing here), your recent lookups, then your friends. Each is a
-	card with their avatar picture; its page shows their items, worn over
-	your own body. Cards show a 2×2 mosaic of item thumbnails, the most telling first:
+	Root: tabs for where the outfits come from, beside a search box whose
+	meaning follows the tab:
+	  · My Wardrobe: Save what I'm wearing, Your avatar (your own Roblox
+	    avatar as it is; restart badge; its Wear button reads "Reset to
+	    this"), then the outfits saved here (look.outfits). Search: by name.
+	  · Creations: the outfits saved on Roblox itself, outside experiences
+	    (RobloxOutfits). Roblox only lists them once you allow it, so until
+	    then a "Show my Roblox outfits" card asks. Search: by name.
+	  · Friends: your Roblox friends' current avatars. Search: by name.
+	  · Roblox: anyone. Search finds a username; with nothing searched it
+	    shows the players in this server (what they're wearing here) and your
+	    recent lookups.
+	  · Community: placeholder outfits until Task 16.
+	The outfit you're wearing exactly gets the orange ring. People are cards
+	with their avatar picture (UserLooks); Roblox only lets a game read
+	another user's current avatar, not their saved outfits, and their page
+	shows those items, worn over your own body. Cards show a 2×2 mosaic of item thumbnails, the most telling first:
 	bodies, then heads, layered clothing, accessories, classic clothing, and
 	animations last.
 
@@ -405,6 +404,19 @@ end
 
 local SEARCH_DELAY = 0.6 -- seconds after typing stops before a username lookup
 
+-- The tabs: where the outfits come from. Each sets what the search box does.
+local SOURCES = {
+	{ id = "Wardrobe", label = "My Wardrobe", search = "Search my outfits" },
+	{ id = "Creations", label = "Creations", search = "Search my creations" },
+	{ id = "Friends", label = "Friends", search = "Search friends" },
+	{ id = "Roblox", label = "Roblox", search = "Search a username" },
+	{ id = "Community", label = "Community", search = "Search community outfits" },
+}
+local SOURCE_IDS: { [string]: boolean } = {}
+for _, entry in SOURCES do
+	SOURCE_IDS[entry.id] = true
+end
+
 local ERRORS = {
 	notfound = "No Roblox user with that name",
 	busy = "Too many lookups. Try again in a moment",
@@ -579,8 +591,10 @@ end
 local function OutfitsScreen(props: { nav: any, look: any })
 	local skin = useSkin()
 	local look = props.look
-	local source, setSource = useSessionState("outfits.source", "Mine")
+	local storedSource, setSource = useSessionState("outfits.source", "Wardrobe")
+	local source = if SOURCE_IDS[storedSource] then storedSource else "Wardrobe"
 	local query, setQuery = useSessionState("outfits.query", "")
+	local searchHint = "Search"
 
 	local tabs: { [string]: any } = {
 		Layout = e("UIListLayout", {
@@ -589,20 +603,25 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			Padding = UDim.new(0, skin.px(22)),
 		}),
 	}
-	for index, name in PlaceholderData.outfitSources do
+	for index, entry in SOURCES do
+		if entry.id == source then
+			searchHint = entry.search
+		end
 		tabs["Tab" .. index] = e(TextTab, {
-			label = name,
-			active = name == source,
+			label = entry.label,
+			active = entry.id == source,
 			layoutOrder = index,
 			onActivated = function()
-				setSource(name)
+				if entry.id ~= source then
+					setQuery("") -- each tab's search means something different
+				end
+				setSource(entry.id)
 			end,
 		})
 	end
 
-	local mine = source == "Mine"
-	useRobloxOutfits(mine)
-	usePeople(source == "Roblox")
+	useRobloxOutfits(source == "Creations")
+	usePeople(source == "Friends" or source == "Roblox")
 	local found, searchError, searching = useUserSearch(query, source == "Roblox")
 	local needle = string.lower(query)
 	local function matches(name: string): boolean
@@ -637,7 +656,29 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		cards[key] = e(ActionCard, card :: any)
 	end
 
-	if mine then
+	local seen: { [number]: boolean } = { [game:GetService("Players").LocalPlayer.UserId] = true }
+	local function addPerson(user: UserLooks.User?, sub: string)
+		if not user or seen[user.userId] then
+			return
+		end
+		seen[user.userId] = true
+		count += 1
+		cards["Person" .. count] = e(PersonCard, {
+			user = user,
+			sub = sub,
+			layoutOrder = count,
+			onActivated = function()
+				Sounds.play("press")
+				props.nav.push({
+					kind = "outfit",
+					id = { source = "User", index = user.userId },
+					label = user.displayName,
+				})
+			end,
+		})
+	end
+
+	if source == "Wardrobe" then
 		if needle == "" then
 			addAction("Save", {
 				icon = "add_circle",
@@ -647,20 +688,21 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				onActivated = look.saveOutfit,
 			})
 		end
-		-- Then your own Roblox avatar: wearing it is a reset.
+		-- Your own Roblox avatar: wearing it is a reset.
 		if #look.own > 0 then
 			addOutfit(ownView(look), "Reset to your avatar", e(Badge, { kind = "marker", tone = "white", icon = "restart_alt" }))
 		end
 		for _, outfit in outfitsFor(look, "Mine") do
 			addOutfit(outfit, #outfit.items .. " items")
 		end
-		-- Then the ones saved on Roblox itself (once Roblox lets us see them).
+	elseif source == "Creations" then
+		-- Outfits saved on Roblox itself (once Roblox lets us see them).
 		local status = RobloxOutfits.status()
 		if status == "ready" then
 			for _, outfit in RobloxOutfits.outfits() do
-				addOutfit(robloxView(outfit), "Saved on Roblox", e(Badge, { kind = "count", tone = "white", text = "Roblox" }))
+				addOutfit(robloxView(outfit), #outfit.items .. " items · saved on Roblox")
 			end
-		elseif status == "loading" then
+		elseif status == "loading" or status == "unknown" then
 			count += 1
 			cards.RobloxLoading = e(Parts.LoadingCard, { layoutOrder = count })
 		elseif (status == "locked" or status == "denied") and needle == "" then
@@ -675,32 +717,17 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				end,
 			})
 		end
-	elseif source == "Roblox" then
-		local seen: { [number]: boolean } = { [game:GetService("Players").LocalPlayer.UserId] = true }
-		local function addPerson(user: UserLooks.User?, sub: string)
-			if not user or seen[user.userId] then
-				return
+	elseif source == "Friends" then
+		for _, user in UserLooks.friends() do
+			if matches(user.displayName) or matches(user.username) then
+				addPerson(user, "@" .. user.username)
 			end
-			seen[user.userId] = true
-			count += 1
-			cards["Person" .. count] = e(PersonCard, {
-				user = user,
-				sub = sub,
-				layoutOrder = count,
-				onActivated = function()
-					Sounds.play("press")
-					props.nav.push({
-						kind = "outfit",
-						id = { source = "User", index = user.userId },
-						label = user.displayName,
-					})
-				end,
-			})
 		end
+	elseif source == "Roblox" then
 		if found then
 			addPerson(found, "@" .. found.username)
 		end
-		-- The rest only while not searching, so a search shows just its result.
+		-- With nothing searched: who's here, and who you've looked up before.
 		if needle == "" then
 			for _, player in game:GetService("Players"):GetPlayers() do
 				addPerson({ userId = player.UserId, username = player.Name, displayName = player.DisplayName }, "In this server")
@@ -710,13 +737,10 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				local user = UserLooks.known(userId)
 				addPerson(user, if user then "@" .. user.username .. " · recent" else "")
 			end
-			for _, user in UserLooks.friends() do
-				addPerson(user, "@" .. user.username .. " · friend")
-			end
 		end
 	else
 		for _, outfit in outfitsFor(look, source) do
-			addOutfit(outfit, "by " .. outfit.by)
+			addOutfit(outfit, outfit.by)
 		end
 	end
 	local message: string? = nil
@@ -727,6 +751,10 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			else nil
 	elseif source == "Roblox" and count == 0 then
 		message = "Search for anyone on Roblox to see their avatar"
+	elseif source == "Friends" and count == 0 then
+		message = if needle ~= "" then "No friends with that name" else "Your friends will show here"
+	elseif source == "Creations" and count == 0 and RobloxOutfits.status() == "ready" then
+		message = "You haven't saved any outfits on Roblox"
 	end
 
 	local tabsHeight = skin.px(Tokens.size.textTabHeight)
@@ -754,7 +782,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			}),
 			Search = e(SearchBox, {
 				text = query,
-				placeholder = if source == "Roblox" then "Search a username" else "Search outfits",
+				placeholder = searchHint,
 				onChange = setQuery,
 				anchorPoint = Vector2.new(1, 0.5),
 				position = UDim2.fromScale(1, 0.5),
