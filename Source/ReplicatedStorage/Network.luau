@@ -42,7 +42,7 @@ local NetworkBuilder = require(script.Parent:WaitForChild("NetworkBuilder"))
 -- Network Configuration: Single source of truth for all controllers and state
 local NetworkConfig = {
 	Controllers = {
-		Avatar = { "TryOn", "TakeOff", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit", "WearUserLook" },
+		Avatar = { "TryOn", "TakeOff", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit", "WearUserLook", "SetSkin" },
 		Basket = { "Add", "Remove", "AddMany", "RemoveMany", "Clear" },
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
@@ -60,6 +60,7 @@ local NetworkConfig = {
 		Avatar = {
 			ownerId = "",
 			worn = {},
+			skin = "",
 			seeded = false,
 			own = {},
 			canUndo = false,
@@ -149,7 +150,7 @@ local Network = NetworkBuilder.build(NetworkConfig, Bolt)
 -- ============================================================================
 
 -- Action Type Exports (manually defined for type safety)
-export type AvatarAction = "TryOn" | "TakeOff" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit" | "WearUserLook"
+export type AvatarAction = "TryOn" | "TakeOff" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit" | "WearUserLook" | "SetSkin"
 export type BasketAction = "Add" | "Remove" | "AddMany" | "RemoveMany" | "Clear"
 export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"
@@ -173,6 +174,7 @@ export type AvatarState = {
 	worn: { WornItem }, -- in the order put on
 	seeded: boolean, -- filled from the player's own avatar on first join
 	own: { WornItem }, -- the player's own Roblox avatar's items (refreshed every join)
+	skin: string, -- chosen skin tone "#RRGGBB", or "" for the player's own
 	canUndo: boolean,
 }
 
@@ -200,6 +202,7 @@ export type Outfit = {
 	id: number,
 	name: string, -- text-filtered
 	items: { WornItem }, -- what was worn, in the order put on (`owned` unset)
+	skin: string?, -- the skin tone worn with it ("" or nil = the wearer's own)
 }
 
 export type OutfitsState = {

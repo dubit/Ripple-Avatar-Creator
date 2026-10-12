@@ -29,6 +29,7 @@ export type AvatarConfig = {
         nameLength: number, -- characters in an outfit name
         cooldown: number, -- seconds between a player's outfit requests
     },
+    skinTones: { { name: string, hex: string } }, -- the Skin tone palette
 }
 
 return nil

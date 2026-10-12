@@ -13,6 +13,7 @@ export type CatalogueChip = {
     name: string,
     assetTypes: { string }?, -- Enum.AvatarAssetType names
     bundleTypes: { string }?, -- Enum.BundleType names
+    special: string?, -- a chip that isn't a search: "skinTone" (the skin tone picker)
 }
 
 export type CatalogueCategory = {

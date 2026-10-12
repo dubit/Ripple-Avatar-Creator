@@ -12,16 +12,18 @@
 	Actions:
 		TryOn(item)        wear it (replacing its slot / stacking per config)
 		TakeOff(item)      take it off
-		WearMany(items)    wear several (an outfit, the basket), up to maxWearMany
+		WearMany(items, skin?)   wear several (an outfit, the basket), up to
+		                   maxWearMany; `skin` also sets the skin tone
+		SetSkin(skin)      the skin tone: "#RRGGBB", or "" for the player's own
 		TakeOffAll()       wear nothing (the body stays)
 		Undo()             step back one change
 		Reset()            back to the player's own Roblox avatar
-		WearRobloxOutfit(outfitId)   wear an outfit saved on Roblox (its
-		                   clothing, accessories, emotes and makeup; the body
-		                   stays the player's own)
-		WearUserLook(userId)   wear another user's look the same way: what a
-		                   player in this server is wearing here, or anyone
-		                   else's current Roblox avatar
+		WearRobloxOutfit(outfitId)   wear an outfit saved on Roblox: its
+		                   items, head, face and skin tone (body parts and
+		                   proportions stay the player's own)
+		WearUserLook(userId)   wear another user's look the same way (with
+		                   their skin tone): what a player in this server is
+		                   wearing here, or anyone else's current Roblox avatar
 
 	Each change re-dresses the character through AvatarService. Try-ons,
 	take-offs and resets are tracked as analytics events with the item's id
@@ -111,7 +113,26 @@ local function takeOff(player: Player, model: any, raw: any)
 	end
 end
 
-local function wearMany(player: Player, model: any, raw: any)
+-- "#RRGGBB" or "" from the client; nil if it's neither.
+local function skinOf(raw: any): string?
+	if raw == "" then
+		return ""
+	end
+	if type(raw) == "string" and string.match(raw, "^#%x%x%x%x%x%x$") then
+		return string.upper(raw)
+	end
+	return nil
+end
+
+local function setSkin(player: Player, model: any, raw: any)
+	local skin = skinOf(raw)
+	if skin then
+		model:setSkin(skin)
+		AvatarService.apply(player)
+	end
+end
+
+local function wearMany(player: Player, model: any, raw: any, rawSkin: any)
 	if type(raw) ~= "table" then
 		return
 	end
@@ -125,8 +146,9 @@ local function wearMany(player: Player, model: any, raw: any)
 			table.insert(items, item)
 		end
 	end
-	if #items > 0 then
-		model:wearMany(items)
+	local skin = skinOf(rawSkin)
+	if #items > 0 or skin then
+		model:wearMany(items, skin)
 		AvatarService.apply(player)
 		for _, item in items do
 			track(player, "try_on", itemParams(item))
@@ -146,7 +168,7 @@ local function undo(player: Player, model: any, _raw: any)
 end
 
 local function reset(player: Player, model: any, _raw: any)
-	model:setWorn(AvatarService.ownLook(player))
+	model:setLook(AvatarService.ownLook(player), "")
 	AvatarService.apply(player)
 	track(player, "reset")
 end
@@ -159,7 +181,7 @@ local function wearRobloxOutfit(player: Player, model: any, raw: any)
 	if not description then
 		return
 	end
-	model:setWorn(items)
+	model:setLook(items, AvatarService.skinOf(description))
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { outfit_id = raw, item_count = #items, partial = false, source = "roblox" })
 end
@@ -172,7 +194,7 @@ local function wearUserLook(player: Player, model: any, raw: any)
 	if not look or #look.items == 0 then
 		return
 	end
-	model:setWorn(table.clone(look.items))
+	model:setLook(table.clone(look.items), look.skin)
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { item_count = #look.items, partial = false, source = if look.inServer then "server_player" else "roblox_user" })
 end
@@ -186,9 +208,10 @@ local ACTIONS = {
 	[Network.Actions.Avatar.Reset] = reset,
 	[Network.Actions.Avatar.WearRobloxOutfit] = wearRobloxOutfit,
 	[Network.Actions.Avatar.WearUserLook] = wearUserLook,
+	[Network.Actions.Avatar.SetSkin] = setSkin,
 }
 
-function AvatarController:executeAction(player: Player, action: Network.AvatarAction, raw: any)
+function AvatarController:executeAction(player: Player, action: Network.AvatarAction, raw: any, extra: any)
 	local now = os.clock()
 	if now - (lastRequest[player] or 0) < AvatarConfig.tryOnCooldown then
 		return
@@ -198,15 +221,15 @@ function AvatarController:executeAction(player: Player, action: Network.AvatarAc
 	if not model then
 		return
 	end
-	self:dispatchAction(ACTIONS, action, player, player, model, raw)
+	self:dispatchAction(ACTIONS, action, player, player, model, raw, extra)
 end
 
 function AvatarController.new(): AvatarController
 	local self = AbstractController.new("AvatarController") :: any
 	setmetatable(self, AvatarController)
 
-	self.intentEvent.OnServerEvent:Connect(function(player: Player, action: Network.AvatarAction, raw: any)
-		self:executeAction(player, action, raw)
+	self.intentEvent.OnServerEvent:Connect(function(player: Player, action: Network.AvatarAction, raw: any, extra: any)
+		self:executeAction(player, action, raw, extra)
 	end)
 
 	return self :: AvatarController

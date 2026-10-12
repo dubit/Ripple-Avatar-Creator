@@ -86,6 +86,7 @@ type OutfitView = {
 	by: string,
 	items: { number },
 	labels: { [number]: string }?, -- row names that differ from the item's own
+	skin: string?, -- a skin tone that comes with it ("#RRGGBB"; nil / "" = none)
 }
 
 -- Card / page order of a type's thumbnail: the most telling first.
@@ -122,7 +123,16 @@ local function wearingExactly(look: any, items: { number }): boolean
 end
 
 local function savedView(outfit: any): OutfitView
-	return { kind = "saved", id = outfit.id, source = "Mine", index = outfit.id, name = outfit.name, by = "Your outfit", items = outfit.items }
+	return {
+		kind = "saved",
+		id = outfit.id,
+		source = "Mine",
+		index = outfit.id,
+		name = outfit.name,
+		by = "Your outfit",
+		items = outfit.items,
+		skin = outfit.skin,
+	}
 end
 
 local function ownView(look: any): OutfitView
@@ -593,6 +603,7 @@ local function userView(look: UserLooks.Look): OutfitView
 		name = look.displayName,
 		by = "@" .. look.username .. (if look.inServer then " · wearing here" else " · Roblox avatar"),
 		items = look.items,
+		skin = look.skin,
 	}
 end
 
@@ -1084,8 +1095,10 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local outfit = if props.source == "User"
 		then (if userLook then userView(userLook) else nil)
 		else findOutfit(look, props.source, props.index)
-	-- Selected rows by position; everything starts selected.
+	-- Selected rows by position; everything starts selected (the skin tone
+	-- row too).
 	local deselected, setDeselected = React.useState({} :: { [number]: boolean })
+	local skinOff, setSkinOff = React.useState(false)
 
 	-- Find out what's owned, for prices and the Buy label.
 	React.useEffect(function()
@@ -1134,7 +1147,9 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 			end
 		end
 	end
-	local allSelected = #selected == #items
+	local skinTone = if outfit.skin and outfit.skin ~= "" then outfit.skin else nil
+	local skinOn = skinTone ~= nil and not skinOff
+	local allSelected = #selected == #items and (skinTone == nil or skinOn)
 	local ring = wearingExactly(look, items)
 
 	local rows: { [string]: any } = {
@@ -1147,6 +1162,25 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 			PaddingRight = UDim.new(0, skin.px(8)),
 		}),
 	}
+	-- The skin tone, as a row like the items (ticked to come along).
+	if skinTone then
+		rows.Skin = e(Parts.ListRow, {
+			title = "Skin tone",
+			subtitle = if outfit.kind == "saved" then "Saved with this outfit" else "Their skin tone",
+			colour = Color3.fromHex(skinTone),
+			layoutOrder = 0,
+			trailingWidth = 40,
+			leading = e(Checkbox, {
+				on = skinOn,
+				onToggle = function()
+					setSkinOff(skinOn)
+				end,
+			}),
+			trailing = {
+				Wearing = if string.upper(look.skin) == string.upper(skinTone) then smallIcon("checkroom", Tokens.color.accentText, 1) else nil,
+			},
+		})
+	end
 	for index, id in items do
 		local item = PlaceholderData.item(id)
 		if not item then
@@ -1332,10 +1366,10 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				BackgroundTransparency = 1,
 			}, {
 				Count = e(ShadowText, {
-					text = #items .. " items · " .. #selected .. " selected",
+					text = #items .. " items · " .. (#selected + (if skinOn then 1 else 0)) .. " selected",
 					style = { size = 17, weight = 900 },
 				}),
-				Toggle = if #items == 0 then nil else e("TextButton", {
+				Toggle = if #items == 0 and not skinTone then nil else e("TextButton", {
 					AnchorPoint = Vector2.new(1, 0),
 					Position = UDim2.fromScale(1, 0),
 					Size = UDim2.new(0, skin.px(110), 1, 0),
@@ -1353,8 +1387,10 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 								none[index] = true
 							end
 							setDeselected(none)
+							setSkinOff(true)
 						else
 							setDeselected({})
+							setSkinOff(false)
 						end
 					end),
 				}),
@@ -1364,7 +1400,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				Size = UDim2.new(1, 0, 1, -(headerHeight + skin.px(10) + buttonsHeight + skin.px(10))),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
-				CanvasSize = UDim2.fromOffset(0, #items * (skin.px(64) + skin.px(6)) + skin.px(6)),
+				CanvasSize = UDim2.fromOffset(0, (#items + (if skinTone then 1 else 0)) * (skin.px(64) + skin.px(6)) + skin.px(6)),
 				ScrollingDirection = Enum.ScrollingDirection.Y,
 				ScrollBarThickness = skin.px(8),
 				ScrollBarImageColor3 = Tokens.color.accent,
@@ -1381,11 +1417,11 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					SortOrder = Enum.SortOrder.LayoutOrder,
 					Padding = UDim.new(0, skin.px(8)),
 				}),
-				WearSelected = bottomButton("Wear selected", "checkroom", 1, #selected == 0, function()
+				WearSelected = bottomButton("Wear selected", "checkroom", 1, #selected == 0 and not skinOn, function()
 					if saved and outfitId then
-						look.wearOutfitItems(outfitId, selected)
+						look.wearOutfitItems(outfitId, selected, skinOn)
 					else
-						look.wearAll(selectedIds)
+						look.wearAll(selectedIds, if skinOn then skinTone else nil)
 					end
 				end),
 				-- Basket and Buy only when something selected isn't owned yet.

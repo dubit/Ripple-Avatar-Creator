@@ -31,7 +31,7 @@ local CatalogueClient = require(script.Parent:WaitForChild("CatalogueClient"))
 local UserLooks = {}
 
 export type User = { userId: number, username: string, displayName: string }
-export type Look = User & { inServer: boolean, items: { number } }
+export type Look = User & { inServer: boolean, items: { number }, skin: string }
 
 local findRemote = Bolt.RemoteFunction("FindRobloxUser")
 local lookRemote = Bolt.RemoteFunction("RobloxUserLook")
@@ -111,6 +111,7 @@ function UserLooks.look(userId: number): (Look?, string?)
 		displayName = tostring(raw.displayName),
 		inServer = raw.inServer == true,
 		items = items,
+		skin = if type(raw.skin) == "string" then raw.skin else "",
 	}
 	remember(look)
 	looks[userId] = { look = look, at = os.clock() }

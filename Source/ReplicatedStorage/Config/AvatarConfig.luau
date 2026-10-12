@@ -13,8 +13,10 @@ local config: AvatarConfig = {
 		-- Body
 		HairAccessory = "Hair", -- one hair, as in the design
 		BodyParts = "Body",
-		DynamicHead = "Head",
+		DynamicHead = "Head", -- a dynamic head (bundle or asset)
 		DynamicHeadAvatar = "Head",
+		Head = "Head", -- a classic head mesh
+		Face = "Face", -- a classic face
 		-- Layered clothing
 		ShirtAccessory = "Shirt",
 		TShirtAccessory = "TShirt",
@@ -68,6 +70,28 @@ local config: AvatarConfig = {
 		maxItems = 40,
 		nameLength = 30,
 		cooldown = 0.3,
+	},
+	-- Skin tones offered under Catalogue › Body › Skin tone (Roblox's
+	-- classic body colours), after "your own".
+	skinTones = {
+		{ name = "Pastel brown", hex = "#FFCC99" },
+		{ name = "Light orange", hex = "#EAB892" },
+		{ name = "Nougat", hex = "#CC8E69" },
+		{ name = "Brick yellow", hex = "#D7C59A" },
+		{ name = "Dark orange", hex = "#A05F35" },
+		{ name = "Burnt sienna", hex = "#8F4C2A" },
+		{ name = "Brown", hex = "#7C5C46" },
+		{ name = "Reddish brown", hex = "#694028" },
+		{ name = "Dark taupe", hex = "#5A4C42" },
+		{ name = "Sand red", hex = "#957977" },
+		{ name = "Bright yellow", hex = "#F5CD30" },
+		{ name = "White", hex = "#F2F3F3" },
+		{ name = "Medium stone grey", hex = "#A3A2A5" },
+		{ name = "Black", hex = "#1B2A35" },
+		{ name = "Bright red", hex = "#C4281C" },
+		{ name = "Bright blue", hex = "#0D69AC" },
+		{ name = "Bright green", hex = "#4B974B" },
+		{ name = "Lavender", hex = "#8C5B9F" },
 	},
 }
 

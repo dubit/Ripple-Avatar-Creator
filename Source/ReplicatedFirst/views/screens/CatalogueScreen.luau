@@ -33,6 +33,7 @@ local TextTab = require(components:WaitForChild("TextTab"))
 local Chip = require(components:WaitForChild("Chip"))
 local Icon = require(components:WaitForChild("Icon"))
 local SearchBox = require(components:WaitForChild("SearchBox"))
+local SkinTonePanel = require(script.Parent:WaitForChild("SkinTonePanel"))
 local PillButton = require(components:WaitForChild("PillButton"))
 local GlassPanel = require(components:WaitForChild("GlassPanel"))
 local Parts = require(script.Parent:WaitForChild("Parts"))
@@ -73,8 +74,19 @@ local function CatalogueScreen(props: { nav: any, look: any })
 	local pasteFocused, setPasteFocused = React.useState(false)
 	local filters, setFilters = useSessionState("catalogue.filters", CatalogueFilters.defaults)
 	local popover, setPopover = React.useState(nil :: CatalogueFilters.Popover?)
+	-- A chip that isn't a search (Body › Skin tone) shows its own panel.
+	local special: string? = nil
+	for _, entry in CatalogueConfig.categories do
+		if entry.name == category then
+			for _, chip in entry.chips do
+				if chip.name == sub then
+					special = chip.special
+				end
+			end
+		end
+	end
 	local results = useCatalogue({
-		category = category,
+		category = if special then "" else category, -- "" = don't search
 		chip = if sub == "All" then nil else sub,
 		keyword = query,
 		minPrice = filters.minPrice,
@@ -321,7 +333,14 @@ local function CatalogueScreen(props: { nav: any, look: any })
 			Size = UDim2.new(1, 0, 0, skin.px(Tokens.size.chipHeight)),
 			BackgroundTransparency = 1,
 		}, chips),
-		Grid = e(Parts.CardGrid, {
+		SkinTones = if special == "skinTone"
+			then e(SkinTonePanel, {
+				look = props.look,
+				position = UDim2.fromOffset(0, gridTop),
+				size = UDim2.new(1, 0, 1, -gridTop),
+			})
+			else nil,
+		Grid = if special then nil else e(Parts.CardGrid, {
 			columns = 6,
 			extraHeight = 40,
 			count = cells,
@@ -331,7 +350,7 @@ local function CatalogueScreen(props: { nav: any, look: any })
 			-- One remembered scroll per browse (tab / chip / search / filters).
 			scrollKey = table.concat({ category, sub, query, filters.sort, filters.sortWindow, tostring(filters.minPrice), tostring(filters.maxPrice), filters.creator, filters.salesType, tostring(filters.includeOffSale), filters.colour }, "|"),
 		}, cards),
-		Bar = e(GlassPanel, {
+		Bar = if special then nil else e(GlassPanel, {
 			variant = "bar",
 			cornerRadius = 16,
 			anchorPoint = Vector2.new(0, 1),
@@ -486,7 +505,7 @@ local function CatalogueScreen(props: { nav: any, look: any })
 				end,
 			})
 			else nil,
-		Message = if message
+		Message = if message and not special
 			then e("TextLabel", {
 				Position = UDim2.fromOffset(0, gridTop),
 				Size = UDim2.new(1, 0, 0, skin.px(120)),

@@ -12,8 +12,11 @@
 	its slot (one hair, one shirt, one body…); grouped items stack up to the
 	group's limit, the oldest dropping off (accessories, emotes).
 
+	`skin` is the chosen skin tone ("#RRGGBB"), or "" for the player's own.
+	It's part of the look: outfits save it and Undo steps back over it.
+
 	Undo history is session-only (`_undo`, never saved or sent): every change
-	pushes the previous list, up to AvatarConfig.undoDepth.
+	pushes the previous look (items and skin), up to AvatarConfig.undoDepth.
 
 	Logical state only. AvatarService turns `worn` into the real character
 	(server Workspace), which Roblox replicates to everyone. Items arrive
@@ -43,7 +46,8 @@ export type AvatarModel = typeof(setmetatable({} :: {
 	seeded: boolean,
 	own: { WornItem }, -- the player's own Roblox avatar's items (refreshed every join)
 	canUndo: boolean,
-	_undo: { { WornItem } },
+	skin: string,
+	_undo: { { worn: { WornItem }, skin: string } },
 }, AvatarModel)) & AbstractModel.AbstractModel
 
 local function same(a: WornItem, b: WornItem): boolean
@@ -96,6 +100,7 @@ function AvatarModel.new(ownerId: string): AvatarModel
 	local self = AbstractModel.new("AvatarModel", ownerId, "User") :: any
 	setmetatable(self, AvatarModel)
 	self.worn = {}
+	self.skin = ""
 	self.seeded = false
 	self.own = {}
 	self.canUndo = false
@@ -122,14 +127,39 @@ function AvatarModel:isWearing(item: WornItem): boolean
 	return false
 end
 
--- Replace the whole list (undoable).
-function AvatarModel:setWorn(list: { WornItem }): ()
-	table.insert(self._undo, self.worn)
+local function remember(self: any)
+	table.insert(self._undo, { worn = self.worn, skin = self.skin or "" })
 	while #self._undo > AvatarConfig.undoDepth do
 		table.remove(self._undo, 1)
 	end
-	self.worn = list
 	self.canUndo = true
+end
+
+-- Replace the whole list (undoable).
+function AvatarModel:setWorn(list: { WornItem }): ()
+	remember(self)
+	self.worn = list
+	self:syncState()
+end
+
+-- Change the skin tone ("" = the player's own), undoable.
+function AvatarModel:setSkin(skin: string): ()
+	if skin == (self.skin or "") then
+		return
+	end
+	remember(self)
+	self.skin = skin
+	self:syncState()
+end
+
+-- Replace the whole look, items and skin tone (undoable): wearing an
+-- outfit or someone's look. `skin` nil keeps the current tone.
+function AvatarModel:setLook(list: { WornItem }, skin: string?): ()
+	remember(self)
+	self.worn = list
+	if skin ~= nil then
+		self.skin = skin
+	end
 	self:syncState()
 end
 
@@ -137,12 +167,13 @@ function AvatarModel:wear(item: WornItem): ()
 	self:setWorn(wearOne(self.worn, item))
 end
 
-function AvatarModel:wearMany(items: { WornItem }): ()
+-- Put several on (and, if given, change the skin tone), as one change.
+function AvatarModel:wearMany(items: { WornItem }, skin: string?): ()
 	local list = self.worn
 	for _, item in items do
 		list = wearOne(list, item)
 	end
-	self:setWorn(list)
+	self:setLook(list, skin)
 end
 
 function AvatarModel:takeOff(item: WornItem): ()
@@ -165,7 +196,8 @@ function AvatarModel:undo(): boolean
 	if not previous then
 		return false
 	end
-	self.worn = previous
+	self.worn = previous.worn
+	self.skin = previous.skin
 	self.canUndo = #self._undo > 0
 	self:syncState()
 	return true

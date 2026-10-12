@@ -19,6 +19,7 @@ local config: CatalogueConfig = {
 				{ name = "Full Bodies", bundleTypes = { "BodyParts" } },
 				{ name = "Hair", assetTypes = { "HairAccessory" } },
 				{ name = "Heads", bundleTypes = { "DynamicHead" } },
+				{ name = "Skin tone", special = "skinTone" },
 			},
 		},
 		{

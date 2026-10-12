@@ -18,7 +18,8 @@
 		Delete({ id })
 		WearAll({ id })            wear exactly the outfit (replaces the look;
 		                           undoable)
-		WearSelected({ id, indices })   put those items on over the current look
+		WearSelected({ id, indices, skin? })   put those items (and with
+		                           `skin`, its skin tone) on over the current look
 		Follow({ userId })         follow someone here, or unfollow (a real
 		                           Roblox user; private to the player)
 
@@ -118,7 +119,7 @@ local function save(player: Player, model: any, _raw: any)
 	if not avatar or #avatar.worn == 0 then
 		return
 	end
-	local outfit = model:add(defaultName(model), avatar.worn)
+	local outfit = model:add(defaultName(model), avatar.worn, avatar.skin)
 	if outfit then
 		track(player, "outfit_save", { outfit_id = outfit.id, item_count = #outfit.items })
 	end
@@ -130,7 +131,7 @@ local function overwrite(player: Player, model: any, raw: any)
 	if not id or not avatar or #avatar.worn == 0 then
 		return
 	end
-	local outfit = model:overwrite(id, avatar.worn)
+	local outfit = model:overwrite(id, avatar.worn, avatar.skin)
 	if outfit then
 		track(player, "outfit_save", { outfit_id = outfit.id, item_count = #outfit.items, replaced = true })
 	end
@@ -175,7 +176,7 @@ local function wearAll(player: Player, model: any, raw: any)
 	if not outfit or not avatar then
 		return
 	end
-	avatar:setWorn(table.clone(outfit.items))
+	avatar:setLook(table.clone(outfit.items), outfit.skin or "")
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { outfit_id = outfit.id, item_count = #outfit.items, partial = false })
 end
@@ -195,10 +196,12 @@ local function wearSelected(player: Player, model: any, raw: any)
 			table.insert(items, outfit.items[index])
 		end
 	end
-	if #items == 0 then
+	-- The skin tone comes too if its row was ticked.
+	local skin = if raw.skin == true and outfit.skin and outfit.skin ~= "" then outfit.skin else nil
+	if #items == 0 and not skin then
 		return
 	end
-	avatar:wearMany(items)
+	avatar:wearMany(items, skin)
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { outfit_id = outfit.id, item_count = #items, partial = true })
 end
@@ -264,7 +267,7 @@ local function preview(player: Player, kind: any, id: any): string?
 		local model = OutfitsModel.get(tostring(player.UserId))
 		local outfit = model and model:find(id)
 		if outfit then
-			local ok, result = pcall(AvatarService.describeLook, player, outfit.items)
+			local ok, result = pcall(AvatarService.describeLook, player, outfit.items, outfit.skin)
 			description = if ok then result else nil
 		end
 	elseif kind == "own" then

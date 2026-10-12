@@ -36,6 +36,7 @@ export type Outfit = {
 	id: number,
 	name: string,
 	items: { OutfitItem },
+	skin: string?, -- the skin tone worn with it ("" = the wearer's own)
 }
 
 export type OutfitsModel = typeof(setmetatable({} :: {
@@ -91,11 +92,11 @@ local function keep(items: { OutfitItem }): { OutfitItem }
 end
 
 -- Save a new outfit from these items. Returns it (nil when full).
-function OutfitsModel:add(name: string, items: { OutfitItem }): Outfit?
+function OutfitsModel:add(name: string, items: { OutfitItem }, skin: string?): Outfit?
 	if self:isFull() then
 		return nil
 	end
-	local outfit = { id = self.nextId, name = name, items = keep(items) }
+	local outfit = { id = self.nextId, name = name, items = keep(items), skin = skin or "" }
 	self.nextId += 1
 	table.insert(self.outfits, outfit)
 	self:syncState()
@@ -103,12 +104,13 @@ function OutfitsModel:add(name: string, items: { OutfitItem }): Outfit?
 end
 
 -- Replace an outfit's items (keeping its id and name).
-function OutfitsModel:overwrite(id: number, items: { OutfitItem }): Outfit?
+function OutfitsModel:overwrite(id: number, items: { OutfitItem }, skin: string?): Outfit?
 	local outfit = self:find(id)
 	if not outfit then
 		return nil
 	end
 	outfit.items = keep(items)
+	outfit.skin = skin or ""
 	self:syncState()
 	return outfit
 end

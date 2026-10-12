@@ -18,7 +18,7 @@
 	                             (an exact username: Roblox offers games no
 	                             partial or display-name search)
 	  "RobloxUserLook"(userId) -> { ok, look = { userId, username, displayName,
-	                             inServer, items } } or { ok = false, error }
+	                             inServer, items, skin } } or { ok = false, error }
 	  "RobloxUserInfos"(userIds) -> { User } for up to MAX_INFOS ids (names
 	                             for the Following cards; one batched,
 	                             cached call, outside the budget)
@@ -41,7 +41,7 @@ local AvatarModel = require(ServerScriptService.models.user.AvatarModel)
 local RobloxAvatarLookupService = {}
 
 export type User = { userId: number, username: string, displayName: string }
-export type Look = User & { inServer: boolean, items: { any } }
+export type Look = User & { inServer: boolean, items: { any }, skin: string }
 
 local CACHE_SECONDS = 600
 local BUDGET = { requests = 20, seconds = 30 }
@@ -143,14 +143,28 @@ function RobloxAvatarLookupService.look(userId: number): Look?
 	if player then
 		local items = serverLook(player)
 		if items then
-			return { userId = userId, username = user.username, displayName = user.displayName, inServer = true, items = items }
+			return {
+				userId = userId,
+				username = user.username,
+				displayName = user.displayName,
+				inServer = true,
+				items = items,
+				skin = AvatarService.playerSkin(player),
+			}
 		end
 	end
 	local entry = roblox(userId)
 	if not entry then
 		return nil
 	end
-	return { userId = userId, username = user.username, displayName = user.displayName, inServer = false, items = entry.items }
+	return {
+		userId = userId,
+		username = user.username,
+		displayName = user.displayName,
+		inServer = false,
+		items = entry.items,
+		skin = if entry.description then AvatarService.skinOf(entry.description) else "",
+	}
 end
 
 function RobloxAvatarLookupService.description(userId: number): HumanoidDescription?
@@ -158,7 +172,7 @@ function RobloxAvatarLookupService.description(userId: number): HumanoidDescript
 	if player then
 		local items = serverLook(player)
 		if items then
-			local ok, description = pcall(AvatarService.describeLook, player, items)
+			local ok, description = pcall(AvatarService.describeLook, player, items, AvatarService.playerSkin(player))
 			return if ok then description else nil
 		end
 	end

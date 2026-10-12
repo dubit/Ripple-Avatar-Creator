@@ -51,6 +51,7 @@ export type SavedOutfit = {
 	id: number,
 	name: string,
 	items: { number }, -- item ids, in the order they were put on
+	skin: string, -- the skin tone saved with it ("" = the wearer's own)
 }
 
 export type Look = {
@@ -61,7 +62,9 @@ export type Look = {
 	inBasket: (id: number) -> boolean,
 	canWear: (id: number) -> boolean, -- a real catalogue item (not a mock)
 	toggleWear: (id: number) -> boolean, -- false if the item can't be worn
-	wearAll: (ids: { number }) -> number, -- how many could be worn
+	wearAll: (ids: { number }, skin: string?) -> number, -- how many could be worn; `skin` sets the tone too
+	skin: string, -- chosen skin tone "#RRGGBB", "" = your own
+	setSkin: (skin: string) -> (),
 	takeOffAll: () -> (),
 	undo: () -> (),
 	reset: () -> (), -- back to the player's own Roblox avatar
@@ -86,7 +89,7 @@ export type Look = {
 	renameOutfit: (id: number, name: string) -> (),
 	deleteOutfit: (id: number) -> (),
 	wearOutfit: (id: number) -> (), -- exactly the outfit (replaces the look)
-	wearOutfitItems: (id: number, indices: { number }) -> (), -- over the look
+	wearOutfitItems: (id: number, indices: { number }, withSkin: boolean?) -> (), -- over the look
 	basketTotal: number, -- Robux for unowned basket items
 }
 
@@ -161,7 +164,7 @@ local function usePlaceholderLook(): Look
 		for _, entry in outfit.items or {} do
 			table.insert(ids, CatalogueClient.remember(entry).id)
 		end
-		table.insert(outfits, { id = outfit.id, name = outfit.name, items = ids })
+		table.insert(outfits, { id = outfit.id, name = outfit.name, items = ids, skin = outfit.skin or "" })
 	end
 	-- Known-owned items show as owned wherever they appear (items are shared).
 	for _, key in ownership.owned or {} do
@@ -341,7 +344,11 @@ local function usePlaceholderLook(): Look
 			intent:FireServer(if isWorn(id) then actions.TakeOff else actions.TryOn, ref(id))
 			return true
 		end,
-		wearAll = function(ids: { number }): number
+		skin = avatar.skin or "",
+		setSkin = function(skin: string)
+			intent:FireServer(actions.SetSkin, skin)
+		end,
+		wearAll = function(ids: { number }, skin: string?): number
 			local refs = {}
 			for _, id in ids do
 				if canWear(id) then
@@ -352,10 +359,10 @@ local function usePlaceholderLook(): Look
 			while #refs > AvatarConfig.maxWearMany do
 				table.remove(refs, 1)
 			end
-			if #refs > 0 then
-				intent:FireServer(actions.WearMany, refs)
+			if #refs > 0 or skin then
+				intent:FireServer(actions.WearMany, refs, skin)
 			end
-			return #refs
+			return #refs + (if skin then 1 else 0)
 		end,
 		takeOffAll = function()
 			intent:FireServer(actions.TakeOffAll)
@@ -462,9 +469,9 @@ local function usePlaceholderLook(): Look
 		wearOutfit = function(id: number)
 			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearAll, { id = id })
 		end,
-		wearOutfitItems = function(id: number, indices: { number })
-			if #indices > 0 then
-				Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearSelected, { id = id, indices = indices })
+		wearOutfitItems = function(id: number, indices: { number }, withSkin: boolean?)
+			if #indices > 0 or withSkin then
+				Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearSelected, { id = id, indices = indices, skin = withSkin == true })
 			end
 		end,
 		basketTotal = total,

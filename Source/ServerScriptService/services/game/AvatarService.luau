@@ -37,8 +37,10 @@
 
 	Also used by OutfitsController (the outfit page's 3D preview) and
 	AvatarController (wearing an outfit saved on Roblox):
-		describeLook(player, worn) -> HumanoidDescription   `worn` on the
+		describeLook(player, worn, skin?) -> HumanoidDescription   `worn`
+		                                      (and a skin tone) on the
 		                                      player's own base (gear left out)
+		skinOf(description) / playerSkin(player) -> "#RRGGBB"   a skin tone
 		ownDescription(player) -> HumanoidDescription?      the player's own
 		                                      Roblox avatar as it is
 		userAvatar(userId) -> (HumanoidDescription?, { WornItem })   another
@@ -255,6 +257,14 @@ local function itemsOf(description: HumanoidDescription, owned: boolean?): { Wor
 			table.insert(items, { targetId = id, kind = "Asset", typeName = typeName, name = "" })
 		end
 	end
+	-- The head and face are part of a look too (a head's type, classic or
+	-- dynamic, is filled in from the item details below).
+	if description.Head ~= 0 then
+		table.insert(items, { targetId = description.Head, kind = "Asset", typeName = "Head", name = "" })
+	end
+	if description.Face ~= 0 then
+		table.insert(items, { targetId = description.Face, kind = "Asset", typeName = "Face", name = "" })
+	end
 	local emotes = description:GetEmotes()
 	for _, name in description:GetEquippedEmotes() do
 		local ids = emotes[(name :: any).Name or name]
@@ -288,13 +298,17 @@ local function itemsOf(description: HumanoidDescription, owned: boolean?): { Wor
 			return AvatarEditorService:GetBatchItemDetails(ids, Enum.AvatarItemType.Asset)
 		end)
 		if ok then
-			local names = {}
+			local names, types = {}, {}
 			for _, entry in details do
 				names[entry.Id] = entry.Name
+				types[entry.Id] = typeNameOf(entry.AssetType)
 			end
 			for _, item in items do
 				if item.name == "" then
 					item.name = names[item.targetId] or ""
+				end
+				if item.typeName == "Head" and types[item.targetId] == "DynamicHead" then
+					item.typeName = "DynamicHead"
 				end
 			end
 		end
@@ -343,6 +357,21 @@ function AvatarService.userAvatar(userId: number): (HumanoidDescription?, { Worn
 	return description, itemsOf(description, false)
 end
 
+-- A description's skin tone ("#RRGGBB" from its head colour).
+function AvatarService.skinOf(description: HumanoidDescription): string
+	return "#" .. description.HeadColor:ToHex()
+end
+
+-- The skin tone a player in this server shows: their chosen one, or their own.
+function AvatarService.playerSkin(player: Player): string
+	local model = AvatarModel.get(tostring(player.UserId))
+	if model and model.skin ~= "" then
+		return model.skin
+	end
+	local base = bases[player]
+	return if base then AvatarService.skinOf(base) else ""
+end
+
 function AvatarService.ownDescription(player: Player): HumanoidDescription?
 	return fetchOwn(player)
 end
@@ -367,7 +396,16 @@ function AvatarService.ownLook(player: Player): { WornItem }
 end
 
 -- `worn` on top of the base.
-local function describe(player: Player, worn: { WornItem }): (HumanoidDescription, number?)
+-- A skin tone hex -> Color3 (nil for "" or anything malformed).
+local function skinColour(skin: string?): Color3?
+	if type(skin) ~= "string" or not string.match(skin, "^#%x%x%x%x%x%x$") then
+		return nil
+	end
+	return Color3.fromHex(skin)
+end
+
+-- `worn` (and a chosen skin tone) on top of the base.
+local function describe(player: Player, worn: { WornItem }, skin: string?): (HumanoidDescription, number?)
 	local description = (bases[player] or Instance.new("HumanoidDescription")):Clone()
 	local accessories = {}
 	local layerOrder = 1
@@ -451,6 +489,10 @@ local function describe(player: Player, worn: { WornItem }): (HumanoidDescriptio
 			makeup.AssetId = item.targetId
 			makeup.MakeupType = MAKEUP[t]
 			makeup.Parent = description
+		elseif t == "Face" then
+			description.Face = item.targetId
+		elseif t == "Head" or t == "DynamicHead" then
+			description.Head = item.targetId
 		elseif t == "EmoteAnimation" then
 			local name = if item.name ~= "" then item.name else tostring(item.targetId)
 			emotes[name] = { item.targetId }
@@ -460,14 +502,22 @@ local function describe(player: Player, worn: { WornItem }): (HumanoidDescriptio
 		end
 	end
 
+	-- A chosen skin tone colours the whole body, over any bundle's colours.
+	local colour = skinColour(skin)
+	if colour then
+		for _, property in BODY_COLOURS do
+			(description :: any)[property] = colour
+		end
+	end
+
 	description:SetAccessories(accessories, true)
 	description:SetEmotes(emotes)
 	description:SetEquippedEmotes(equipped)
 	return description, gear
 end
 
-function AvatarService.describeLook(player: Player, worn: { WornItem }): HumanoidDescription
-	local description = describe(player, worn)
+function AvatarService.describeLook(player: Player, worn: { WornItem }, skin: string?): HumanoidDescription
+	local description = describe(player, worn, skin)
 	return description
 end
 
@@ -506,7 +556,7 @@ local function applyNow(player: Player)
 	if not (character and humanoid and model) then
 		return
 	end
-	local description, gear = describe(player, model.worn)
+	local description, gear = describe(player, model.worn, model.skin)
 	local ok, err = pcall(function()
 		humanoid:ApplyDescription(description)
 	end)
