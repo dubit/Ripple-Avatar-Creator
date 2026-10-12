@@ -5,9 +5,10 @@
 
 	Root: source tabs (Mine · Community · Roblox) beside a search box, and a
 	grid of outfit cards. Mine holds, in order:
+	  · Save what I'm wearing
 	  · Your avatar: your own Roblox avatar as it is (a restart badge; its
-	    Wear all reads "Reset to this": it's what Reset puts back)
-	  · Save what I'm wearing, then your saved outfits (look.outfits)
+	    Wear button reads "Reset to this": it's what Reset puts back)
+	  · your saved outfits (look.outfits)
 	  · the outfits saved on Roblox itself, outside experiences
 	    (RobloxOutfits), marked with a "Roblox" badge. Roblox only lists them
 	    once you allow it, so until then a "Show my Roblox outfits" card asks.
@@ -18,7 +19,7 @@
 	animations last.
 
 	Outfit page: on the left the preview (your avatar wearing it, for a saved
-	outfit: OutfitPreview), the name (tap to rename a saved one), Wear all and
+	outfit: OutfitPreview), the name (tap to rename a saved one), Wear all items and
 	Delete (press twice). On the right "N items · M selected" with Select
 	all / none, a row per item with a checkbox (the row itself opens the item
 	page: Outfits › Name › Item), and Wear selected · Add to basket · Buy
@@ -436,6 +437,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			badge = badge,
 			layoutOrder = count,
 			onActivated = function()
+				Sounds.play("press")
 				props.nav.push({
 					kind = "outfit",
 					id = { source = outfit.source, index = outfit.index },
@@ -451,10 +453,6 @@ local function OutfitsScreen(props: { nav: any, look: any })
 	end
 
 	if mine then
-		-- Your own Roblox avatar first: wearing it is a reset.
-		if #look.own > 0 then
-			addOutfit(ownView(look), "Reset to your avatar", e(Badge, { kind = "marker", tone = "white", icon = "restart_alt" }))
-		end
 		if needle == "" then
 			addAction("Save", {
 				icon = "add_circle",
@@ -463,6 +461,10 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				sub = #look.worn .. " items",
 				onActivated = look.saveOutfit,
 			})
+		end
+		-- Then your own Roblox avatar: wearing it is a reset.
+		if #look.own > 0 then
+			addOutfit(ownView(look), "Reset to your avatar", e(Badge, { kind = "marker", tone = "white", icon = "restart_alt" }))
 		end
 		for _, outfit in outfitsFor(look, "Mine") do
 			addOutfit(outfit, #outfit.items .. " items")
@@ -789,7 +791,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				size = Tokens.size.ctaHeight,
 				icon = if kind == "own" then "restart_alt" else "checkroom",
 				iconSize = 18,
-				label = if kind == "own" then "Reset to this" else "Wear all",
+				label = if kind == "own" then "Reset to this" else "Wear all items",
 				active = true,
 				sound = false, -- the look change plays its own sound
 				layoutOrder = 4,
