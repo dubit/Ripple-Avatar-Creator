@@ -42,7 +42,7 @@ local NetworkBuilder = require(script.Parent:WaitForChild("NetworkBuilder"))
 -- Network Configuration: Single source of truth for all controllers and state
 local NetworkConfig = {
 	Controllers = {
-		Avatar = { "TryOn", "TakeOff", "WearMany", "TakeOffAll", "Undo", "Reset" },
+		Avatar = { "TryOn", "TakeOff", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit" },
 		Basket = { "Add", "Remove", "AddMany", "RemoveMany", "Clear" },
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
@@ -61,6 +61,7 @@ local NetworkConfig = {
 			ownerId = "",
 			worn = {},
 			seeded = false,
+			own = {},
 			canUndo = false,
 		},
 		-- What the player means to buy (persisted; BasketModel): a list of
@@ -147,7 +148,7 @@ local Network = NetworkBuilder.build(NetworkConfig, Bolt)
 -- ============================================================================
 
 -- Action Type Exports (manually defined for type safety)
-export type AvatarAction = "TryOn" | "TakeOff" | "WearMany" | "TakeOffAll" | "Undo" | "Reset"
+export type AvatarAction = "TryOn" | "TakeOff" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit"
 export type BasketAction = "Add" | "Remove" | "AddMany" | "RemoveMany" | "Clear"
 export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"
@@ -170,6 +171,7 @@ export type AvatarState = {
 	ownerId: string,
 	worn: { WornItem }, -- in the order put on
 	seeded: boolean, -- filled from the player's own avatar on first join
+	own: { WornItem }, -- the player's own Roblox avatar's items (refreshed every join)
 	canUndo: boolean,
 }
 

@@ -96,6 +96,10 @@ local function withFeedback(look: any)
 		Sounds.play(if #indices > 0 then "tryOn" else "error")
 		look.wearOutfitItems(id, indices)
 	end
+	feedback.wearRobloxOutfit = function(outfitId: number)
+		Sounds.play("tryOn")
+		look.wearRobloxOutfit(outfitId)
+	end
 	feedback.deleteOutfit = function(id: number)
 		Sounds.play("back")
 		look.deleteOutfit(id)

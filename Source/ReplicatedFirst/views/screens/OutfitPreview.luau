@@ -12,7 +12,9 @@
 	Drag to turn, wheel to zoom, middle-drag to move.
 
 	Props:
-		outfitId: number
+		kind: "saved" | "own" | "roblox"   a saved outfit, your own Roblox
+		                       avatar, or an outfit saved on Roblox
+		outfitId: number?      the saved / Roblox outfit's id
 		ring: boolean?         the orange "you're wearing this" ring
 ]]
 
@@ -35,9 +37,9 @@ local PREVIEW_FOLDER = "OutfitPreviews"
 local WAIT_SECONDS = 10
 
 -- The rig for an outfit and its idle animation id (yields); nil if it fails.
-local function build(outfitId: number): (Model?, string?)
+local function build(kind: string, outfitId: number?): (Model?, string?)
 	local ok, name = pcall(function()
-		return remote:InvokeServer(outfitId)
+		return remote:InvokeServer(kind, outfitId)
 	end)
 	if not ok or type(name) ~= "string" then
 		return nil, nil
@@ -82,7 +84,7 @@ local function build(outfitId: number): (Model?, string?)
 	return model, idle
 end
 
-local function OutfitPreview(props: { outfitId: number, ring: boolean? })
+local function OutfitPreview(props: { kind: string, outfitId: number?, ring: boolean? })
 	local skin = useSkin()
 	local model, setModel = React.useState(nil :: Model?)
 	local idleIds = React.useRef({} :: { [Model]: string })
@@ -118,9 +120,9 @@ local function OutfitPreview(props: { outfitId: number, ring: boolean? })
 	}, {
 		Viewer = e(ModelViewer, {
 			onModel = setModel,
-			buildKey = props.outfitId,
+			buildKey = props.kind .. ":" .. tostring(props.outfitId),
 			build = function()
-				local rig, idle = build(props.outfitId)
+				local rig, idle = build(props.kind, props.outfitId)
 				if rig and idle then
 					idleIds.current[rig] = idle
 				end

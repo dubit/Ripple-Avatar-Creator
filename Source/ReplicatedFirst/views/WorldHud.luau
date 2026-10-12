@@ -3,17 +3,20 @@
 --[[
 	WorldHud (design frame 5a: the HUD over the world)
 
-	Tab bar top centre; bottom-left the Basket button (Robux total badge) and
-	Create avatar / Save to Roblox / Reset; bottom-right the World options
+	Tab bar top centre; bottom-left the Basket button, then Wearing, Create
+	avatar and Save to Roblox; bottom-right the World options
 	toggle and its side panel. The top-left is left clear for Roblox's own
 	top-bar buttons (the tab bar is centred, so nothing reaches it).
 
 	Hidden while the full panel is open — the design's panel covers it. When it
 	comes back, the bottom buttons rise into place; World options slides in and
 	out from the right; the Basket badge total rolls.
-	Create avatar (save the look as a new Roblox outfit) and Save to Roblox
-	(make it their Roblox avatar) open Roblox's own prompts (AccountPrompts);
-	Reset puts the player's own Roblox avatar back on.
+	Basket and Wearing carry a callout once they hold anything: the basket's
+	Robux total (or its item count when everything in it is free), and how
+	many items are being worn. Create avatar (save the look as a new Roblox
+	outfit) and Save to Roblox (make it their Roblox avatar) open Roblox's own
+	prompts (AccountPrompts). There's no Reset here: Outfits › Mine's "Your
+	avatar" does it.
 
 	Props:
 		nav, look
@@ -61,6 +64,8 @@ local function WorldHud(props: Props)
 	local action = Tokens.size.action
 	local edge = skin.px(Tokens.size.edgeInset)
 	local total = useSpringNumber(props.look.basketTotal, Tokens.spring.count)
+	local basketCount = useSpringNumber(#props.look.basket, Tokens.spring.count)
+	local wornCount = useSpringNumber(#props.look.worn, Tokens.spring.count)
 	local rise = useAppear(Tokens.spring.slide)
 	local worldTransitions = useTransition(worldOpen, {
 		from = { t = 0 },
@@ -84,9 +89,23 @@ local function WorldHud(props: Props)
 		})
 	end
 
-	local function actionButton(icon: string, order: number, onActivated: (() -> ())?, sound: any?)
+	-- A callout pinned to a round button's top-right (design: top -8, right -18
+	-- on the 84 Basket button; scaled down for the smaller ones).
+	local function callout(text: string, size: number)
+		return e(Badge, {
+			kind = "count",
+			tone = "orange",
+			text = text,
+			anchorPoint = Vector2.new(1, 0),
+			position = UDim2.fromOffset(skin.px(18 * size / basket.size), -skin.px(8)),
+			zIndex = 6,
+		})
+	end
+
+	local function actionButton(icon: string, order: number, onActivated: (() -> ())?, sound: any?, badge: any?)
 		return e(PillButton, {
 			sound = sound,
+			badge = badge,
 			variant = "round",
 			size = action.size,
 			icon = icon,
@@ -139,22 +158,15 @@ local function WorldHud(props: Props)
 				onActivated = function()
 					props.nav.openRoot("Basket")
 				end,
-				-- Design: badge sits top -8px, right -18px of the 84 button.
-				badge = if total > 0
-					then e(Badge, {
-						kind = "count",
-						tone = "orange",
-						text = Tokens.robux(total),
-						anchorPoint = Vector2.new(1, 0),
-						position = UDim2.fromOffset(skin.px(18), -skin.px(8)),
-						zIndex = 6,
-					})
-					else nil,
+				badge = if #props.look.basket == 0 then nil
+					elseif props.look.basketTotal > 0 then callout(Tokens.robux(total), basket.size)
+					else callout(tostring(basketCount), basket.size),
 			}),
-			CreateAvatar = actionButton("person_add", 2, AccountPrompts.createOutfit),
-			SaveToRoblox = actionButton("cloud_upload", 3, AccountPrompts.saveAvatar),
-			-- Back to the player's own Roblox avatar (undoable).
-			Reset = actionButton("restart_alt", 4, props.look.reset, false),
+			Wearing = actionButton("checkroom", 2, function()
+				props.nav.openRoot("Wearing")
+			end, false, if #props.look.worn > 0 then callout(tostring(wornCount), action.size) else nil),
+			CreateAvatar = actionButton("person_add", 3, AccountPrompts.createOutfit),
+			SaveToRoblox = actionButton("cloud_upload", 4, AccountPrompts.saveAvatar),
 		}),
 		WorldToggle = e(PillButton, {
 			variant = "round",

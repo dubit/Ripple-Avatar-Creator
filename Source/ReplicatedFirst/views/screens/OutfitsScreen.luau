@@ -4,11 +4,18 @@
 	OutfitsScreen (design frame 5d: Outfits root and the outfit page)
 
 	Root: source tabs (Mine · Community · Roblox) beside a search box, and a
-	grid of outfit cards. Mine starts with a "Save what I'm wearing" card,
-	then your saved outfits (look.outfits, Task 12). The outfit you're
-	wearing exactly gets the orange ring. Search filters by name. Community
-	and Roblox still show placeholder outfits (Tasks 13 and 16). Cards show a
-	2×2 mosaic of the outfit's item thumbnails.
+	grid of outfit cards. Mine holds, in order:
+	  · Your avatar: your own Roblox avatar as it is (a restart badge; its
+	    Wear all reads "Reset to this": it's what Reset puts back)
+	  · Save what I'm wearing, then your saved outfits (look.outfits)
+	  · the outfits saved on Roblox itself, outside experiences
+	    (RobloxOutfits), marked with a "Roblox" badge. Roblox only lists them
+	    once you allow it, so until then a "Show my Roblox outfits" card asks.
+	The outfit you're wearing exactly gets the orange ring. Search filters by
+	name. Community and Roblox still show placeholder outfits (Tasks 13 and
+	16). Cards show a 2×2 mosaic of item thumbnails, the most telling first:
+	bodies, then heads, layered clothing, accessories, classic clothing, and
+	animations last.
 
 	Outfit page: on the left the preview (your avatar wearing it, for a saved
 	outfit: OutfitPreview), the name (tap to rename a saved one), Wear all and
@@ -44,6 +51,8 @@ local Icon = require(components:WaitForChild("Icon"))
 local Parts = require(script.Parent:WaitForChild("Parts"))
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
 local OutfitPreview = require(script.Parent:WaitForChild("OutfitPreview"))
+local RobloxOutfits = require(views:WaitForChild("catalogue"):WaitForChild("RobloxOutfits"))
+local Badge = require(components:WaitForChild("Badge"))
 local HudContext = require(views:WaitForChild("HudContext"))
 
 local e = React.createElement
@@ -53,11 +62,34 @@ local LEFT_WIDTH = 300
 
 -- An outfit as the screens see it, whichever source it came from.
 type OutfitView = {
-	id: number?, -- a saved outfit's id (Mine); nil for placeholders
+	kind: "saved" | "own" | "roblox" | "placeholder",
+	id: number?, -- the saved / Roblox outfit's id
+	source: string, -- nav source: "Mine" (saved), "Own", "RobloxSaved", or a placeholder tab
+	index: number, -- nav index: the id, or the placeholder list position
 	name: string,
 	by: string,
 	items: { number },
 }
+
+-- Card / page order of a type's thumbnail: the most telling first.
+local function rank(typeName: string?): number
+	local t = typeName or ""
+	if t == "BodyParts" or t == "DynamicHeadAvatar" or t == "Torso" or string.match(t, "^%a+Arm$") or string.match(t, "^%a+Leg$") then
+		return 1 -- the character
+	elseif t == "DynamicHead" or t == "Head" then
+		return 2
+	elseif t == "Shoes" or (string.match(t, "Accessory$") and (string.find(t, "Shirt") or string.find(t, "Pants") or string.find(t, "Jacket")
+		or string.find(t, "Sweater") or string.find(t, "Shorts") or string.find(t, "Dress") or string.find(t, "Shoe"))) then
+		return 3 -- layered clothing
+	elseif t == "Shirt" or t == "Pants" or t == "TShirt" then
+		return 5 -- classic clothing
+	elseif string.find(t, "Animation") or t == "Animations" then
+		return 6
+	elseif string.find(t, "Background") then
+		return 7
+	end
+	return 4 -- accessories, hair, makeup, gear
+end
 
 -- Wearing exactly this outfit: the same items, nothing more or less.
 local function wearingExactly(look: any, items: { number }): boolean
@@ -72,15 +104,27 @@ local function wearingExactly(look: any, items: { number }): boolean
 	return true
 end
 
+local function savedView(outfit: any): OutfitView
+	return { kind = "saved", id = outfit.id, source = "Mine", index = outfit.id, name = outfit.name, by = "Your outfit", items = outfit.items }
+end
+
+local function ownView(look: any): OutfitView
+	return { kind = "own", id = nil, source = "Own", index = 0, name = "Your avatar", by = "Your Roblox avatar", items = look.own }
+end
+
+local function robloxView(outfit: RobloxOutfits.Outfit): OutfitView
+	return { kind = "roblox", id = outfit.id, source = "RobloxSaved", index = outfit.id, name = outfit.name, by = "Saved on Roblox", items = outfit.items }
+end
+
 local function outfitsFor(look: any, source: string): { OutfitView }
 	local list: { OutfitView } = {}
 	if source == "Mine" then
 		for _, outfit in look.outfits do
-			table.insert(list, { id = outfit.id, name = outfit.name, by = "Your outfit", items = outfit.items })
+			table.insert(list, savedView(outfit))
 		end
 	else
-		for _, outfit in (PlaceholderData.outfits :: any)[source] or {} do
-			table.insert(list, { id = nil, name = outfit.name, by = outfit.by, items = outfit.items })
+		for index, outfit in (PlaceholderData.outfits :: any)[source] or {} do
+			table.insert(list, { kind = "placeholder", id = nil, source = source, index = index, name = outfit.name, by = outfit.by, items = outfit.items })
 		end
 	end
 	return list
@@ -90,20 +134,65 @@ local function findOutfit(look: any, source: string, index: number): OutfitView?
 	if source == "Mine" then
 		for _, outfit in look.outfits do
 			if outfit.id == index then
-				return { id = outfit.id, name = outfit.name, by = "Your outfit", items = outfit.items }
+				return savedView(outfit)
+			end
+		end
+		return nil
+	elseif source == "Own" then
+		return ownView(look)
+	elseif source == "RobloxSaved" then
+		for _, outfit in RobloxOutfits.outfits() do
+			if outfit.id == index then
+				return robloxView(outfit)
 			end
 		end
 		return nil
 	end
 	local outfit = ((PlaceholderData.outfits :: any)[source] or {})[index]
-	return if outfit then { id = nil, name = outfit.name, by = outfit.by, items = outfit.items } else nil
+	return if outfit
+		then { kind = "placeholder", id = nil, source = source, index = index, name = outfit.name, by = outfit.by, items = outfit.items }
+		else nil
+end
+
+-- Re-render when the Roblox-saved outfits (or their items) arrive.
+local function useRobloxOutfits(active: boolean)
+	local _version, setVersion = React.useState(0)
+	React.useEffect(function()
+		local connection = RobloxOutfits.changed:Connect(function()
+			setVersion(function(v: number)
+				return v + 1
+			end)
+		end)
+		return function()
+			connection:Disconnect()
+		end
+	end, {})
+	React.useEffect(function()
+		if active then
+			RobloxOutfits.check()
+		end
+		return nil
+	end, { active })
 end
 
 -- Up to four item thumbnails in a 2×2 grid (items with pictures first).
 local function mosaic(items: { number }): { [string]: any }
+	local ordered = {}
+	for index, id in items do
+		local item = PlaceholderData.item(id)
+		if item then
+			table.insert(ordered, { item = item, rank = rank(item.typeName), index = index })
+		end
+	end
+	table.sort(ordered, function(a, b)
+		if a.rank ~= b.rank then
+			return a.rank < b.rank
+		end
+		return a.index < b.index
+	end)
 	local images = {}
-	for _, id in items do
-		local image = Parts.image(PlaceholderData.item(id))
+	for _, entry in ordered do
+		local image = Parts.image(entry.item)
 		if image then
 			table.insert(images, image)
 			if #images == 4 then
@@ -131,6 +220,7 @@ local function OutfitCard(props: {
 	outfit: OutfitView,
 	sub: string,
 	ring: boolean,
+	badge: any?, -- top-left marker (your avatar / from Roblox)
 	onActivated: () -> (),
 	layoutOrder: number,
 })
@@ -159,6 +249,15 @@ local function OutfitCard(props: {
 		}, {
 			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
 			Mosaic = e(React.Fragment, nil, cells),
+			Badge = if props.badge
+				then e("Frame", {
+					Position = UDim2.fromOffset(skin.px(8), skin.px(8)),
+					Size = UDim2.fromOffset(0, 0),
+					AutomaticSize = Enum.AutomaticSize.XY,
+					BackgroundTransparency = 1,
+					ZIndex = 2,
+				}, { Badge = props.badge })
+				else nil,
 		}),
 		Meta = e("Frame", {
 			AnchorPoint = Vector2.new(0, 1),
@@ -194,13 +293,21 @@ local function OutfitCard(props: {
 	})
 end
 
--- The first Mine card: save what you're wearing as a new outfit.
-local function SaveCard(props: { count: number, onActivated: () -> (), layoutOrder: number })
+-- A dashed orange action card in the grid: save what you're wearing, or
+-- show your Roblox outfits.
+local function ActionCard(props: {
+	icon: string,
+	label: string, -- inside the card
+	title: string, -- under it, like an outfit's name
+	sub: string,
+	onActivated: () -> (),
+	layoutOrder: number,
+})
 	local skin = useSkin()
 	local interaction = useInteraction()
 	local orange = Tokens.color.accentText
 	return e("TextButton", {
-		Name = "SaveCard",
+		Name = "ActionCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 		AutoButtonColor = false,
@@ -231,11 +338,11 @@ local function SaveCard(props: { count: number, onActivated: () -> (), layoutOrd
 				SortOrder = Enum.SortOrder.LayoutOrder,
 				Padding = UDim.new(0, skin.px(4)),
 			}),
-			Icon = e(Icon, { name = "add_circle", size = 36, color = orange, layoutOrder = 1 }),
+			Icon = e(Icon, { name = props.icon, size = 36, color = orange, layoutOrder = 1 }),
 			Label = e("TextLabel", {
 				Size = UDim2.new(1, -skin.px(12), 0, skin.textPx(13) * 2 + skin.px(2)),
 				BackgroundTransparency = 1,
-				Text = "Save what I'm wearing",
+				Text = props.label,
 				TextColor3 = orange,
 				TextSize = skin.textPx(13),
 				FontFace = Tokens.font(900),
@@ -253,7 +360,7 @@ local function SaveCard(props: { count: number, onActivated: () -> (), layoutOrd
 			Name = e("TextLabel", {
 				Size = UDim2.new(1, 0, 0, skin.textPx(13.5) + skin.px(2)),
 				BackgroundTransparency = 1,
-				Text = "New outfit",
+				Text = props.title,
 				TextColor3 = Tokens.color.white,
 				TextSize = skin.textPx(13.5),
 				FontFace = Tokens.font(800),
@@ -263,7 +370,7 @@ local function SaveCard(props: { count: number, onActivated: () -> (), layoutOrd
 			Sub = e("TextLabel", {
 				Size = UDim2.new(1, 0, 0, skin.textPx(12) + skin.px(2)),
 				BackgroundTransparency = 1,
-				Text = props.count .. " items",
+				Text = props.sub,
 				TextColor3 = Tokens.color.white,
 				TextTransparency = Tokens.alpha.textDim,
 				TextSize = skin.textPx(12),
@@ -299,35 +406,82 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		})
 	end
 
+	local mine = source == "Mine"
+	useRobloxOutfits(mine)
 	local needle = string.lower(query)
+	local function matches(name: string): boolean
+		return needle == "" or string.find(string.lower(name), needle, 1, true) ~= nil
+	end
 	local cards: { [string]: any } = {}
 	local count = 0
-	if source == "Mine" then
-		count += 1
-		cards.Save = e(SaveCard, {
-			count = #look.worn,
-			layoutOrder = 0,
-			onActivated = look.saveOutfit,
-		})
-	end
-	for index, outfit in outfitsFor(look, source) do
-		if needle ~= "" and not string.find(string.lower(outfit.name), needle, 1, true) then
-			continue
+	local function addOutfit(outfit: OutfitView, sub: string, badge: any?)
+		if not matches(outfit.name) then
+			return
 		end
 		count += 1
-		cards["Outfit" .. index] = e(OutfitCard, {
+		cards["Outfit" .. count] = e(OutfitCard, {
 			outfit = outfit,
-			sub = if source == "Mine" then #outfit.items .. " items" else "by " .. outfit.by,
+			sub = sub,
 			ring = wearingExactly(look, outfit.items),
-			layoutOrder = index,
+			badge = badge,
+			layoutOrder = count,
 			onActivated = function()
 				props.nav.push({
 					kind = "outfit",
-					id = { source = source, index = outfit.id or index },
+					id = { source = outfit.source, index = outfit.index },
 					label = outfit.name,
 				})
 			end,
 		})
+	end
+	local function addAction(key: string, card: { [string]: any })
+		count += 1
+		card.layoutOrder = count
+		cards[key] = e(ActionCard, card :: any)
+	end
+
+	if mine then
+		-- Your own Roblox avatar first: wearing it is a reset.
+		if #look.own > 0 then
+			addOutfit(ownView(look), "Reset to your avatar", e(Badge, { kind = "marker", tone = "white", icon = "restart_alt" }))
+		end
+		if needle == "" then
+			addAction("Save", {
+				icon = "add_circle",
+				label = "Save what I'm wearing",
+				title = "New outfit",
+				sub = #look.worn .. " items",
+				onActivated = look.saveOutfit,
+			})
+		end
+		for _, outfit in outfitsFor(look, "Mine") do
+			addOutfit(outfit, #outfit.items .. " items")
+		end
+		-- Then the ones saved on Roblox itself (once Roblox lets us see them).
+		local status = RobloxOutfits.status()
+		if status == "ready" then
+			for _, outfit in RobloxOutfits.outfits() do
+				addOutfit(robloxView(outfit), "Saved on Roblox", e(Badge, { kind = "count", tone = "white", text = "Roblox" }))
+			end
+		elseif status == "loading" then
+			count += 1
+			cards.RobloxLoading = e(Parts.LoadingCard, { layoutOrder = count })
+		elseif (status == "locked" or status == "denied") and needle == "" then
+			addAction("Roblox", {
+				icon = "lock",
+				label = "Show my Roblox outfits",
+				title = "Outfits on Roblox",
+				sub = if status == "denied" then "Roblox needs your OK" else "Saved outside this game",
+				onActivated = function()
+					Sounds.play("press")
+					RobloxOutfits.request()
+				end,
+			})
+		end
+	else
+		for _, outfit in outfitsFor(look, source) do
+			addOutfit(outfit, "by " .. outfit.by)
+		end
 	end
 
 	local tabsHeight = skin.px(Tokens.size.textTabHeight)
@@ -454,6 +608,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local skin = useSkin()
 	local hud = React.useContext(HudContext)
 	local look = props.look
+	useRobloxOutfits(props.source == "RobloxSaved")
 	local outfit = findOutfit(look, props.source, props.index)
 	-- Selected rows by position; everything starts selected.
 	local deselected, setDeselected = React.useState({} :: { [number]: boolean })
@@ -562,8 +717,9 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 		}, { Button = e(PillButton, button :: any) })
 	end
 
-	local saved = outfit.id ~= nil
+	local saved = outfit.kind == "saved"
 	local outfitId = outfit.id
+	local kind = outfit.kind
 	local leftWidth = skin.px(LEFT_WIDTH)
 	local buttonsHeight = skin.px(Tokens.size.ctaHeight)
 	local headerHeight = skin.px(26)
@@ -588,8 +744,8 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				BackgroundTransparency = 1,
 				LayoutOrder = 1,
 			}, {
-				View = if saved and outfitId
-					then e(OutfitPreview, { outfitId = outfitId, ring = ring })
+				View = if kind ~= "placeholder"
+					then e(OutfitPreview, { kind = kind, outfitId = outfitId, ring = ring })
 					else e(Parts.Thumb, {
 						colour = Parts.swatch(""),
 						radius = 20,
@@ -621,14 +777,18 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 			WearAll = e(PillButton, {
 				variant = "pill",
 				size = Tokens.size.ctaHeight,
-				icon = "checkroom",
+				icon = if kind == "own" then "restart_alt" else "checkroom",
 				iconSize = 18,
-				label = "Wear all",
+				label = if kind == "own" then "Reset to this" else "Wear all",
 				active = true,
 				sound = false, -- the look change plays its own sound
 				layoutOrder = 4,
 				onActivated = function()
-					if outfitId then
+					if kind == "own" then
+						look.reset()
+					elseif kind == "roblox" and outfitId then
+						look.wearRobloxOutfit(outfitId)
+					elseif kind == "saved" and outfitId then
 						look.wearOutfit(outfitId)
 					else
 						look.wearAll(items)
@@ -710,7 +870,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					Padding = UDim.new(0, skin.px(8)),
 				}),
 				WearSelected = bottomButton("Wear selected", "checkroom", 1, #selected == 0, function()
-					if outfitId then
+					if saved and outfitId then
 						look.wearOutfitItems(outfitId, selected)
 					else
 						look.wearAll(selectedIds)

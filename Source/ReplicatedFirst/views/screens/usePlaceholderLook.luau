@@ -74,6 +74,8 @@ export type Look = {
 	buy: (ids: { number }) -> number?, -- the request id; nil if nothing to buy
 	purchase: Network.PurchaseResult, -- the latest purchase's outcome
 	outfits: { SavedOutfit }, -- the player's saved outfits, oldest first
+	own: { number }, -- the player's own Roblox avatar's items (what Reset puts back)
+	wearRobloxOutfit: (outfitId: number) -> (), -- an outfit saved on Roblox
 	saveOutfit: () -> boolean, -- save what's worn; false if nothing is
 	renameOutfit: (id: number, name: string) -> (),
 	deleteOutfit: (id: number) -> (),
@@ -235,6 +237,11 @@ local function usePlaceholderLook(): Look
 		end
 	end, {})
 
+	local own = {}
+	for _, entry in avatar.own or {} do
+		table.insert(own, CatalogueClient.remember(entry).id)
+	end
+
 	local worn = {}
 	local wornSet = {}
 	for _, entry in avatar.worn or {} do
@@ -395,6 +402,10 @@ local function usePlaceholderLook(): Look
 		end,
 		purchase = ownership.purchase or DEFAULT_OWNERSHIP.purchase,
 		outfits = outfits,
+		own = own,
+		wearRobloxOutfit = function(outfitId: number)
+			intent:FireServer(actions.WearRobloxOutfit, outfitId)
+		end,
 		saveOutfit = function(): boolean
 			if #worn == 0 then
 				return false

@@ -20,7 +20,9 @@
 		WearSelected({ id, indices })   put those items on over the current look
 
 	The outfit page's 3D preview asks over the "OutfitPreview" remote function
-	(Bolt) with an outfit id: the server builds the look
+	(Bolt) with (kind, id): "saved" + a saved outfit's id, "own" (the player's
+	own Roblox avatar) or "roblox" + an outfit saved on Roblox. The server
+	builds the look
 	(AvatarService.describeLook, the same code that dresses characters) and
 	parents the HumanoidDescription into the player's PlayerGui (so only they
 	get it), returning its name; the client builds a rig from it. Previews are
@@ -206,8 +208,8 @@ function OutfitsController:executeAction(player: Player, action: Network.Outfits
 end
 
 -- The outfit page's preview: build the look and hand it to this player only.
-local function preview(player: Player, id: any): string?
-	if type(id) ~= "number" then
+local function preview(player: Player, kind: any, id: any): string?
+	if kind ~= "own" and type(id) ~= "number" then
 		return nil
 	end
 	local now = os.clock()
@@ -221,14 +223,24 @@ local function preview(player: Player, id: any): string?
 	end
 	table.insert(times, now)
 
-	local model = OutfitsModel.get(tostring(player.UserId))
-	local outfit = model and model:find(id)
 	local gui = player:FindFirstChildOfClass("PlayerGui")
-	if not outfit or not gui then
+	if not gui then
 		return nil
 	end
-	local ok, description = pcall(AvatarService.describeLook, player, outfit.items)
-	if not ok or not description then
+	local description: HumanoidDescription? = nil
+	if kind == "saved" then
+		local model = OutfitsModel.get(tostring(player.UserId))
+		local outfit = model and model:find(id)
+		if outfit then
+			local ok, result = pcall(AvatarService.describeLook, player, outfit.items)
+			description = if ok then result else nil
+		end
+	elseif kind == "own" then
+		description = AvatarService.ownDescription(player)
+	elseif kind == "roblox" then
+		description = AvatarService.robloxOutfit(id)
+	end
+	if not description then
 		return nil
 	end
 	local folder = gui:FindFirstChild(PREVIEW_FOLDER)
