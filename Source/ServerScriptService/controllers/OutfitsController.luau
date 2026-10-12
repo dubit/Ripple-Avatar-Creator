@@ -11,6 +11,7 @@
 
 	Actions:
 		Save()                     save what's being worn as "Outfit N"
+		Overwrite({ id })          replace that outfit's items with what's worn
 		Rename({ id, name })       rename (trimmed, length-capped and passed
 		                           through Roblox text filtering for text others
 		                           may see, since outfits can be shared later)
@@ -119,6 +120,18 @@ local function save(player: Player, model: any, _raw: any)
 	end
 end
 
+local function overwrite(player: Player, model: any, raw: any)
+	local id = idOf(raw)
+	local avatar = AvatarModel.get(tostring(player.UserId))
+	if not id or not avatar or #avatar.worn == 0 then
+		return
+	end
+	local outfit = model:overwrite(id, avatar.worn)
+	if outfit then
+		track(player, "outfit_save", { outfit_id = outfit.id, item_count = #outfit.items, replaced = true })
+	end
+end
+
 local function rename(player: Player, model: any, raw: any)
 	local id = idOf(raw)
 	local name = if type(raw) == "table" then raw.name else nil
@@ -188,6 +201,7 @@ end
 
 local ACTIONS = {
 	[Network.Actions.Outfits.Save] = save,
+	[Network.Actions.Outfits.Overwrite] = overwrite,
 	[Network.Actions.Outfits.Rename] = rename,
 	[Network.Actions.Outfits.Delete] = delete,
 	[Network.Actions.Outfits.WearAll] = wearAll,

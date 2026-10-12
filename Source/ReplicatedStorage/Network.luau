@@ -47,7 +47,7 @@ local NetworkConfig = {
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
 		Favourites = { "Toggle" },
-		Outfits = { "Save", "Rename", "Delete", "WearAll", "WearSelected" },
+		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected" },
 		Purchase = { "Buy", "Finished", "Check" },
 		Shrine = { "Donate" },
 		SlashCommand = {},  -- No actions, just the intent
@@ -154,7 +154,7 @@ export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"
 export type FavouritesAction = "Toggle"
 export type PurchaseAction = "Buy" | "Finished" | "Check"
-export type OutfitsAction = "Save" | "Rename" | "Delete" | "WearAll" | "WearSelected"
+export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected"
 export type ShrineAction = "Donate"
 export type WorldOptionsAction = "Set" | "Reset"
 

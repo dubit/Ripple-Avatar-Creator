@@ -74,9 +74,11 @@ export type Look = {
 	buy: (ids: { number }) -> number?, -- the request id; nil if nothing to buy
 	purchase: Network.PurchaseResult, -- the latest purchase's outcome
 	outfits: { SavedOutfit }, -- the player's saved outfits, oldest first
+	currentOutfit: SavedOutfit?, -- the saved outfit being worn exactly, if any
 	own: { number }, -- the player's own Roblox avatar's items (what Reset puts back)
 	wearRobloxOutfit: (outfitId: number) -> (), -- an outfit saved on Roblox
 	saveOutfit: () -> boolean, -- save what's worn; false if nothing is
+	overwriteOutfit: (id: number) -> (), -- replace its items with what's worn
 	renameOutfit: (id: number, name: string) -> (),
 	deleteOutfit: (id: number) -> (),
 	wearOutfit: (id: number) -> (), -- exactly the outfit (replaces the look)
@@ -285,6 +287,24 @@ local function usePlaceholderLook(): Look
 		return nil
 	end, { avatar, basketState })
 
+	-- The saved outfit being worn exactly (same items, nothing more or less).
+	local currentOutfit: SavedOutfit? = nil
+	for _, outfit in outfits do
+		if #outfit.items == #worn and #worn > 0 then
+			local all = true
+			for _, id in outfit.items do
+				if not wornSet[id] then
+					all = false
+					break
+				end
+			end
+			if all then
+				currentOutfit = outfit
+				break
+			end
+		end
+	end
+
 	local function isWorn(id: number): boolean
 		return wornSet[id] == true
 	end
@@ -402,6 +422,7 @@ local function usePlaceholderLook(): Look
 		end,
 		purchase = ownership.purchase or DEFAULT_OWNERSHIP.purchase,
 		outfits = outfits,
+		currentOutfit = currentOutfit,
 		own = own,
 		wearRobloxOutfit = function(outfitId: number)
 			intent:FireServer(actions.WearRobloxOutfit, outfitId)
@@ -412,6 +433,11 @@ local function usePlaceholderLook(): Look
 			end
 			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Save)
 			return true
+		end,
+		overwriteOutfit = function(id: number)
+			if #worn > 0 then
+				Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Overwrite, { id = id })
+			end
 		end,
 		renameOutfit = function(id: number, name: string)
 			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Rename, { id = id, name = name })

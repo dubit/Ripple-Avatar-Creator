@@ -651,6 +651,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local selected: { number } = {} -- positions
 	local selectedIds: { number } = {}
 	local cost = 0
+	local unownedSelected = 0
 	for index, id in items do
 		if not deselected[index] then
 			table.insert(selected, index)
@@ -658,6 +659,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 			local item = PlaceholderData.item(id)
 			if item and not item.owned then
 				cost += item.price
+				unownedSelected += 1
 			end
 		end
 	end
@@ -888,7 +890,8 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 						look.wearAll(selectedIds)
 					end
 				end),
-				Basket = bottomButton("Add to basket", "add_shopping_cart", 2, #selected == 0, function()
+				-- Basket and Buy only when something selected isn't owned yet.
+				Basket = bottomButton("Add to basket", "add_shopping_cart", 2, unownedSelected == 0, function()
 					local unowned = {}
 					for _, id in selectedIds do
 						local item = PlaceholderData.item(id)
@@ -902,7 +905,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					if cost > 0 then "Buy · " .. Tokens.robux(cost) else "Buy",
 					"toll",
 					3,
-					#selected == 0,
+					unownedSelected == 0,
 					function()
 						hud.buy(selectedIds, "outfit")
 					end,

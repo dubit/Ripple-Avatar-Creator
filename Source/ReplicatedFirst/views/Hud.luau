@@ -88,6 +88,10 @@ local function withFeedback(look: any)
 		Sounds.play(if saved then "confirm" else "error") -- nothing worn to save
 		return saved
 	end
+	feedback.overwriteOutfit = function(id: number)
+		Sounds.play("confirm")
+		look.overwriteOutfit(id)
+	end
 	feedback.wearOutfit = function(id: number)
 		Sounds.play("tryOn")
 		look.wearOutfit(id)

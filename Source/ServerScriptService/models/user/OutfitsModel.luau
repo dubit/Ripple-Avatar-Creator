@@ -72,11 +72,8 @@ function OutfitsModel:isFull(): boolean
 	return #self.outfits >= AvatarConfig.outfits.maxOutfits
 end
 
--- Save a new outfit from these items. Returns it (nil when full).
-function OutfitsModel:add(name: string, items: { OutfitItem }): Outfit?
-	if self:isFull() then
-		return nil
-	end
+-- The items to keep: plain records, capped at maxItems.
+local function keep(items: { OutfitItem }): { OutfitItem }
 	local kept = {}
 	for index, item in items do
 		if index > AvatarConfig.outfits.maxItems then
@@ -84,9 +81,28 @@ function OutfitsModel:add(name: string, items: { OutfitItem }): Outfit?
 		end
 		table.insert(kept, { targetId = item.targetId, kind = item.kind, typeName = item.typeName, name = item.name })
 	end
-	local outfit = { id = self.nextId, name = name, items = kept }
+	return kept
+end
+
+-- Save a new outfit from these items. Returns it (nil when full).
+function OutfitsModel:add(name: string, items: { OutfitItem }): Outfit?
+	if self:isFull() then
+		return nil
+	end
+	local outfit = { id = self.nextId, name = name, items = keep(items) }
 	self.nextId += 1
 	table.insert(self.outfits, outfit)
+	self:syncState()
+	return outfit
+end
+
+-- Replace an outfit's items (keeping its id and name).
+function OutfitsModel:overwrite(id: number, items: { OutfitItem }): Outfit?
+	local outfit = self:find(id)
+	if not outfit then
+		return nil
+	end
+	outfit.items = keep(items)
 	self:syncState()
 	return outfit
 end

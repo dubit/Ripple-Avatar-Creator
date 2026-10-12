@@ -7,7 +7,10 @@
 	total) with Buy all, Try on everything, Add what I'm wearing (the unowned
 	worn items not already in it) and Remove all (press twice). Wearing: what's on the avatar
 	(price or Owned, Basket toggle, Take off) with Buy all (the unowned ones),
-	Add unowned to basket, Save as outfit and Take everything off (press twice). Rows open the item page.
+	Add unowned to basket, Save as new outfit / Save over existing outfit (a
+	picker over the rows), and Take everything off (press twice). Once the
+	look is a saved outfit it offers Go to <outfit> instead of saving. Rows
+	open the item page.
 
 	Buy / Get and Buy all open Roblox's purchase prompt; Save as outfit saves
 	the look to Outfits › Mine.
@@ -28,6 +31,9 @@ local PillButton = require(components:WaitForChild("PillButton"))
 local ConfirmButton = require(components:WaitForChild("ConfirmButton"))
 local GlassPanel = require(components:WaitForChild("GlassPanel"))
 local ShadowText = require(components:WaitForChild("ShadowText"))
+local Icon = require(components:WaitForChild("Icon"))
+local Sounds = require(views:WaitForChild("Sounds"))
+local useBackInput = require(hooks:WaitForChild("useBackInput"))
 local Parts = require(script.Parent:WaitForChild("Parts"))
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
 local HudContext = require(views:WaitForChild("HudContext"))
@@ -73,10 +79,11 @@ local function smallButton(label: string, order: number, active: boolean?, onAct
 	})
 end
 
-local function rowList(skin, rows: { [string]: any }, count: number, emptyText: string)
+local function rowList(skin, rows: { [string]: any }, count: number, emptyText: string, fullWidth: boolean?)
+	local width = if fullWidth then UDim2.fromScale(1, 1) else UDim2.new(1, -skin.px(SIDE_WIDTH + 16), 1, 0)
 	if count == 0 then
 		return e("Frame", {
-			Size = UDim2.new(1, -skin.px(SIDE_WIDTH + 16), 1, 0),
+			Size = width,
 			BackgroundTransparency = 1,
 		}, {
 			Layout = e("UIListLayout", {
@@ -95,7 +102,7 @@ local function rowList(skin, rows: { [string]: any }, count: number, emptyText: 
 		PaddingRight = UDim.new(0, skin.px(8)),
 	})
 	return e("ScrollingFrame", {
-		Size = UDim2.new(1, -skin.px(SIDE_WIDTH + 16), 1, 0),
+		Size = width,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		CanvasSize = UDim2.fromOffset(0, count * (skin.px(64) + skin.px(8)) + skin.px(6)),
@@ -184,37 +191,88 @@ local function wideButton(
 	})
 end
 
--- Save as outfit: saves what's worn, then reads "Saved to Outfits" for a
--- moment (the new outfit is in Outfits › Mine; no toast).
-local SAVED_SECONDS = 2
+-- After saving, the save button reads "Saved to Outfits" for a moment.
+local SAVED_SECONDS = 1.5
 
-local function SaveOutfitButton(props: { look: any, layoutOrder: number })
-	local saved, setSaved = React.useState(false)
+-- Over the Wearing rows: pick which saved outfit to save over. A tap arms a
+-- row ("Tap again to replace"); a second tap replaces that outfit's items
+-- with what's worn. Back or the close button shuts it.
+local function OutfitPicker(props: { look: any, onPicked: () -> (), onClose: () -> () })
+	local skin = useSkin()
+	local armed, setArmed = React.useState(nil :: number?)
+	useBackInput(function()
+		props.onClose()
+		return true
+	end)
 	React.useEffect(function()
-		if not saved then
+		if not armed then
 			return nil
 		end
-		local thread = task.delay(SAVED_SECONDS, function()
-			setSaved(false)
+		local thread = task.delay(3, function()
+			setArmed(nil)
 		end)
 		return function()
 			task.cancel(thread)
 		end
-	end, { saved })
-	return e(PillButton, {
-		variant = "pill",
-		size = Tokens.size.ctaHeight,
-		label = if saved then "Saved to Outfits" else "Save as outfit",
-		icon = if saved then "check" else "bookmark_add",
-		iconSize = 18,
-		sound = false, -- saving plays its own sound
-		disabled = #props.look.worn == 0,
-		layoutOrder = props.layoutOrder,
-		onActivated = function()
-			if not saved and props.look.saveOutfit() then
-				setSaved(true)
-			end
-		end,
+	end, { armed })
+
+	local rows: { [string]: any } = {}
+	for index, outfit in props.look.outfits do
+		local first = PlaceholderData.item(outfit.items[1])
+		local isArmed = armed == outfit.id
+		rows["Row" .. outfit.id] = e(Parts.ListRow, {
+			title = outfit.name,
+			subtitle = if isArmed then "Tap again to replace it with what you're wearing" else #outfit.items .. " items",
+			colour = Parts.swatch(if first then first.colour else ""),
+			image = if first then Parts.image(first) else nil,
+			layoutOrder = index,
+			trailingWidth = 40,
+			trailing = {
+				Mark = if isArmed then e(Icon, { name = "check_circle", size = 22, color = Tokens.color.accentText }) else nil,
+			},
+			onActivated = function()
+				if isArmed then
+					props.look.overwriteOutfit(outfit.id)
+					props.onPicked()
+				else
+					Sounds.play("press")
+					setArmed(outfit.id)
+				end
+			end,
+		})
+	end
+	local count = #props.look.outfits
+	local titleHeight = skin.px(40)
+	return e(GlassPanel, {
+		variant = "bar",
+		cornerRadius = Tokens.radius.basketCard,
+		size = UDim2.new(1, -skin.px(SIDE_WIDTH + 16), 1, 0),
+		shadow = true,
+		zIndex = 5,
+	}, {
+		Padding = e("UIPadding", {
+			PaddingTop = UDim.new(0, skin.px(12)),
+			PaddingBottom = UDim.new(0, skin.px(12)),
+			PaddingLeft = UDim.new(0, skin.px(14)),
+			PaddingRight = UDim.new(0, skin.px(12)),
+		}),
+		Title = e(ShadowText, { text = "Save over which outfit?", style = Tokens.type.cardTitle }),
+		Close = e(PillButton, {
+			variant = "round",
+			size = Tokens.size.small.size,
+			icon = "close",
+			iconSize = Tokens.size.small.icon,
+			glowRadius = 0,
+			sound = "back",
+			anchorPoint = Vector2.new(1, 0),
+			position = UDim2.fromScale(1, 0),
+			onActivated = props.onClose,
+		}),
+		List = e("Frame", {
+			Position = UDim2.fromOffset(0, titleHeight),
+			Size = UDim2.new(1, 0, 1, -titleHeight),
+			BackgroundTransparency = 1,
+		}, { Rows = rowList(skin, rows, count, "No saved outfits yet", true) }),
 	})
 end
 
@@ -296,6 +354,20 @@ local function WearingScreen(props: { nav: any, look: any })
 	local skin = useSkin()
 	local hud = React.useContext(HudContext)
 	local look = props.look
+	local picking, setPicking = React.useState(false)
+	local justSaved, setJustSaved = React.useState(false)
+	React.useEffect(function()
+		if not justSaved then
+			return nil
+		end
+		local thread = task.delay(SAVED_SECONDS, function()
+			setJustSaved(false)
+		end)
+		return function()
+			task.cancel(thread)
+		end
+	end, { justSaved })
+	local current = look.currentOutfit
 	local rows: { [string]: any } = {}
 	local unowned, cost = 0, 0
 	-- Unowned paid items first (dearest first), then free, then owned; the
@@ -355,7 +427,20 @@ local function WearingScreen(props: { nav: any, look: any })
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 	}, {
-		Rows = rowList(skin, rows, #look.worn, "You're not wearing anything"),
+		-- (Hidden under the picker: glass shows what's behind it.)
+		Rows = if picking then nil else rowList(skin, rows, #look.worn, "You're not wearing anything"),
+		Picker = if picking
+			then e(OutfitPicker, {
+				look = look,
+				onPicked = function()
+					setPicking(false)
+					setJustSaved(true)
+				end,
+				onClose = function()
+					setPicking(false)
+				end,
+			})
+			else nil,
 		Summary = sidePanel(skin, "Wearing", {
 			summaryLine(skin, "Items", tostring(#look.worn), 1),
 			summaryLine(skin, "Not owned", unowned .. " · " .. (if cost > 0 then Tokens.robux(cost) else "Free"), 2),
@@ -372,11 +457,28 @@ local function WearingScreen(props: { nav: any, look: any })
 				end
 				look.addToBasket(unownedIds)
 			end, false),
-			e(SaveOutfitButton, { look = look, layoutOrder = 11 }),
+			-- Saving: as a new outfit or over one you have. Once what you're
+			-- wearing is a saved outfit (just saved, or put on), this is a way
+			-- to that outfit instead, until the look changes.
+			if justSaved
+				then wideButton("Saved to Outfits", "check", 11, false, nil, false)
+				elseif current then wideButton("Go to " .. current.name, "chevron_right", 11, false, function()
+					props.nav.push({ kind = "outfit", id = { source = "Mine", index = current.id }, label = current.name })
+				end)
+				else wideButton("Save as new outfit", "bookmark_add", 11, false, function()
+					if look.saveOutfit() then
+						setJustSaved(true)
+					end
+				end, false, #look.worn == 0),
+			if justSaved or current
+				then nil
+				else wideButton("Save over existing outfit", "checkroom", 12, false, function()
+					setPicking(true)
+				end, nil, #look.worn == 0 or #look.outfits == 0),
 			e(ConfirmButton, {
 				label = "Take everything off",
 				icon = "delete_sweep",
-				layoutOrder = 12,
+				layoutOrder = 13,
 				disabled = #look.worn == 0,
 				onConfirm = look.takeOffAll,
 			}),
