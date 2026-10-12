@@ -50,6 +50,7 @@ local ShadowText = require(components:WaitForChild("ShadowText"))
 local Breadcrumbs = require(script.Parent:WaitForChild("Breadcrumbs"))
 local Sounds = require(views:WaitForChild("Sounds"))
 local CatalogueScreen = require(screens:WaitForChild("CatalogueScreen"))
+local SkinToneScreen = require(screens:WaitForChild("SkinToneScreen"))
 local ItemScreen = require(screens:WaitForChild("ItemScreen"))
 local StoresScreen = require(screens:WaitForChild("StoresScreen"))
 local OutfitsScreen = require(screens:WaitForChild("OutfitsScreen"))
@@ -260,6 +261,8 @@ local function deepScreen(nav: any, look: any)
 			return e(StoresScreen.Store, { nav = nav, look = look, storeId = top.id })
 		elseif top.kind == "outfit" then
 			return e(OutfitsScreen.Outfit, { nav = nav, look = look, source = top.id.source, index = top.id.index })
+		elseif top.kind == "skin" then
+			return e(SkinToneScreen, { nav = nav, look = look, colours = top.id.colours, from = top.id.from })
 		end
 	end
 	return nil

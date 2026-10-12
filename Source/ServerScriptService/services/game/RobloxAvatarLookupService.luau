@@ -41,7 +41,7 @@ local AvatarModel = require(ServerScriptService.models.user.AvatarModel)
 local RobloxAvatarLookupService = {}
 
 export type User = { userId: number, username: string, displayName: string }
-export type Look = User & { inServer: boolean, items: { any }, skin: string }
+export type Look = User & { inServer: boolean, items: { any }, skin: { [string]: string } }
 
 local CACHE_SECONDS = 600
 local BUDGET = { requests = 20, seconds = 30 }
@@ -163,7 +163,7 @@ function RobloxAvatarLookupService.look(userId: number): Look?
 		displayName = user.displayName,
 		inServer = false,
 		items = entry.items,
-		skin = if entry.description then AvatarService.skinOf(entry.description) else "",
+		skin = if entry.description then AvatarService.skinOf(entry.description) else {},
 	}
 end
 

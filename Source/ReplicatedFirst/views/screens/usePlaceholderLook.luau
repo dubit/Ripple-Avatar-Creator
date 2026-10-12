@@ -39,6 +39,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
 
 local views = script.Parent.Parent
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
@@ -51,7 +52,7 @@ export type SavedOutfit = {
 	id: number,
 	name: string,
 	items: { number }, -- item ids, in the order they were put on
-	skin: string, -- the skin tone saved with it ("" = the wearer's own)
+	skin: SkinColours.Colours, -- the skin colours saved with it ({} = the wearer's own)
 }
 
 export type Look = {
@@ -62,9 +63,10 @@ export type Look = {
 	inBasket: (id: number) -> boolean,
 	canWear: (id: number) -> boolean, -- a real catalogue item (not a mock)
 	toggleWear: (id: number) -> boolean, -- false if the item can't be worn
-	wearAll: (ids: { number }, skin: string?) -> number, -- how many could be worn; `skin` sets the tone too
-	skin: string, -- chosen skin tone "#RRGGBB", "" = your own
-	setSkin: (skin: string) -> (),
+	wearAll: (ids: { number }, skin: SkinColours.Colours?) -> number, -- how many could be worn; `skin` sets colours too
+	skin: SkinColours.Colours, -- chosen skin colours by body part (a part left out is your own)
+	ownSkin: SkinColours.Colours, -- your own avatar's colours, all six parts
+	setSkin: (skin: SkinColours.Colours) -> (),
 	takeOffAll: () -> (),
 	undo: () -> (),
 	reset: () -> (), -- back to the player's own Roblox avatar
@@ -164,7 +166,7 @@ local function usePlaceholderLook(): Look
 		for _, entry in outfit.items or {} do
 			table.insert(ids, CatalogueClient.remember(entry).id)
 		end
-		table.insert(outfits, { id = outfit.id, name = outfit.name, items = ids, skin = outfit.skin or "" })
+		table.insert(outfits, { id = outfit.id, name = outfit.name, items = ids, skin = SkinColours.normalise(outfit.skin) })
 	end
 	-- Known-owned items show as owned wherever they appear (items are shared).
 	for _, key in ownership.owned or {} do
@@ -344,11 +346,12 @@ local function usePlaceholderLook(): Look
 			intent:FireServer(if isWorn(id) then actions.TakeOff else actions.TryOn, ref(id))
 			return true
 		end,
-		skin = avatar.skin or "",
-		setSkin = function(skin: string)
+		skin = SkinColours.normalise(avatar.skin),
+		ownSkin = SkinColours.normalise(avatar.ownSkin),
+		setSkin = function(skin: SkinColours.Colours)
 			intent:FireServer(actions.SetSkin, skin)
 		end,
-		wearAll = function(ids: { number }, skin: string?): number
+		wearAll = function(ids: { number }, skin: SkinColours.Colours?): number
 			local refs = {}
 			for _, id in ids do
 				if canWear(id) then

@@ -20,6 +20,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local AbstractModel = require(script.Parent.Parent.AbstractModel)
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
 
 local OutfitsModel = {}
 OutfitsModel.__index = OutfitsModel
@@ -36,7 +37,7 @@ export type Outfit = {
 	id: number,
 	name: string,
 	items: { OutfitItem },
-	skin: string?, -- the skin tone worn with it ("" = the wearer's own)
+	skin: any?, -- skin colours worn with it, by body part (SkinColours.normalise)
 }
 
 export type OutfitsModel = typeof(setmetatable({} :: {
@@ -92,11 +93,11 @@ local function keep(items: { OutfitItem }): { OutfitItem }
 end
 
 -- Save a new outfit from these items. Returns it (nil when full).
-function OutfitsModel:add(name: string, items: { OutfitItem }, skin: string?): Outfit?
+function OutfitsModel:add(name: string, items: { OutfitItem }, skin: any?): Outfit?
 	if self:isFull() then
 		return nil
 	end
-	local outfit = { id = self.nextId, name = name, items = keep(items), skin = skin or "" }
+	local outfit = { id = self.nextId, name = name, items = keep(items), skin = SkinColours.normalise(skin) }
 	self.nextId += 1
 	table.insert(self.outfits, outfit)
 	self:syncState()
@@ -104,13 +105,13 @@ function OutfitsModel:add(name: string, items: { OutfitItem }, skin: string?): O
 end
 
 -- Replace an outfit's items (keeping its id and name).
-function OutfitsModel:overwrite(id: number, items: { OutfitItem }, skin: string?): Outfit?
+function OutfitsModel:overwrite(id: number, items: { OutfitItem }, skin: any?): Outfit?
 	local outfit = self:find(id)
 	if not outfit then
 		return nil
 	end
 	outfit.items = keep(items)
-	outfit.skin = skin or ""
+	outfit.skin = SkinColours.normalise(skin)
 	self:syncState()
 	return outfit
 end

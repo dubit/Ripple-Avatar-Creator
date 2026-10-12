@@ -38,9 +38,9 @@
 	Also used by OutfitsController (the outfit page's 3D preview) and
 	AvatarController (wearing an outfit saved on Roblox):
 		describeLook(player, worn, skin?) -> HumanoidDescription   `worn`
-		                                      (and a skin tone) on the
+		                                      (and skin colours) on the
 		                                      player's own base (gear left out)
-		skinOf(description) / playerSkin(player) -> "#RRGGBB"   a skin tone
+		skinOf(description) / playerSkin(player) -> SkinColours   all six parts
 		ownDescription(player) -> HumanoidDescription?      the player's own
 		                                      Roblox avatar as it is
 		userAvatar(userId) -> (HumanoidDescription?, { WornItem })   another
@@ -61,6 +61,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Bolt = require(ReplicatedStorage.Bolt)
 
 local AvatarModel = require(ServerScriptService.models.user.AvatarModel)
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
 
 type WornItem = AvatarModel.WornItem
 
@@ -357,19 +358,26 @@ function AvatarService.userAvatar(userId: number): (HumanoidDescription?, { Worn
 	return description, itemsOf(description, false)
 end
 
--- A description's skin tone ("#RRGGBB" from its head colour).
-function AvatarService.skinOf(description: HumanoidDescription): string
-	return "#" .. description.HeadColor:ToHex()
+-- A description's skin colours, all six parts.
+function AvatarService.skinOf(description: HumanoidDescription): SkinColours.Colours
+	local colours: SkinColours.Colours = {}
+	for _, part in SkinColours.PARTS do
+		colours[part] = "#" .. string.upper(((description :: any)[SkinColours.property[part]] :: Color3):ToHex())
+	end
+	return colours
 end
 
--- The skin tone a player in this server shows: their chosen one, or their own.
-function AvatarService.playerSkin(player: Player): string
-	local model = AvatarModel.get(tostring(player.UserId))
-	if model and model.skin ~= "" then
-		return model.skin
-	end
+-- The skin colours a player in this server shows (chosen ones over their own).
+function AvatarService.playerSkin(player: Player): SkinColours.Colours
 	local base = bases[player]
-	return if base then AvatarService.skinOf(base) else ""
+	local colours = if base then AvatarService.skinOf(base) else {}
+	local model = AvatarModel.get(tostring(player.UserId))
+	if model then
+		for part, hex in SkinColours.normalise(model.skin) do
+			colours[part] = hex
+		end
+	end
+	return colours
 end
 
 function AvatarService.ownDescription(player: Player): HumanoidDescription?
@@ -396,16 +404,8 @@ function AvatarService.ownLook(player: Player): { WornItem }
 end
 
 -- `worn` on top of the base.
--- A skin tone hex -> Color3 (nil for "" or anything malformed).
-local function skinColour(skin: string?): Color3?
-	if type(skin) ~= "string" or not string.match(skin, "^#%x%x%x%x%x%x$") then
-		return nil
-	end
-	return Color3.fromHex(skin)
-end
-
--- `worn` (and a chosen skin tone) on top of the base.
-local function describe(player: Player, worn: { WornItem }, skin: string?): (HumanoidDescription, number?)
+-- `worn` (and chosen skin colours) on top of the base.
+local function describe(player: Player, worn: { WornItem }, skin: any?): (HumanoidDescription, number?)
 	local description = (bases[player] or Instance.new("HumanoidDescription")):Clone()
 	local accessories = {}
 	local layerOrder = 1
@@ -502,12 +502,10 @@ local function describe(player: Player, worn: { WornItem }, skin: string?): (Hum
 		end
 	end
 
-	-- A chosen skin tone colours the whole body, over any bundle's colours.
-	local colour = skinColour(skin)
-	if colour then
-		for _, property in BODY_COLOURS do
-			(description :: any)[property] = colour
-		end
+	-- Chosen skin colours, part by part, over any bundle's colours.
+	local colours = SkinColours.normalise(skin)
+	for part, hex in colours do
+		(description :: any)[SkinColours.property[part]] = Color3.fromHex(hex)
 	end
 
 	description:SetAccessories(accessories, true)
@@ -516,7 +514,7 @@ local function describe(player: Player, worn: { WornItem }, skin: string?): (Hum
 	return description, gear
 end
 
-function AvatarService.describeLook(player: Player, worn: { WornItem }, skin: string?): HumanoidDescription
+function AvatarService.describeLook(player: Player, worn: { WornItem }, skin: any?): HumanoidDescription
 	local description = describe(player, worn, skin)
 	return description
 end
@@ -596,7 +594,7 @@ local function onPlayer(player: Player)
 	if own then
 		bases[player] = baseOf(own)
 		local ownItems = itemsOf(own)
-		model:setOwn(table.clone(ownItems))
+		model:setOwn(table.clone(ownItems), AvatarService.skinOf(own))
 		if not model.seeded then
 			model:seed(ownItems)
 		else

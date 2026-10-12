@@ -51,6 +51,7 @@ local AvatarService = require(ServerScriptService.services.game.AvatarService)
 local RobloxAvatarLookupService = require(ServerScriptService.services.game.RobloxAvatarLookupService)
 local Network = require(ReplicatedStorage.Network)
 local Bolt = require(ReplicatedStorage.Bolt)
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
 
@@ -176,7 +177,7 @@ local function wearAll(player: Player, model: any, raw: any)
 	if not outfit or not avatar then
 		return
 	end
-	avatar:setLook(table.clone(outfit.items), outfit.skin or "")
+	avatar:setLook(table.clone(outfit.items), SkinColours.normalise(outfit.skin))
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { outfit_id = outfit.id, item_count = #outfit.items, partial = false })
 end
@@ -197,7 +198,8 @@ local function wearSelected(player: Player, model: any, raw: any)
 		end
 	end
 	-- The skin tone comes too if its row was ticked.
-	local skin = if raw.skin == true and outfit.skin and outfit.skin ~= "" then outfit.skin else nil
+	local colours = SkinColours.normalise(outfit.skin)
+	local skin = if raw.skin == true and not SkinColours.isEmpty(colours) then colours else nil
 	if #items == 0 and not skin then
 		return
 	end

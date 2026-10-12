@@ -13,8 +13,9 @@
 		TryOn(item)        wear it (replacing its slot / stacking per config)
 		TakeOff(item)      take it off
 		WearMany(items, skin?)   wear several (an outfit, the basket), up to
-		                   maxWearMany; `skin` also sets the skin tone
-		SetSkin(skin)      the skin tone: "#RRGGBB", or "" for the player's own
+		                   maxWearMany; `skin` also sets the skin colours
+		SetSkin(skin)      the skin colours: { [part] = "#RRGGBB" } (a part left
+		                   out is the player's own; {} = all their own)
 		TakeOffAll()       wear nothing (the body stays)
 		Undo()             step back one change
 		Reset()            back to the player's own Roblox avatar
@@ -41,6 +42,7 @@ local RobloxAvatarLookupService = require(ServerScriptService.services.game.Robl
 local Network = require(ReplicatedStorage.Network)
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
 
 local AvatarController = {}
 AvatarController.__index = AvatarController
@@ -113,15 +115,16 @@ local function takeOff(player: Player, model: any, raw: any)
 	end
 end
 
--- "#RRGGBB" or "" from the client; nil if it's neither.
-local function skinOf(raw: any): string?
+-- Skin colours from the client (a per-part table, or one colour / "" for
+-- the whole body); nil if there's nothing usable.
+local function skinOf(raw: any): SkinColours.Colours?
 	if raw == "" then
-		return ""
+		return {}
 	end
-	if type(raw) == "string" and string.match(raw, "^#%x%x%x%x%x%x$") then
-		return string.upper(raw)
+	if type(raw) ~= "table" and type(raw) ~= "string" then
+		return nil
 	end
-	return nil
+	return SkinColours.normalise(raw)
 end
 
 local function setSkin(player: Player, model: any, raw: any)
@@ -168,7 +171,7 @@ local function undo(player: Player, model: any, _raw: any)
 end
 
 local function reset(player: Player, model: any, _raw: any)
-	model:setLook(AvatarService.ownLook(player), "")
+	model:setLook(AvatarService.ownLook(player), {})
 	AvatarService.apply(player)
 	track(player, "reset")
 end

@@ -60,7 +60,8 @@ local NetworkConfig = {
 		Avatar = {
 			ownerId = "",
 			worn = {},
-			skin = "",
+			skin = {},
+			ownSkin = {},
 			seeded = false,
 			own = {},
 			canUndo = false,
@@ -174,7 +175,8 @@ export type AvatarState = {
 	worn: { WornItem }, -- in the order put on
 	seeded: boolean, -- filled from the player's own avatar on first join
 	own: { WornItem }, -- the player's own Roblox avatar's items (refreshed every join)
-	skin: string, -- chosen skin tone "#RRGGBB", or "" for the player's own
+	skin: { [string]: string }, -- skin colours by body part ("#RRGGBB"); a part left out is the player's own
+	ownSkin: { [string]: string }, -- the player's own avatar's colours, all six parts
 	canUndo: boolean,
 }
 
@@ -202,7 +204,7 @@ export type Outfit = {
 	id: number,
 	name: string, -- text-filtered
 	items: { WornItem }, -- what was worn, in the order put on (`owned` unset)
-	skin: string?, -- the skin tone worn with it ("" or nil = the wearer's own)
+	skin: any?, -- skin colours worn with it (by body part; SkinColours.normalise)
 }
 
 export type OutfitsState = {

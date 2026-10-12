@@ -74,6 +74,7 @@ end
 export type ThumbProps = {
 	colour: Color3,
 	image: string?, -- thumbnail drawn over the tint; hides the caption
+	flat: boolean?, -- the plain colour, no shading (a colour swatch)
 	radius: number?,
 	size: UDim2?,
 	position: UDim2?,
@@ -96,12 +97,12 @@ function Parts.Thumb(props: ThumbProps)
 		Position = props.position,
 		AnchorPoint = props.anchorPoint,
 		LayoutOrder = props.layoutOrder or 0,
-		BackgroundColor3 = Tokens.color.white,
+		BackgroundColor3 = if props.flat then props.colour else Tokens.color.white,
 		BorderSizePixel = 0,
 		ZIndex = z,
 	}, {
 		Corner = e("UICorner", { CornerRadius = UDim.new(0, skin.px(props.radius or Tokens.radius.itemCard)) }),
-		Gradient = e("UIGradient", { Color = tint(props.colour), Rotation = 70 }),
+		Gradient = if props.flat then nil else e("UIGradient", { Color = tint(props.colour), Rotation = 70 }),
 		Ring = e("UIStroke", {
 			Color = if props.selected or props.hovered then Tokens.color.accentText else Tokens.color.white,
 			Transparency = if props.selected then 0 elseif props.hovered then 1 - 0.7 else 1 - 0.1,
@@ -392,6 +393,7 @@ export type ListRowProps = {
 	trailing: any?, -- elements on the right (price, buttons)
 	trailingWidth: number?, -- design px for them (default 250)
 	leading: any?, -- element before the thumb (e.g. a checkbox)
+	flat: boolean?, -- the thumb is a plain colour swatch
 	onActivated: (() -> ())?,
 	layoutOrder: number?,
 }
@@ -435,6 +437,7 @@ function Parts.ListRow(props: ListRowProps)
 		Thumb = e(Parts.Thumb, {
 			colour = props.colour,
 			image = props.image,
+			flat = props.flat,
 			radius = 10,
 			anchorPoint = Vector2.new(0, 0.5),
 			position = UDim2.new(0, skin.px(8) + leadingWidth + (if props.leading then skin.px(8) else 0), 0.5, 0),

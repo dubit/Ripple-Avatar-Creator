@@ -125,11 +125,11 @@ local function withFeedback(look: any)
 		Sounds.play(if count > 0 then "confirm" else "error")
 		return count
 	end
-	feedback.setSkin = function(skin: string)
+	feedback.setSkin = function(skin: any)
 		Sounds.play("tryOn")
 		look.setSkin(skin)
 	end
-	feedback.wearAll = function(ids: { number }, skin: string?): number
+	feedback.wearAll = function(ids: { number }, skin: any?): number
 		local count = look.wearAll(ids, skin)
 		Sounds.play(if count > 0 then "tryOn" else "error")
 		return count

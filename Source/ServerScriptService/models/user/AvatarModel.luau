@@ -12,8 +12,10 @@
 	its slot (one hair, one shirt, one body…); grouped items stack up to the
 	group's limit, the oldest dropping off (accessories, emotes).
 
-	`skin` is the chosen skin tone ("#RRGGBB"), or "" for the player's own.
-	It's part of the look: outfits save it and Undo steps back over it.
+	`skin` is the chosen skin colours, one "#RRGGBB" per body part
+	(SkinColours; a part left out is the player's own colour). It's part of
+	the look: outfits save it and Undo steps back over it. `ownSkin` is the
+	player's own avatar's colours (all six parts), for the Skin tone picker.
 
 	Undo history is session-only (`_undo`, never saved or sent): every change
 	pushes the previous look (items and skin), up to AvatarConfig.undoDepth.
@@ -28,6 +30,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local AbstractModel = require(script.Parent.Parent.AbstractModel)
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
 
 local AvatarModel = {}
 AvatarModel.__index = AvatarModel
@@ -46,8 +49,9 @@ export type AvatarModel = typeof(setmetatable({} :: {
 	seeded: boolean,
 	own: { WornItem }, -- the player's own Roblox avatar's items (refreshed every join)
 	canUndo: boolean,
-	skin: string,
-	_undo: { { worn: { WornItem }, skin: string } },
+	skin: SkinColours.Colours,
+	ownSkin: SkinColours.Colours,
+	_undo: { { worn: { WornItem }, skin: SkinColours.Colours } },
 }, AvatarModel)) & AbstractModel.AbstractModel
 
 local function same(a: WornItem, b: WornItem): boolean
@@ -100,7 +104,8 @@ function AvatarModel.new(ownerId: string): AvatarModel
 	local self = AbstractModel.new("AvatarModel", ownerId, "User") :: any
 	setmetatable(self, AvatarModel)
 	self.worn = {}
-	self.skin = ""
+	self.skin = {}
+	self.ownSkin = {}
 	self.seeded = false
 	self.own = {}
 	self.canUndo = false
@@ -128,7 +133,7 @@ function AvatarModel:isWearing(item: WornItem): boolean
 end
 
 local function remember(self: any)
-	table.insert(self._undo, { worn = self.worn, skin = self.skin or "" })
+	table.insert(self._undo, { worn = self.worn, skin = SkinColours.normalise(self.skin) })
 	while #self._undo > AvatarConfig.undoDepth do
 		table.remove(self._undo, 1)
 	end
@@ -142,9 +147,9 @@ function AvatarModel:setWorn(list: { WornItem }): ()
 	self:syncState()
 end
 
--- Change the skin tone ("" = the player's own), undoable.
-function AvatarModel:setSkin(skin: string): ()
-	if skin == (self.skin or "") then
+-- Change the skin colours (parts left out = the player's own), undoable.
+function AvatarModel:setSkin(skin: SkinColours.Colours): ()
+	if SkinColours.equal(skin, SkinColours.normalise(self.skin)) then
 		return
 	end
 	remember(self)
@@ -152,9 +157,9 @@ function AvatarModel:setSkin(skin: string): ()
 	self:syncState()
 end
 
--- Replace the whole look, items and skin tone (undoable): wearing an
--- outfit or someone's look. `skin` nil keeps the current tone.
-function AvatarModel:setLook(list: { WornItem }, skin: string?): ()
+-- Replace the whole look, items and skin colours (undoable): wearing an
+-- outfit or someone's look. `skin` nil keeps the current colours.
+function AvatarModel:setLook(list: { WornItem }, skin: SkinColours.Colours?): ()
 	remember(self)
 	self.worn = list
 	if skin ~= nil then
@@ -167,8 +172,8 @@ function AvatarModel:wear(item: WornItem): ()
 	self:setWorn(wearOne(self.worn, item))
 end
 
--- Put several on (and, if given, change the skin tone), as one change.
-function AvatarModel:wearMany(items: { WornItem }, skin: string?): ()
+-- Put several on (and, if given, change the skin colours), as one change.
+function AvatarModel:wearMany(items: { WornItem }, skin: SkinColours.Colours?): ()
 	local list = self.worn
 	for _, item in items do
 		list = wearOne(list, item)
@@ -205,8 +210,11 @@ end
 
 -- The player's own Roblox avatar's items, for the Outfits "Your avatar" card
 -- (what Reset puts back).
-function AvatarModel:setOwn(list: { WornItem }): ()
+function AvatarModel:setOwn(list: { WornItem }, ownSkin: SkinColours.Colours): ()
 	self.own = list
+	self.ownSkin = ownSkin
+	-- Older looks kept one colour for the whole body.
+	self.skin = SkinColours.normalise(self.skin)
 	self:syncState()
 end
 

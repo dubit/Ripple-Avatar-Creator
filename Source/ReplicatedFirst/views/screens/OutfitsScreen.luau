@@ -70,6 +70,7 @@ local Spinner = require(components:WaitForChild("Spinner"))
 local HudContext = require(views:WaitForChild("HudContext"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
 
 local e = React.createElement
 
@@ -86,7 +87,7 @@ type OutfitView = {
 	by: string,
 	items: { number },
 	labels: { [number]: string }?, -- row names that differ from the item's own
-	skin: string?, -- a skin tone that comes with it ("#RRGGBB"; nil / "" = none)
+	skin: any?, -- skin colours that come with it (by body part; SkinColours)
 }
 
 -- Card / page order of a type's thumbnail: the most telling first.
@@ -1147,7 +1148,8 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 			end
 		end
 	end
-	local skinTone = if outfit.skin and outfit.skin ~= "" then outfit.skin else nil
+	local colours = SkinColours.normalise(outfit.skin)
+	local skinTone = if SkinColours.isEmpty(colours) then nil else colours
 	local skinOn = skinTone ~= nil and not skinOff
 	local allSelected = #selected == #items and (skinTone == nil or skinOn)
 	local ring = wearingExactly(look, items)
@@ -1164,10 +1166,14 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	}
 	-- The skin tone, as a row like the items (ticked to come along).
 	if skinTone then
+		local set = SkinColours.count(skinTone)
+		local first = skinTone.Head or skinTone.Torso or (next(skinTone) and skinTone[next(skinTone)])
+		local whose = if outfit.kind == "saved" then "Saved with this outfit" else "Their skin tone"
 		rows.Skin = e(Parts.ListRow, {
 			title = "Skin tone",
-			subtitle = if outfit.kind == "saved" then "Saved with this outfit" else "Their skin tone",
-			colour = Color3.fromHex(skinTone),
+			subtitle = whose .. " · " .. (if set == #SkinColours.PARTS then "every part" else set .. " of 6 parts"),
+			colour = Color3.fromHex(first or "#2a2a2a"),
+			flat = true,
 			layoutOrder = 0,
 			trailingWidth = 40,
 			leading = e(Checkbox, {
@@ -1177,8 +1183,16 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				end,
 			}),
 			trailing = {
-				Wearing = if string.upper(look.skin) == string.upper(skinTone) then smallIcon("checkroom", Tokens.color.accentText, 1) else nil,
+				Wearing = if SkinColours.equal(look.skin, skinTone) then smallIcon("checkroom", Tokens.color.accentText, 1) else nil,
 			},
+			-- Opens the colours part by part, as an item row opens the item.
+			onActivated = function()
+				props.nav.push({
+					kind = "skin",
+					id = { colours = skinTone, from = whose .. " · " .. outfit.name },
+					label = "Skin tone",
+				})
+			end,
 		})
 	end
 	for index, id in items do
