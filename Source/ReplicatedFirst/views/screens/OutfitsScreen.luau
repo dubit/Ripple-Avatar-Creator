@@ -13,15 +13,16 @@
 	    (RobloxOutfits). Roblox only lists them once you allow it, so until
 	    then a "Show my Roblox outfits" card asks. Search: by name.
 	  · Friends: your Roblox friends' current avatars. Search: by name.
-	  · Roblox: share codes go in its search (one typed into another tab
-	    that finds something switches here), then the people you follow here (our own follow, private to you:
+	  · Roblox: the people you follow here (our own follow, private to you:
 	    Roblox gives games no access to its follows). (Players in this
 	    server come later, by tapping their avatars: PLAN Task 22.) The
 	    first card, Add a
 	    person, finds someone by exact username or user id (all Roblox lets
 	    a game look up), shows who it found, and follows on confirm. Follow /
 	    Following is also on a person's page. Search: the people listed.
-	  · Community: placeholder outfits until Task 16.
+	  · Community: share codes go in its search (one typed into another tab
+	    that finds something switches here); placeholder outfits until
+	    Task 16 publishes real ones.
 	The outfit you're wearing exactly gets the orange ring. People are cards
 	with their avatar picture (UserLooks); Roblox only lets a game read
 	another user's current avatar, not their saved outfits, and their page
@@ -441,8 +442,8 @@ local SOURCES = {
 	{ id = "Wardrobe", label = "Wardrobe", search = "Search my outfits" },
 	{ id = "Creations", label = "Creations", search = "Search my creations" },
 	{ id = "Friends", label = "Friends", search = "Search friends" },
-	{ id = "Roblox", label = "Roblox", search = "Search people you follow or a code" },
-	{ id = "Community", label = "Community", search = "Search community outfits" },
+	{ id = "Roblox", label = "Roblox", search = "Search people you follow" },
+	{ id = "Community", label = "Community", search = "Search community outfits or a code" },
 } :: { { id: string, label: string, search: string? } }
 local SOURCE_IDS: { [string]: boolean } = {}
 for _, entry in SOURCES do
@@ -846,20 +847,21 @@ local function OutfitsScreen(props: { nav: any, look: any })
 
 	useRobloxOutfits(source == "Creations")
 	usePeople(source == "Friends" or source == "Roblox")
-	-- Share codes belong in the Roblox tab's search; one typed into another
-	-- tab that finds something switches to Roblox (keeping the search) to
-	-- show it. A miss stays put: it may just be a name.
+	-- Share codes belong in the Community tab's search (community outfits
+	-- join them there in Task 16); one typed into another tab that finds
+	-- something switches to Community (keeping the search) to show it. A
+	-- miss stays put: it may just be a name.
 	local codeFound, codeError, codeTyped = useSharedSearch(query)
 	React.useEffect(function()
-		if codeFound and source ~= "Roblox" then
-			setSource("Roblox")
+		if codeFound and source ~= "Community" then
+			setSource("Community")
 		end
 		return nil
 	end, { codeFound, source } :: { any })
-	local onRoblox = source == "Roblox"
-	local sharedFound = if onRoblox then codeFound else nil
-	local sharedError = if onRoblox then codeError else nil
-	local typedCode = if onRoblox then codeTyped else nil
+	local onCommunity = source == "Community"
+	local sharedFound = if onCommunity then codeFound else nil
+	local sharedError = if onCommunity then codeError else nil
+	local typedCode = if onCommunity then codeTyped else nil
 	-- Current shows your Roblox avatar as it is now (it may have changed
 	-- since you joined).
 	React.useEffect(function()
