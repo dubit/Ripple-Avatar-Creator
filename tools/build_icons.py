@@ -23,7 +23,7 @@ ICONS = (
     "search shopping_basket add_shopping_cart remove_shopping_cart toll person_add cloud_upload restart_alt "
     "undo remove delete delete_sweep star visibility bookmark_add add_circle edit share "
     "add_business lock link ios_share content_copy check check_circle landscape "
-    "flight "
+    "flight flag cloud_off "
     "accessibility_new directions_walk directions_run sports_gymnastics paragliding stairs pool emoji_people"
 ).split()
 

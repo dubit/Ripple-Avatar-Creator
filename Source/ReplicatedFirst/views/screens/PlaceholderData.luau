@@ -3,14 +3,15 @@
 --[[
 	PlaceholderData (Task 2 — replaced by real data from Task 7 onwards)
 
-	Mock items, stores and outfits ported from the design prototype
+	Mock items and stores ported from the design prototype
 	(features/cac-adaptation/design/logic.js) so the shell's screens have
 	believable content to navigate. Nothing here is persisted or networked.
 
 	The Catalogue screen now shows real items (CatalogueClient, Task 7);
 	`item(id)` falls back to them, so the screens that look items up by id
 	(item page, basket, wearing) work for both. The mock items
-	remain for the starting basket/wearing state and the mock outfits/stores.
+	remain for the starting basket/wearing state and the mock stores
+	(Community outfits are real since Task 16: CommunityOutfits).
 ]]
 
 local CatalogueClient = require(script.Parent.Parent:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
@@ -20,7 +21,6 @@ local PlaceholderData = {}
 export type Item = CatalogueClient.Item
 
 export type Store = { id: number, name: string, rating: number, visits: number, sponsored: boolean }
-export type Outfit = { name: string, by: string, items: { number } }
 
 local CREATORS = { "JON.", "pixelfox", "mossy_m", "k4tana", "nyxie", "Roblox" }
 
@@ -143,23 +143,6 @@ function PlaceholderData.storeItems(storeId: number): { Item }
 	end
 	return list
 end
-
--- Placeholder Community outfits until Task 16. Item ids are 1-based
--- (prototype ids + 1).
-PlaceholderData.outfits = {
-	Community = {
-		{ name = "Neon Rider", by = "by pixelfox", items = { 12, 17, 19, 30, 28 } },
-		{ name = "Cottagecore", by = "by mossy_m", items = { 3, 16, 22, 29 } },
-		{ name = "Street Ninja", by = "by k4tana", items = { 13, 15, 20, 37 } },
-		{ name = "Goth Princess", by = "by nyxie", items = { 10, 16, 20, 24 } },
-		{ name = "Cyber Punk", by = "by zeroday", items = { 4, 14, 17, 26 } },
-		{ name = "Cozy Winter", by = "by snowpea", items = { 2, 10, 22, 28 } },
-		{ name = "Skater", by = "by ollie_o", items = { 5, 11, 17, 19 } },
-		{ name = "Pumpkin Patch", by = "by JON.", items = { 9, 15, 19, 27 } },
-		{ name = "Fairy Core", by = "by glimmer", items = { 8, 16, 21, 25 } },
-		{ name = "Sporty", by = "by dashr", items = { 1, 11, 18, 19 } },
-	} :: { Outfit },
-}
 
 function PlaceholderData.item(id: number): Item
 	return PlaceholderData.items[id] or CatalogueClient.item(id) :: Item

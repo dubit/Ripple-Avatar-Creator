@@ -30,6 +30,9 @@
 
 	  · Outfits are real (Task 12): Network.State.Outfits (persisted), changed
 	    through OutfitsController by outfit id (the server holds the items).
+	  · Community (Task 16): the player's lists ride on the same state
+	    (published, communityFavourites, communityRecent); publishing,
+	    starring, reporting and opening go to CommunityController.
 
 	Mock items (the prototype's placeholder data, no thumbnail) can't be
 	worn, put in the basket or bought: the intents skip them and report it.
@@ -45,6 +48,7 @@ local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("
 local views = script.Parent.Parent
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
 local CatalogueClient = require(views:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
+local CommunityOutfits = require(views:WaitForChild("catalogue"):WaitForChild("CommunityOutfits"))
 local useBoltState = require(views:WaitForChild("hooks"):WaitForChild("useBoltState"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
@@ -106,6 +110,16 @@ export type Look = {
 	wearOutfit: (id: number) -> (), -- exactly the outfit (replaces the look)
 	wearOutfitItems: (id: number, indices: { number }, withSkin: boolean?, withScale: boolean?) -> (), -- over the look
 	basketTotal: number, -- Robux for unowned basket items
+	published: { string }, -- codes published to Community (Mine), newest first
+	communityFavourites: { string }, -- Community codes starred, newest first
+	communityRecent: { string }, -- Community codes opened lately, newest first
+	isPublished: (code: string?) -> boolean,
+	isCommunityFavourite: (code: string) -> boolean,
+	publish: (target: { [string]: any }) -> (), -- { id } | { outfitId, name } | { code }
+	unpublish: (code: string) -> (),
+	toggleCommunityFavourite: (code: string) -> (),
+	reportCommunity: (code: string) -> (),
+	openCommunity: (code: string) -> (), -- its page was opened (Recent)
 }
 
 local DEFAULT_AVATAR = { worn = {}, canUndo = false }
@@ -535,6 +549,33 @@ local function usePlaceholderLook(): Look
 			end
 		end,
 		basketTotal = total,
+		published = outfitState.published or {},
+		communityFavourites = outfitState.communityFavourites or {},
+		communityRecent = outfitState.communityRecent or {},
+		isPublished = function(code: string?): boolean
+			return code ~= nil and table.find(outfitState.published or {}, code) ~= nil
+		end,
+		isCommunityFavourite = function(code: string): boolean
+			return table.find(outfitState.communityFavourites or {}, code) ~= nil
+		end,
+		publish = function(target: { [string]: any })
+			Network.Intent.Community:FireServer(Network.Actions.Community.Publish, target)
+			task.delay(2, CommunityOutfits.reset) -- once the server has it
+		end,
+		unpublish = function(code: string)
+			Network.Intent.Community:FireServer(Network.Actions.Community.Unpublish, { code = code })
+			task.delay(2, CommunityOutfits.reset) -- once the server has it
+		end,
+		toggleCommunityFavourite = function(code: string)
+			Network.Intent.Community:FireServer(Network.Actions.Community.Favourite, { code = code })
+		end,
+		reportCommunity = function(code: string)
+			Network.Intent.Community:FireServer(Network.Actions.Community.Report, { code = code })
+			task.delay(2, CommunityOutfits.reset) -- once the server has it
+		end,
+		openCommunity = function(code: string)
+			Network.Intent.Community:FireServer(Network.Actions.Community.Open, { code = code })
+		end,
 	}
 end
 

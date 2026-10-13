@@ -16,6 +16,7 @@
 		Unpublish({ code })             take your entry off Community (its
 		                                code keeps working; off Mine too)
 		Favourite({ code })             star / unstar a Community outfit
+		                                (not your own)
 		Report({ code })                report it (once per player; enough
 		                                reports hide it)
 		Open({ code })                  the player opened its page (Recent,
@@ -175,8 +176,12 @@ local function favourite(player: Player, model: any, raw: any)
 		return
 	end
 	local starred = table.find(model.communityFavourites or {}, code) ~= nil
-	if not starred and not CommunityService.isListed(SharedContentService.lookup(code)) then
-		return -- only Community outfits can be starred (unstarring always works)
+	if not starred then
+		-- Only Community outfits, and not your own (unstarring always works).
+		local record = SharedContentService.lookup(code)
+		if not CommunityService.isListed(record) or record.ownerId == player.UserId then
+			return
+		end
 	end
 	local now = model:toggleCommunityFavourite(code)
 	CommunityService.countFavourite(code, if now then 1 else -1)

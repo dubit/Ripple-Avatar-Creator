@@ -333,6 +333,21 @@ local function Hud()
 			World = if nav.isOpen then nil else e(WorldHud, { nav = nav, look = look, tabs = TABS, world = world }),
 			Panel = e(React.Fragment, nil, panels),
 			Share = e(ShareDialog, {
+				published = (function()
+					local target = shareTarget
+					if not target then
+						return false
+					end
+					if target.kind == "creation" then
+						return rawLook.isPublished(rawLook.creationCodes[tostring(target.id)])
+					end
+					for _, outfit in rawLook.outfits do
+						if outfit.id == target.id then
+							return rawLook.isPublished(outfit.code)
+						end
+					end
+					return false
+				end)(),
 				outfit = (function()
 					local target = shareTarget
 					if not target then
@@ -355,6 +370,18 @@ local function Hud()
 					else
 						rawLook.shareOutfit(id)
 					end
+				end,
+				onPublish = function(id: number)
+					local target = shareTarget
+					if target and target.kind == "creation" then
+						rawLook.publish({ outfitId = id, name = target.name })
+					else
+						rawLook.publish({ id = id })
+					end
+				end,
+				onUnpublish = function(code: string)
+					Sounds.play("back")
+					rawLook.unpublish(code)
 				end,
 				onClose = function()
 					setShareTarget(nil)

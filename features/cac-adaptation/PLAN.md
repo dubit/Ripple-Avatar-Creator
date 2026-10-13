@@ -412,7 +412,11 @@
     - **Moderation:** names are filtered, players can report, and an entry is auto-hidden at 3 distinct reports. Admins can take an entry down with `/communitycontroller Moderate <code> hide|restore|takedown` (rank 200+ in the group, or Studio/creator).
   - [DONE] 16.2 Extend `SharedContentService` with community publish/list/unpublish and paging; add a Community browse model (UserSession) delivering pages to the requester. `/create-model`.
   - [DONE] 16.3 Controller actions (Publish, Unpublish, BrowseCommunity, Report) in `Outfits`/`Community` controller. `/create-controller`.
-  - [TODO] 16.4 Community source UI (`/html-to-react-luau`): grid, paging, publish toggle on Mine outfit cards/outfit screen.
+  - [PARTIAL] 16.4 Community source UI (`/html-to-react-luau`): grid, paging, publish toggle on Mine outfit cards/outfit screen. Built, awaiting the user's playtest:
+    - The Community tab has chips under the tabs and real cards (`catalogue/CommunityOutfits`, pages of 24 loaded on scroll). Search filters the loaded cards by name, or finds a share code. The placeholder Community outfits are gone.
+    - Publish lives in the Share dialog (bottom left; Unpublish once listed), for both Wardrobe outfits and Creations, since publishing is sharing with everyone.
+    - A shared outfit's page, when listed, shows wears and favourites, a star (not on your own outfits; the server refuses self-stars too) and Report (two taps). Your own copy shows Unpublish, or "Publish to Community" when it isn't listed. Opening the page adds it to Recent.
+    - New icons: `flag`, `cloud_off`.
   - [TODO] 16.5 Analytics: `community_publish`, `community_open`.
   - [TODO] 16.6 Playtest across servers, moderation edge cases (blocked names), unpublish.
 
