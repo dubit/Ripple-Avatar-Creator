@@ -419,8 +419,14 @@
     - You can star your own outfits, as on social media (changed after stage C).
     - A shared outfit's page, when listed, shows wears and favourites, a star (your own too) and Report (two taps). Your own copy shows Remove from Community (two taps; the code stops working). Opening the page adds it to Recent.
     - New icons: `flag`, `cloud_off`.
-  - [TODO] 16.5 Analytics: `community_publish`, `community_open`.
-  - [TODO] 16.6 Playtest across servers, moderation edge cases (blocked names), unpublish.
+  - [PARTIAL] 16.5 Analytics: `community_publish`, `community_open`. In Studio these were queued and sent to GA4: outfit_share, community_publish (on reveal), community_open, community_wear, outfit_wear (source "community"), community_report and community_remove. They aren't confirmed in BigQuery yet: the BigQuery connection set up here (`bq_wgc`) is another game's property, so checking needs Ripple's GA4 export connected.
+  - [PARTIAL] 16.6 Playtest across servers, moderation edge cases (blocked names), unpublish. Done in Studio (one player; test entries owned by user id 1, cleaned up afterwards):
+    - Wearing someone else's outfit counts a wear. The minute's flush wrote wears 1, Popular 1 and Trending 1.
+    - With 2 reports seeded, the UI's report was the third and hid the entry ("reports"); it left the orderings and the grid.
+    - The chat command `/communitycontroller Moderate <code> restore` relisted it, and `takedown` deleted it.
+    - Remove from Community deletes the copy and detaches the code.
+    - Name filtering fails safe: a failed filter refuses the rename, and a Creation's name falls back to "Outfit".
+    - Still to do on the live game: two servers, real report thresholds, filtered names (Studio doesn't filter) and code removal seen from another server.
 
 ### Task 17: Stores data and backend
 - **Status:** [TODO]
