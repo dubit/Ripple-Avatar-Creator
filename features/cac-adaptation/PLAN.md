@@ -409,7 +409,7 @@
     - **Publishing:** anyone can publish, with no cap. The best outfits surface through sort chips, modelled on CAC's dropdown: Popular · Trending · Newest · Favourited · Recent · Mine. Most Worn is folded into Popular.
     - **Frozen at publish (applies to shares as well, which reworks Task 14):** sharing or publishing makes an evergreen copy. Editing the original (rename, save over) detaches its code, so the old code keeps opening the old copy, and sharing again makes a new one. Creations keep their code only while the copy matches Roblox.
     - **Deleting an outfit:** its copies stay live, and stay published if they were, but the creator credit is hidden (anonymous).
-    - **Moderation:** names are filtered, players can report, and an entry is auto-hidden at 3 distinct reports. Admins can take an entry down with `/community moderate <code> hide|restore|takedown` (rank 200+ in the group, or Studio/creator).
+    - **Moderation:** names are filtered, players can report, and an entry is auto-hidden at 3 distinct reports. Admins can take an entry down with `/communitycontroller Moderate <code> hide|restore|takedown` (rank 200+ in the group, or Studio/creator).
   - [DONE] 16.2 Extend `SharedContentService` with community publish/list/unpublish and paging; add a Community browse model (UserSession) delivering pages to the requester. `/create-model`.
   - [DONE] 16.3 Controller actions (Publish, Unpublish, BrowseCommunity, Report) in `Outfits`/`Community` controller. `/create-controller`.
   - [TODO] 16.4 Community source UI (`/html-to-react-luau`): grid, paging, publish toggle on Mine outfit cards/outfit screen.

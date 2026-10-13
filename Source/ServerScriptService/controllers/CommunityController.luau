@@ -22,7 +22,7 @@
 		                                analytics)
 		Moderate(code, op)              admins only (CommunityService.isAdmin),
 		                                op "hide" | "restore" | "takedown"; as
-		                                a slash command: /community moderate
+		                                a slash command: /communitycontroller Moderate
 		                                7KQ2XM hide
 
 	"BrowseCommunity"(sort, page) (Bolt remote function) -> { ok, cards, more }
