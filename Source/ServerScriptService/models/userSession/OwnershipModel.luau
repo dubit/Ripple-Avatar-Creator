@@ -41,7 +41,7 @@ export type OwnershipModel = typeof(setmetatable({} :: {
 	owned: { string },
 	purchase: Purchase,
 	_checked: { [string]: boolean },
-	_pending: { items: { PendingItem }, at: number }?,
+	_pending: { items: { PendingItem }, at: number, store: string? }?, -- store: bought through it (PurchaseController)
 }, OwnershipModel)) & AbstractModel.AbstractModel
 
 function OwnershipModel.new(ownerId: string): OwnershipModel

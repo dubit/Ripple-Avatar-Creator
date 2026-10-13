@@ -440,7 +440,7 @@
   - **Deferred:** live two-server checks, real report thresholds, filtered names, and BigQuery (16.5, 16.6).
 
 ### Task 17: Stores data and backend
-- **Status:** [TODO]
+- **Status:** [PARTIAL]
 - **Why here:** Layer 8. Stores add a new cross-server entity with ratings/visits and codes, plus several unresolved business questions, so the data model and backend are agreed and built before the UI.
 - **Depends on:** 9, 14
 - **Refs:** Scope > Stores (Home carousels, Store page, My stores); Scope > Share (store codes); Risks (What a store is; cross-server data); Integration points (favourite stores, owned stores)
@@ -452,13 +452,22 @@
 - **Associated UI:** none yet; data follows `logic.js` STORES (name, rating %, visits, sponsored flag) and the store-page sections.
 - **Replication:** logical cross-server data (**cosmetic**); no world entity.
 - **Sub-tasks:**
-  - [TODO] 17.1 Decisions (open questions): what "Sell your own items" means commercially (any creator revenue share is a business question, not assumed); how sponsored placement is sourced (candidate: config-curated list for phase 1); how ratings and visits are defined and protected from abuse; and the moderation approach for user-named stores. Present options and wait.
-  - [TODO] 17.2 Config: `StoresConfig` (limits per player, section sizes, collection rules such as Under 50). `/create-config`.
-  - [TODO] 17.3 Extend `SharedContentService` with store publish/list/rank/visit/rate operations (OrderedDataStore-style ranking candidate from the Task 14 decision) and store codes.
-  - [TODO] 17.4 Model: `models/user/MyStoresModel.luau` (User, owned store ids and favourite store ids may live in `FavouritesModel` from Task 9) and a Stores browse model (UserSession). `/create-model`.
-  - [TODO] 17.5 Controller: `Stores` controller (BrowseCategory, OpenStore, Favourite, Rate, ResolveCode). `/create-controller`.
-  - [TODO] 17.6 Collections derivation (Bestsellers, New arrivals, rule-based collections) computed server-side from store items and cached.
-  - [TODO] 17.7 Slash-command playtest: seed stores, query categories, check rate limits.
+  - [DONE] 17.1 Decisions (made 2026-10-13):
+    - **What a store is:** a curated set of any catalogue items, plus outfits. Anyone can make one. "Sell your own items" gets reworded (Task 19). An outfit put in a store is published to Community too (its own code, wears and favourites, like any Community outfit).
+    - **Revenue share:** none in phase 1. Each purchase records the store it came through, so points for curators can be added later. **Ask this question again before moving on from Task 17.**
+    - **Sponsored:** paused (no paid placement without a way to earn). The Sponsored category is left out for now.
+    - **Rating:** favourites (a star, like Community outfits), not % liked. Top rated = most favourited.
+    - **Visits:** one per player per store per day, never the owner's; batched like Community counts. The page shows total visits and Popular ranks by total.
+    - **Codes:** the same 6-character pool as outfits, no `STR-` prefix. A store keeps its code for good through edits. An unpublished store is a private draft: its code works only for its owner.
+    - **Moderation:** as Community. Names filtered on create and every rename; auto-hide at 3 reports; admin hide, restore and takedown.
+    - **Limits:** 3 stores per player, 4–100 items to publish, names 3–30 characters (StoresConfig).
+    - **Store page:** Bestsellers by purchases through the store (item favourite counts until there are sales); New arrivals by the order items were added; Collections rule-based from config. May change once seen in Task 18.
+  - [DONE] 17.2 Config: `StoresConfig` (types synced; live module created in Studio, reference copy in `Source/ReplicatedStorage/Config/`).
+  - [DONE] 17.3 `StoresService`: stores are `kind = "store"` records in the SharedContent code pool, edited in place; unique names (`StoreNames`); rankings Popular / Top rated / Newest; batched visits, favourites and sales; moderation. Community's ranking and paging code moved to a shared `RankedPages`, and report counting to `SharedContentService.report`.
+  - [DONE] 17.4 Model: `StoresModel` (User): own stores, favourites, visit days. No browse model needed: browsing is a remote function, as for Community.
+  - [DONE] 17.5 Controller: `StoresController`. Create, Rename, AddItem, RemoveItem, AddOutfit, RemoveOutfit, Publish, Unpublish and Delete are pulled forward from 19.2 so the backend can be tested. Also Favourite, Report, Open and Moderate; `StoreAction` (answers with an error the UI can show), `BrowseStores` and `GetStore` (a code or an exact name) remotes. Purchases carry the store they were bought through (PurchaseController).
+  - [DONE] 17.6 Store page sections, server-side from item details (batched, cached): Featured, New arrivals, Bestsellers, Collections.
+  - [PARTIAL] 17.7 Slash-command playtest. Checked: create, add items (duplicates refused), Publish refused under 4 items, duplicate and taken names refused, 3-store cap, rename frees the old name, delete, outfits added once, own visit not counted, own favourite counted, hide/restore off and back on rankings, flush of visits/favourites/sales (an item not in the store ignored), page sections. Not yet: a second player's visit, 3 real reports, Buy through a store, and the remotes from a real client (Task 18's UI).
 
 ### Task 18: Stores UI, home, store page, collections, favourites, store share
 - **Status:** [TODO]
@@ -495,7 +504,7 @@
 - **Replication:** logical persisted/shared data (**cosmetic**).
 - **Sub-tasks:**
   - [TODO] 19.1 Design gap (open question): the store creation/edit/publish screens are not designed. Request a design round or agree a minimal flow before building.
-  - [TODO] 19.2 Controller actions (CreateStore, EditStore, Publish, Unpublish, DeleteStore) with name filtering and item validation. `/create-controller`.
+  - [PARTIAL] 19.2 Controller actions: built in Task 17 (StoresController: Create, Rename, AddItem, RemoveItem, AddOutfit, RemoveOutfit, Publish, Unpublish, Delete, with name filtering and item validation). Left for 19: reordering items (the featured viewer shows the first ones) and anything the editor design needs.
   - [TODO] 19.3 Store editor UI (`/html-to-react-luau` once designed), reusing catalogue cards and the item picker.
   - [TODO] 19.4 My stores wiring on Stores home.
   - [TODO] 19.5 Analytics: `store_create`, `store_publish`.
