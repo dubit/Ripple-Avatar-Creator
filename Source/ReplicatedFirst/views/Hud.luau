@@ -24,6 +24,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
+local Bolt = require(ReplicatedStorage:WaitForChild("Bolt"))
 
 local views = script.Parent
 local components = views:WaitForChild("components")
@@ -39,6 +40,7 @@ local useBackInput = require(hooks:WaitForChild("useBackInput"))
 local useTapAvatar = require(hooks:WaitForChild("useTapAvatar"))
 local useTransition = require(hooks:WaitForChild("useTransition"))
 local useWorldOptions = require(hooks:WaitForChild("useWorldOptions"))
+local SessionStore = require(hooks:WaitForChild("SessionStore"))
 local PlaceholderData = require(views:WaitForChild("screens"):WaitForChild("PlaceholderData"))
 local usePlaceholderLook = require(views:WaitForChild("screens"):WaitForChild("usePlaceholderLook"))
 local WorldHud = require(views:WaitForChild("WorldHud"))
@@ -224,6 +226,28 @@ local function Hud()
 		end
 		return true
 	end)
+
+	-- Joined through a share link (DeepLinkService): open what it shares,
+	-- under Outfits › Community. Kinds we don't show yet are skipped.
+	React.useEffect(function()
+		local thread = task.spawn(function()
+			local ok, link = pcall(function()
+				return Bolt.RemoteFunction("TakeJoinLink"):InvokeServer()
+			end)
+			if not ok or type(link) ~= "table" or type(link.code) ~= "string" then
+				return
+			end
+			if link.kind == "outfit" then
+				SessionStore["outfits.source"] = "Community"
+				SessionStore["outfits.query"] = ""
+				nav.openRoot("Outfits")
+				nav.push({ kind = "outfit", id = { source = "Shared", index = link.code }, label = "Shared outfit" })
+			end
+		end)
+		return function()
+			task.cancel(thread)
+		end
+	end, {})
 
 	-- Tapping your own avatar in the world opens Wearing (design 5a).
 	useTapAvatar(function()
