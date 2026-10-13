@@ -44,6 +44,7 @@ local usePlaceholderLook = require(views:WaitForChild("screens"):WaitForChild("u
 local WorldHud = require(views:WaitForChild("WorldHud"))
 local FullPanel = require(views:WaitForChild("panel"):WaitForChild("FullPanel"))
 local WorldRenderer = require(views:WaitForChild("WorldRenderer"))
+local ShareDialog = require(views:WaitForChild("screens"):WaitForChild("ShareDialog"))
 
 local e = React.createElement
 
@@ -103,6 +104,10 @@ local function withFeedback(look: any)
 	feedback.toggleFollow = function(userId: number)
 		Sounds.play(if look.isFollowing(userId) then "back" else "confirm")
 		look.toggleFollow(userId)
+	end
+	feedback.wearShared = function(code: string)
+		Sounds.play("tryOn")
+		look.wearShared(code)
 	end
 	feedback.wearUserLook = function(userId: number)
 		Sounds.play("tryOn")
@@ -166,6 +171,9 @@ end
 local function Hud()
 	local nav = useNavigation()
 	local rawLook = usePlaceholderLook()
+	-- What the share dialog is open for, if anything: a saved outfit, or one
+	-- saved on Roblox (a creation).
+	local shareTarget, setShareTarget = React.useState(nil :: { kind: string, id: number, name: string }?)
 	-- The latest purchase we sent (its request id), to sound its outcome,
 	-- and the button that sent it (spinning until the outcome arrives).
 	local buyRequest, setBuyRequest = React.useState(nil :: number?)
@@ -203,7 +211,10 @@ local function Hud()
 	end, { buyingKey })
 
 	useBackInput(function()
-		if #nav.stack > 0 then
+		if shareTarget then
+			Sounds.play("back")
+			setShareTarget(nil)
+		elseif #nav.stack > 0 then
 			Sounds.play("back")
 			nav.back()
 		elseif nav.isOpen then
@@ -262,6 +273,16 @@ local function Hud()
 			buying = function(key: string): boolean
 				return buyingKey == key
 			end,
+			share = function(id: number, kind: string?, name: string?)
+				Sounds.play("open")
+				setShareTarget({ kind = kind or "saved", id = id, name = name or "" })
+				if kind == "creation" then
+					-- Refresh its shared copy from Roblox (keeps any code).
+					if latestLook.current.creationCodes[tostring(id)] then
+						latestLook.current.shareCreation(id, name or "")
+					end
+				end
+			end,
 		}
 	end, { buyingKey })
 
@@ -286,6 +307,34 @@ local function Hud()
 			Renderer = e(WorldRenderer, { options = world.options, config = world.config }),
 			World = if nav.isOpen then nil else e(WorldHud, { nav = nav, look = look, tabs = TABS, world = world }),
 			Panel = e(React.Fragment, nil, panels),
+			Share = e(ShareDialog, {
+				outfit = (function()
+					local target = shareTarget
+					if not target then
+						return nil
+					end
+					if target.kind == "creation" then
+						return { id = target.id, name = target.name, code = rawLook.creationCodes[tostring(target.id)] }
+					end
+					for _, outfit in rawLook.outfits do
+						if outfit.id == target.id then
+							return outfit
+						end
+					end
+					return nil
+				end)(),
+				onReveal = function(id: number)
+					local target = shareTarget
+					if target and target.kind == "creation" then
+						rawLook.shareCreation(id, target.name)
+					else
+						rawLook.shareOutfit(id)
+					end
+				end,
+				onClose = function()
+					setShareTarget(nil)
+				end,
+			}),
 		}),
 	})
 end

@@ -9,6 +9,8 @@
 	outfit keeps its id when others are deleted. `following` holds the user
 	ids the player follows here (newest first): our own follow, private to
 	the player, since Roblox gives games no access to its follows.
+	`creationCodes` maps the player's Roblox-saved outfits (Creations) that
+	they've shared to their codes; those outfits aren't saved here.
 
 	One record for all of a player's outfits: at AvatarConfig.outfits limits
 	(50 outfits × 40 items, ~80 bytes an item) it stays a few hundred KB at
@@ -40,12 +42,14 @@ export type Outfit = {
 	items: { OutfitItem },
 	skin: any?, -- skin colours worn with it, by body part (SkinColours.normalise)
 	scale: any?, -- body scale worn with it (BodyScale.normalise)
+	code: string?, -- its share code ("7KQ2XM"), once shared
 }
 
 export type OutfitsModel = typeof(setmetatable({} :: {
 	outfits: { Outfit },
 	nextId: number,
 	following: { number }, -- user ids followed here (Outfits › Following), newest first
+	creationCodes: { [string]: string }, -- share codes for outfits saved on Roblox, by their outfit id
 }, OutfitsModel)) & AbstractModel.AbstractModel
 
 local MAX_FOLLOWING = 200
@@ -56,6 +60,7 @@ function OutfitsModel.new(ownerId: string): OutfitsModel
 	self.outfits = {}
 	self.nextId = 1
 	self.following = {}
+	self.creationCodes = {}
 	return self :: OutfitsModel
 end
 
@@ -139,6 +144,21 @@ function OutfitsModel:toggleFollow(userId: number): boolean
 	end
 	self:syncState()
 	return index == nil
+end
+
+-- A Roblox-saved outfit's share code (they aren't in `outfits`).
+function OutfitsModel:setCreationCode(robloxOutfitId: number, code: string): ()
+	self.creationCodes = self.creationCodes or {}
+	self.creationCodes[tostring(robloxOutfitId)] = code
+	self:syncState()
+end
+
+function OutfitsModel:setCode(id: number, code: string): ()
+	local outfit = self:find(id)
+	if outfit then
+		outfit.code = code
+		self:syncState()
+	end
 end
 
 function OutfitsModel:rename(id: number, name: string): boolean

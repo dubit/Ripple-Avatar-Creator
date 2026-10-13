@@ -46,6 +46,7 @@ SkinAssets.icons = {
 	remove_shopping_cart = 128883588652032,
 	restart_alt = 89689435225163,
 	search = 113580527499154,
+	share = 112275740280984,
 	shopping_basket = 99889459944389,
 	star = 138473232558734,
 	storefront = 126209902090800,
