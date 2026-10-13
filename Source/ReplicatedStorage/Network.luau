@@ -47,7 +47,7 @@ local NetworkConfig = {
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
 		Favourites = { "Toggle" },
-		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected", "Follow" },
+		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected", "Follow", "Share", "WearShared" },
 		Purchase = { "Buy", "Finished", "Check" },
 		Shrine = { "Donate" },
 		SlashCommand = {},  -- No actions, just the intent
@@ -159,7 +159,7 @@ export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"
 export type FavouritesAction = "Toggle"
 export type PurchaseAction = "Buy" | "Finished" | "Check"
-export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected" | "Follow"
+export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected" | "Follow" | "Share" | "WearShared"
 export type ShrineAction = "Donate"
 export type WorldOptionsAction = "Set" | "Reset"
 
@@ -210,6 +210,7 @@ export type Outfit = {
 	items: { WornItem }, -- what was worn, in the order put on (`owned` unset)
 	skin: any?, -- skin colours worn with it (by body part; SkinColours.normalise)
 	scale: any?, -- body scale worn with it (BodyScale.normalise)
+	code: string?, -- its share code ("OUT-…"), once shared
 }
 
 export type OutfitsState = {

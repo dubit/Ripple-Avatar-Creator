@@ -66,6 +66,7 @@ local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
 local OutfitPreview = require(script.Parent:WaitForChild("OutfitPreview"))
 local RobloxOutfits = require(views:WaitForChild("catalogue"):WaitForChild("RobloxOutfits"))
 local UserLooks = require(views:WaitForChild("catalogue"):WaitForChild("UserLooks"))
+local SharedCodes = require(views:WaitForChild("catalogue"):WaitForChild("SharedCodes"))
 local Badge = require(components:WaitForChild("Badge"))
 local Spinner = require(components:WaitForChild("Spinner"))
 local HudContext = require(views:WaitForChild("HudContext"))
@@ -81,8 +82,8 @@ local LEFT_WIDTH = 300
 
 -- An outfit as the screens see it, whichever source it came from.
 type OutfitView = {
-	kind: "saved" | "own" | "roblox" | "user" | "placeholder",
-	id: number?, -- the saved / Roblox outfit's id
+	kind: "saved" | "own" | "roblox" | "user" | "shared" | "placeholder",
+	id: any?, -- the saved / Roblox outfit's id, a user id, or a share code
 	source: string, -- nav source: "Mine" (saved), "Own", "RobloxSaved", "User", or a placeholder tab
 	index: number, -- nav index: the id, or the placeholder list position
 	name: string,
@@ -583,6 +584,66 @@ local function usePeople(active: boolean)
 	end, { active })
 end
 
+-- A share code typed into the search: the outfit it opens.
+local function useSharedSearch(query: string): (SharedCodes.Shared?, string?, string?)
+	local code = SharedCodes.normalise(query)
+	local state, setState = React.useState(nil :: { code: string, shared: SharedCodes.Shared?, error: string? }?)
+	React.useEffect(function()
+		if not code then
+			return nil
+		end
+		local alive = true
+		task.spawn(function()
+			local shared, err = SharedCodes.resolve(code)
+			if alive then
+				setState({ code = code, shared = shared, error = err })
+			end
+		end)
+		return function()
+			alive = false
+		end
+	end, { code })
+	if not code or not state or state.code ~= code then
+		return nil, nil, code
+	end
+	return state.shared, state.error, code
+end
+
+local function sharedView(shared: SharedCodes.Shared): OutfitView
+	return {
+		kind = "shared",
+		id = shared.code,
+		source = "Shared",
+		index = shared.code :: any,
+		name = shared.name,
+		by = "Shared by @" .. shared.by .. " · " .. shared.code,
+		items = shared.items,
+		skin = shared.skin,
+		scale = shared.scale,
+	}
+end
+
+-- A shared outfit, loaded for its page.
+local function useSharedOutfit(code: string?): SharedCodes.Shared?
+	local state, setState = React.useState(nil :: { code: string, shared: SharedCodes.Shared? }?)
+	React.useEffect(function()
+		if not code then
+			return nil
+		end
+		local alive = true
+		task.spawn(function()
+			local shared = SharedCodes.resolve(code)
+			if alive then
+				setState({ code = code, shared = shared })
+			end
+		end)
+		return function()
+			alive = false
+		end
+	end, { code })
+	return if code and state and state.code == code then state.shared else nil
+end
+
 -- Another user's look, loaded for their outfit page.
 local function useUserLook(userId: number?): (UserLooks.Look?, string?)
 	local state, setState = React.useState(nil :: { userId: number, look: UserLooks.Look?, error: string? }?)
@@ -784,6 +845,8 @@ local function OutfitsScreen(props: { nav: any, look: any })
 
 	useRobloxOutfits(source == "Creations")
 	usePeople(source == "Friends" or source == "Roblox")
+	-- A share code in any tab's search opens that outfit.
+	local sharedFound, sharedError, typedCode = useSharedSearch(query)
 	-- Current shows your Roblox avatar as it is now (it may have changed
 	-- since you joined).
 	React.useEffect(function()
@@ -847,7 +910,23 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		})
 	end
 
-	if source == "Current" then
+	if typedCode then
+		-- A share code: just what it opens (or why not, below).
+		if sharedFound then
+			count += 1
+			local view = sharedView(sharedFound)
+			cards.Shared = e(OutfitCard, {
+				outfit = view,
+				sub = "Shared by @" .. sharedFound.by,
+				ring = wearingExactly(look, view.items),
+				layoutOrder = count,
+				onActivated = function()
+					Sounds.play("press")
+					props.nav.push({ kind = "outfit", id = { source = "Shared", index = sharedFound.code }, label = sharedFound.name })
+				end,
+			})
+		end
+	elseif source == "Current" then
 		-- Your own Roblox avatar as it is: wearing it is a reset.
 		if #look.own > 0 then
 			addOutfit(ownView(look), "Reset to your avatar", e(Badge, { kind = "marker", tone = "white", icon = "restart_alt" }))
@@ -920,7 +999,14 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		end
 	end
 	local message: string? = nil
-	if source == "Roblox" and needle ~= "" and count == 0 then
+	if typedCode and not sharedFound then
+		message = if sharedError == "busy" then "Too many lookups. Try again in a moment"
+			elseif sharedError then "No outfit has that code"
+			else "Looking up " .. typedCode .. "…"
+	end
+	if typedCode then
+		-- (set above)
+	elseif source == "Roblox" and needle ~= "" and count == 0 then
 		message = "Nobody you follow has that name"
 	elseif source == "Friends" and count == 0 then
 		message = if needle ~= "" then "No friends with that name" else "Your friends will show here"
@@ -953,7 +1039,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			}),
 			Search = if searchHint == nil then nil else e(SearchBox, {
 				text = query,
-				placeholder = searchHint,
+				placeholder = if source == "Roblox" or source == "Friends" then searchHint else searchHint .. " or a code",
 				onChange = setQuery,
 				anchorPoint = Vector2.new(1, 0.5),
 				position = UDim2.fromScale(1, 0.5),
@@ -1107,8 +1193,10 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local look = props.look
 	useRobloxOutfits(props.source == "RobloxSaved")
 	local userLook, userError = useUserLook(if props.source == "User" then props.index else nil)
+	local sharedOutfit = useSharedOutfit(if props.source == "Shared" then props.index :: any else nil)
 	local outfit = if props.source == "User"
 		then (if userLook then userView(userLook) else nil)
+		elseif props.source == "Shared" then (if sharedOutfit then sharedView(sharedOutfit) else nil)
 		else findOutfit(look, props.source, props.index)
 	-- Selected rows by position; everything starts selected (the skin tone
 	-- row too).
@@ -1136,11 +1224,11 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	if not outfit then
 		-- Another user's look still loading (or unavailable); a deleted outfit
 		-- shows nothing (the Delete handler goes back).
-		local note = if props.source ~= "User" then nil
+		local note = if props.source ~= "User" and props.source ~= "Shared" then nil
 			elseif userError then (if userError == "busy" then ERRORS.busy else "This avatar isn't available")
 			else nil
 		return e("Frame", { Name = "OutfitScreen", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, {
-			Spinner = if props.source == "User" and not note
+			Spinner = if (props.source == "User" or props.source == "Shared") and not note
 				then e(Spinner, { size = 40, anchorPoint = Vector2.new(0.5, 0.5), position = UDim2.fromScale(0.5, 0.4) })
 				else nil,
 			Note = if note then e(GridMessage, { text = note }) else nil,
@@ -1402,29 +1490,62 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					shadow = false,
 				}),
 			}),
-			WearAll = e(PillButton, {
-				variant = "pill",
-				size = Tokens.size.ctaHeight,
-				icon = if kind == "own" then "restart_alt" else "checkroom",
-				iconSize = 18,
-				label = if kind == "own" then "Reset to this" else "Wear all items",
-				active = true,
-				disabled = kind ~= "own" and #items == 0,
-				sound = false, -- the look change plays its own sound
-				layoutOrder = 4,
-				onActivated = function()
-					if kind == "own" then
-						look.reset()
-					elseif kind == "roblox" and outfitId then
-						look.wearRobloxOutfit(outfitId)
-					elseif kind == "user" and outfitId then
-						look.wearUserLook(outfitId)
-					elseif kind == "saved" and outfitId then
-						look.wearOutfit(outfitId)
-					else
-						look.wearAll(items)
-					end
-				end,
+			WearRow = e("Frame", {
+				Size = UDim2.new(1, 0, 0, buttonsHeight),
+				BackgroundTransparency = 1,
+				LayoutOrder = 4,
+			}, {
+				Layout = e("UIListLayout", {
+					FillDirection = Enum.FillDirection.Horizontal,
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					Padding = UDim.new(0, skin.px(8)),
+				}),
+				Wear = e("Frame", {
+					Size = UDim2.new(1, if saved then -(buttonsHeight + skin.px(8)) else 0, 1, 0),
+					BackgroundTransparency = 1,
+					LayoutOrder = 1,
+				}, {
+					Button = e(PillButton, {
+						variant = "pill",
+						size = Tokens.size.ctaHeight,
+						icon = if kind == "own" then "restart_alt" else "checkroom",
+						iconSize = 18,
+						label = if kind == "own" then "Reset to this" else "Wear all items",
+						active = true,
+						disabled = kind ~= "own" and #items == 0,
+						sound = false, -- the look change plays its own sound
+						onActivated = function()
+							if kind == "own" then
+								look.reset()
+							elseif kind == "roblox" and outfitId then
+								look.wearRobloxOutfit(outfitId)
+							elseif kind == "user" and outfitId then
+								look.wearUserLook(outfitId)
+							elseif kind == "shared" and outfitId then
+								look.wearShared(outfitId)
+							elseif kind == "saved" and outfitId then
+								look.wearOutfit(outfitId)
+							else
+								look.wearAll(items)
+							end
+						end,
+					}),
+				}),
+				-- Share: a code anyone can open (design 5e).
+				Share = if saved and outfitId
+					then e(PillButton, {
+						variant = "round",
+						size = Tokens.size.ctaHeight,
+						icon = "ios_share",
+						iconSize = 20,
+						glowRadius = 0,
+						sound = false, -- the dialog plays its own sound
+						layoutOrder = 2,
+						onActivated = function()
+							hud.share(outfitId)
+						end,
+					})
+					else nil,
 			}),
 			-- Follow at once; unfollow takes a second press.
 			Follow = if kind == "user" and outfitId and look.isFollowing(outfitId)

@@ -44,6 +44,7 @@ local usePlaceholderLook = require(views:WaitForChild("screens"):WaitForChild("u
 local WorldHud = require(views:WaitForChild("WorldHud"))
 local FullPanel = require(views:WaitForChild("panel"):WaitForChild("FullPanel"))
 local WorldRenderer = require(views:WaitForChild("WorldRenderer"))
+local ShareDialog = require(views:WaitForChild("screens"):WaitForChild("ShareDialog"))
 
 local e = React.createElement
 
@@ -103,6 +104,10 @@ local function withFeedback(look: any)
 	feedback.toggleFollow = function(userId: number)
 		Sounds.play(if look.isFollowing(userId) then "back" else "confirm")
 		look.toggleFollow(userId)
+	end
+	feedback.wearShared = function(code: string)
+		Sounds.play("tryOn")
+		look.wearShared(code)
 	end
 	feedback.wearUserLook = function(userId: number)
 		Sounds.play("tryOn")
@@ -166,6 +171,8 @@ end
 local function Hud()
 	local nav = useNavigation()
 	local rawLook = usePlaceholderLook()
+	-- The outfit whose share dialog is open (its id), if any.
+	local shareId, setShareId = React.useState(nil :: number?)
 	-- The latest purchase we sent (its request id), to sound its outcome,
 	-- and the button that sent it (spinning until the outcome arrives).
 	local buyRequest, setBuyRequest = React.useState(nil :: number?)
@@ -203,7 +210,10 @@ local function Hud()
 	end, { buyingKey })
 
 	useBackInput(function()
-		if #nav.stack > 0 then
+		if shareId then
+			Sounds.play("back")
+			setShareId(nil)
+		elseif #nav.stack > 0 then
 			Sounds.play("back")
 			nav.back()
 		elseif nav.isOpen then
@@ -262,6 +272,10 @@ local function Hud()
 			buying = function(key: string): boolean
 				return buyingKey == key
 			end,
+			share = function(id: number)
+				Sounds.play("open")
+				setShareId(id)
+			end,
 		}
 	end, { buyingKey })
 
@@ -286,6 +300,20 @@ local function Hud()
 			Renderer = e(WorldRenderer, { options = world.options, config = world.config }),
 			World = if nav.isOpen then nil else e(WorldHud, { nav = nav, look = look, tabs = TABS, world = world }),
 			Panel = e(React.Fragment, nil, panels),
+			Share = e(ShareDialog, {
+				outfit = (function()
+					for _, outfit in rawLook.outfits do
+						if outfit.id == shareId then
+							return outfit
+						end
+					end
+					return nil
+				end)(),
+				onReveal = rawLook.shareOutfit,
+				onClose = function()
+					setShareId(nil)
+				end,
+			}),
 		}),
 	})
 end

@@ -55,6 +55,7 @@ export type SavedOutfit = {
 	items: { number }, -- item ids, in the order they were put on
 	skin: SkinColours.Colours, -- the skin colours saved with it ({} = the wearer's own)
 	scale: any, -- the body scale saved with it ({} = the wearer's own)
+	code: string?, -- its share code, once shared
 }
 
 export type Look = {
@@ -97,6 +98,8 @@ export type Look = {
 	saveOutfit: () -> boolean, -- save what's worn; false if nothing is
 	overwriteOutfit: (id: number) -> (), -- replace its items with what's worn
 	renameOutfit: (id: number, name: string) -> (),
+	shareOutfit: (id: number) -> (), -- give it a share code (kept)
+	wearShared: (code: string) -> (), -- wear a shared outfit exactly
 	deleteOutfit: (id: number) -> (),
 	wearOutfit: (id: number) -> (), -- exactly the outfit (replaces the look)
 	wearOutfitItems: (id: number, indices: { number }, withSkin: boolean?, withScale: boolean?) -> (), -- over the look
@@ -180,6 +183,7 @@ local function usePlaceholderLook(): Look
 			items = ids,
 			skin = SkinColours.normalise(outfit.skin),
 			scale = BodyScale.normalise(outfit.scale),
+			code = outfit.code,
 		})
 	end
 	-- Known-owned items show as owned wherever they appear (items are shared).
@@ -500,6 +504,12 @@ local function usePlaceholderLook(): Look
 			if #worn > 0 then
 				Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Overwrite, { id = id })
 			end
+		end,
+		shareOutfit = function(id: number)
+			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Share, { id = id })
+		end,
+		wearShared = function(code: string)
+			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearShared, { code = code })
 		end,
 		renameOutfit = function(id: number, name: string)
 			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Rename, { id = id, name = name })

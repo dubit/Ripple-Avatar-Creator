@@ -40,6 +40,7 @@ export type Outfit = {
 	items: { OutfitItem },
 	skin: any?, -- skin colours worn with it, by body part (SkinColours.normalise)
 	scale: any?, -- body scale worn with it (BodyScale.normalise)
+	code: string?, -- its share code ("OUT-…"), once shared
 }
 
 export type OutfitsModel = typeof(setmetatable({} :: {
@@ -139,6 +140,14 @@ function OutfitsModel:toggleFollow(userId: number): boolean
 	end
 	self:syncState()
 	return index == nil
+end
+
+function OutfitsModel:setCode(id: number, code: string): ()
+	local outfit = self:find(id)
+	if outfit then
+		outfit.code = code
+		self:syncState()
+	end
 end
 
 function OutfitsModel:rename(id: number, name: string): boolean

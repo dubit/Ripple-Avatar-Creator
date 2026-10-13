@@ -22,6 +22,17 @@
 		                           `skin`, its skin tone) on over the current look
 		Follow({ userId })         follow someone here, or unfollow (a real
 		                           Roblox user; private to the player)
+		Share({ id })              give the outfit a share code (once; it's
+		                           kept): its current state is published to
+		                           SharedContentService, and every rename / save
+		                           over republishes it; Delete revokes it
+		WearShared({ code })       wear a shared outfit exactly (replaces the
+		                           look, with its skin colours and scale)
+
+	"ResolveShareCode"(text) (Bolt remote function): a typed code -> { ok,
+	code, kind = "outfit", outfit = { name, by, ownerId, items, skin, scale } }
+	or { ok = false, error = "notfound" | "busy" }. A code's kind travels with
+	it, so other kinds of shared things can join later.
 
 	The outfit page's 3D preview asks over the "OutfitPreview" remote function
 	(Bolt) with (kind, id): "saved" + a saved outfit's id, "own" (the player's
@@ -49,6 +60,7 @@ local OutfitsModel = require(script.Parent.Parent.models.user.OutfitsModel)
 local AvatarModel = require(script.Parent.Parent.models.user.AvatarModel)
 local AvatarService = require(ServerScriptService.services.game.AvatarService)
 local RobloxAvatarLookupService = require(ServerScriptService.services.game.RobloxAvatarLookupService)
+local SharedContentService = require(ServerScriptService.services.game.SharedContentService)
 local Network = require(ReplicatedStorage.Network)
 local Bolt = require(ReplicatedStorage.Bolt)
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
@@ -135,8 +147,59 @@ local function overwrite(player: Player, model: any, raw: any)
 	end
 	local outfit = model:overwrite(id, avatar.worn, avatar.skin, avatar.scale)
 	if outfit then
+		republish(player, outfit)
 		track(player, "outfit_save", { outfit_id = outfit.id, item_count = #outfit.items, replaced = true })
 	end
+end
+
+-- What everyone sees of a shared outfit: its current state.
+local function shared(player: Player, outfit: any): { [string]: any }
+	return {
+		kind = "outfit",
+		ownerId = player.UserId,
+		ownerName = player.Name,
+		updated = os.time(),
+		name = outfit.name,
+		items = outfit.items,
+		skin = SkinColours.normalise(outfit.skin),
+		scale = BodyScale.normalise(outfit.scale),
+	}
+end
+
+-- Keep a shared outfit's published copy current (in the background).
+local function republish(player: Player, outfit: any)
+	if outfit and outfit.code then
+		local record = shared(player, outfit)
+		task.spawn(SharedContentService.update, outfit.code, record)
+	end
+end
+
+local function share(player: Player, model: any, raw: any)
+	local id = idOf(raw)
+	local outfit = id and model:find(id)
+	if not outfit or outfit.code then
+		return
+	end
+	local code = SharedContentService.claim("OUT", shared(player, outfit))
+	if code and model:find(id) then
+		model:setCode(id, code)
+		track(player, "outfit_share", { outfit_id = id, item_count = #outfit.items })
+	end
+end
+
+local function wearShared(player: Player, _model: any, raw: any)
+	local code = if type(raw) == "table" then SharedContentService.normalise(raw.code) else nil
+	local avatar = AvatarModel.get(tostring(player.UserId))
+	if not code or not avatar then
+		return
+	end
+	local record = SharedContentService.lookup(code)
+	if type(record) ~= "table" or record.kind ~= "outfit" or type(record.items) ~= "table" then
+		return
+	end
+	avatar:setLook(table.clone(record.items), SkinColours.normalise(record.skin), BodyScale.normalise(record.scale))
+	AvatarService.apply(player)
+	track(player, "outfit_wear", { item_count = #record.items, partial = false, source = "share_code" })
 end
 
 local function rename(player: Player, model: any, raw: any)
@@ -158,8 +221,8 @@ local function rename(player: Player, model: any, raw: any)
 		return
 	end
 	local clean = filtered(player, name)
-	if clean then
-		model:rename(id, clean)
+	if clean and model:rename(id, clean) then
+		republish(player, model:find(id))
 	end
 end
 
@@ -167,6 +230,9 @@ local function delete(player: Player, model: any, raw: any)
 	local id = idOf(raw)
 	local outfit = id and model:delete(id)
 	if outfit then
+		if outfit.code then
+			task.spawn(SharedContentService.remove, outfit.code)
+		end
 		track(player, "outfit_delete", { outfit_id = outfit.id, item_count = #outfit.items })
 	end
 end
@@ -232,6 +298,8 @@ local ACTIONS = {
 	[Network.Actions.Outfits.WearAll] = wearAll,
 	[Network.Actions.Outfits.WearSelected] = wearSelected,
 	[Network.Actions.Outfits.Follow] = follow,
+	[Network.Actions.Outfits.Share] = share,
+	[Network.Actions.Outfits.WearShared] = wearShared,
 }
 
 function OutfitsController:executeAction(player: Player, action: Network.OutfitsAction, raw: any)
@@ -249,7 +317,7 @@ end
 
 -- The outfit page's preview: build the look and hand it to this player only.
 local function preview(player: Player, kind: any, id: any): string?
-	if kind ~= "own" and type(id) ~= "number" then
+	if kind ~= "own" and type(id) ~= "number" and not (kind == "shared" and type(id) == "string") then
 		return nil
 	end
 	local now = os.clock()
@@ -281,6 +349,12 @@ local function preview(player: Player, kind: any, id: any): string?
 		description = AvatarService.robloxOutfit(id)
 	elseif kind == "user" then
 		description = RobloxAvatarLookupService.description(id)
+	elseif kind == "shared" then
+		local record = SharedContentService.lookup(SharedContentService.normalise(id) or "")
+		if type(record) == "table" and record.kind == "outfit" and type(record.items) == "table" then
+			local ok, result = pcall(AvatarService.describeLook, player, record.items, record.skin, record.scale)
+			description = if ok then result else nil
+		end
 	end
 	if not description then
 		return nil
@@ -306,6 +380,33 @@ function OutfitsController.new(): OutfitsController
 	end)
 
 	Bolt.RemoteFunction("OutfitPreview").OnServerInvoke = preview
+	Bolt.RemoteFunction("ResolveShareCode").OnServerInvoke = function(player: Player, text: any)
+		local code = SharedContentService.normalise(text)
+		if not code then
+			return { ok = false, error = "notfound" }
+		end
+		if not SharedContentService.allowed(player) then
+			return { ok = false, error = "busy" }
+		end
+		local record = SharedContentService.lookup(code)
+		if type(record) ~= "table" or record.kind ~= "outfit" or type(record.items) ~= "table" then
+			return { ok = false, error = "notfound" }
+		end
+		track(player, "share_resolve", { kind = "outfit" })
+		return {
+			ok = true,
+			code = code,
+			kind = "outfit",
+			outfit = {
+				name = record.name,
+				by = record.ownerName,
+				ownerId = record.ownerId,
+				items = record.items,
+				skin = record.skin,
+				scale = record.scale,
+			},
+		}
+	end
 
 	Players.PlayerRemoving:Connect(function(player: Player)
 		lastRequest[player] = nil
