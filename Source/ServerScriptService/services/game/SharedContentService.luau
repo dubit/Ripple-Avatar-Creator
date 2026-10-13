@@ -4,14 +4,14 @@
 	SharedContentService
 
 	Content one player shares with everyone, across servers, by a short code:
-	"OUT-7KQ2XM". It lives in a global DataStore ("SharedContent"), keyed by
+	"7KQ2XM". It lives in a global DataStore ("SharedContent"), keyed by
 	code, so any server can look it up. (Decided in Task 14: Roblox
 	DataStores for shared content; OrderedDataStore for rankings and
 	MemoryStore for caches when later tasks need them.)
 
-	A code's prefix says what kind of thing it is (OUT outfit; later STR
-	store and so on) and its record carries the kind too, so a lookup knows
-	what it found before showing it:
+	All kinds of shared things (outfits now; stores later) share one pool of
+	codes: the record says what it is, so a lookup knows what it found
+	before showing it:
 		{ kind, ownerId, ownerName, updated, ... the content ... }
 
 	Codes are 6 characters from the design's alphabet (no I, O, 0 or 1: about
@@ -24,11 +24,11 @@
 	LOOKUP_BUDGET lookups per window.
 
 	API:
-		claim(prefix, record) -> string?          a new code holding `record`
+		claim(record) -> string?                  a new code holding `record`
 		update(code, record) -> boolean           replace a code's record
 		remove(code)                              revoke a code
 		lookup(code) -> record?                   cached; nil if unknown
-		normalise(text) -> string?                "out-7kq2xm " -> "OUT-7KQ2XM"
+		normalise(text) -> string?                " 7kq2xm " -> "7KQ2XM"
 		allowed(player) -> boolean                the lookup budget
 ]]
 
@@ -62,21 +62,21 @@ local function dataStore(): DataStore?
 	return store
 end
 
-local function newCode(prefix: string): string
+local function newCode(): string
 	local chars = table.create(CODE_LENGTH)
 	for i = 1, CODE_LENGTH do
 		local n = random:NextInteger(1, #ALPHABET)
 		chars[i] = string.sub(ALPHABET, n, n)
 	end
-	return prefix .. "-" .. table.concat(chars)
+	return table.concat(chars)
 end
 
 function SharedContentService.normalise(text: any): string?
 	if type(text) ~= "string" then
 		return nil
 	end
-	local prefix, body = string.match(string.upper(text), "^%s*(%u%u%u)%-?([%w]+)%s*$")
-	if not prefix or not body or #body ~= CODE_LENGTH then
+	local body = string.match(string.upper(text), "^%s*(%w+)%s*$")
+	if not body or #body ~= CODE_LENGTH then
 		return nil
 	end
 	for i = 1, #body do
@@ -84,16 +84,16 @@ function SharedContentService.normalise(text: any): string?
 			return nil
 		end
 	end
-	return prefix .. "-" .. body
+	return body
 end
 
-function SharedContentService.claim(prefix: string, record: any): string?
+function SharedContentService.claim(record: any): string?
 	local ds = dataStore()
 	if not ds then
 		return nil
 	end
 	for _ = 1, MAX_ATTEMPTS do
-		local code = newCode(prefix)
+		local code = newCode()
 		local claimed = false
 		local ok, err = pcall(function()
 			ds:UpdateAsync(code, function(old: any)

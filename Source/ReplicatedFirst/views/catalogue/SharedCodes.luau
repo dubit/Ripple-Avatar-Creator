@@ -3,14 +3,16 @@
 --[[
 	SharedCodes (client)
 
-	Share codes typed into the Outfits search ("OUT-7KQ2XM", any case, with
-	or without the dash): resolved by the server ("ResolveShareCode", Bolt)
+	Share codes typed into the Outfits search ("7KQ2XM", any case): resolved
+	by the server ("ResolveShareCode", Bolt)
 	from the shared DataStore. Outfits only for now; the result carries its
 	kind so other kinds of shared things can join later.
 
 	API:
-		normalise(text) -> string?      "out-7kq2xm" -> "OUT-7KQ2XM"; nil if
-		                                it isn't code-shaped
+		normalise(text) -> string?      " 7kq2xm" -> "7KQ2XM"; nil if it
+		                                isn't code-shaped (6 characters of
+		                                the code alphabet; a name can look
+		                                like one, so callers show both)
 		resolve(code) -> (Shared?, error?)   yields; cached briefly;
 		                                error "notfound" | "busy" | "failed"
 ]]
@@ -42,8 +44,8 @@ local remote = Bolt.RemoteFunction("ResolveShareCode")
 local cache: { [string]: { shared: Shared?, error: string?, at: number } } = {}
 
 function SharedCodes.normalise(text: string): string?
-	local prefix, body = string.match(string.upper(text), "^%s*(%u%u%u)%-?([%w]+)%s*$")
-	if not prefix or not body or #body ~= 6 then
+	local body = string.match(string.upper(text), "^%s*(%w+)%s*$")
+	if not body or #body ~= 6 then
 		return nil
 	end
 	for i = 1, #body do
@@ -51,7 +53,12 @@ function SharedCodes.normalise(text: string): string?
 			return nil
 		end
 	end
-	return prefix .. "-" .. body
+	return body
+end
+
+-- Is this a current-format code (old ones were "OUT-…")?
+function SharedCodes.isCode(code: string?): boolean
+	return code ~= nil and SharedCodes.normalise(code) == code
 end
 
 function SharedCodes.resolve(code: string): (Shared?, string?)

@@ -40,7 +40,7 @@ export type Outfit = {
 	items: { OutfitItem },
 	skin: any?, -- skin colours worn with it, by body part (SkinColours.normalise)
 	scale: any?, -- body scale worn with it (BodyScale.normalise)
-	code: string?, -- its share code ("OUT-…"), once shared
+	code: string?, -- its share code ("7KQ2XM"), once shared
 }
 
 export type OutfitsModel = typeof(setmetatable({} :: {

@@ -22,8 +22,8 @@
 		                           `skin`, its skin tone) on over the current look
 		Follow({ userId })         follow someone here, or unfollow (a real
 		                           Roblox user; private to the player)
-		Share({ id })              give the outfit a share code (once; it's
-		                           kept): its current state is published to
+		Share({ id })              give the outfit a 6-character share code
+		                           (once; it's kept): its current state is published to
 		                           SharedContentService, and every rename / save
 		                           over republishes it; Delete revokes it
 		WearShared({ code })       wear a shared outfit exactly (replaces the
@@ -177,10 +177,17 @@ end
 local function share(player: Player, model: any, raw: any)
 	local id = idOf(raw)
 	local outfit = id and model:find(id)
-	if not outfit or outfit.code then
+	if not outfit then
 		return
 	end
-	local code = SharedContentService.claim("OUT", shared(player, outfit))
+	if outfit.code then
+		if SharedContentService.normalise(outfit.code) then
+			return -- it has one already
+		end
+		-- An old-format code ("OUT-…"): replace it with a short one.
+		task.spawn(SharedContentService.remove, outfit.code)
+	end
+	local code = SharedContentService.claim(shared(player, outfit))
 	if code and model:find(id) then
 		model:setCode(id, code)
 		track(player, "outfit_share", { outfit_id = id, item_count = #outfit.items })

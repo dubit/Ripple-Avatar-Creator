@@ -3,8 +3,8 @@
 --[[
 	ShareDialog (design frame 5e: Share an outfit)
 
-	Over a dimmed screen: "Share outfit", the outfit's name, and its code,
-	hidden ("OUT-••••••", blurred) until you press Reveal code. Revealing
+	Over a dimmed screen: "Share outfit", the outfit's name, and its code
+	(6 characters), hidden ("••••••") until you press Reveal code. Revealing
 	gives the outfit a code if it hasn't one (the server keeps it for good;
 	a spinner shows while it's made). The code sits in a box you can select
 	and copy yourself: Roblox experiences can't write to the clipboard (a
@@ -33,6 +33,7 @@ local PillButton = require(views:WaitForChild("components"):WaitForChild("PillBu
 local GlassPanel = require(views:WaitForChild("components"):WaitForChild("GlassPanel"))
 local ShadowText = require(views:WaitForChild("components"):WaitForChild("ShadowText"))
 local Spinner = require(views:WaitForChild("components"):WaitForChild("Spinner"))
+local SharedCodes = require(views:WaitForChild("catalogue"):WaitForChild("SharedCodes"))
 
 local e = React.createElement
 
@@ -44,7 +45,8 @@ type Outfit = { id: number, name: string, code: string? }
 local function Card(props: { outfit: Outfit, t: any, onReveal: (id: number) -> (), onClose: () -> () })
 	local skin = useSkin()
 	local revealed, setRevealed = React.useState(false)
-	local code = props.outfit.code
+	-- (An old-format "OUT-…" code is replaced when you reveal.)
+	local code = if SharedCodes.isCode(props.outfit.code) then props.outfit.code else nil
 	local waiting = revealed and code == nil
 	local qr = skin.px(120)
 
@@ -140,7 +142,7 @@ local function Card(props: { outfit: Outfit, t: any, onReveal: (id: number) -> (
 							TextEditable = false,
 							Text = code,
 							TextColor3 = Tokens.color.white,
-							TextSize = skin.textPx(24),
+							TextSize = skin.textPx(28),
 							FontFace = Tokens.font(900),
 						})
 						else nil,
@@ -148,7 +150,7 @@ local function Card(props: { outfit: Outfit, t: any, onReveal: (id: number) -> (
 						then e("TextLabel", {
 							Size = UDim2.fromScale(1, 1),
 							BackgroundTransparency = 1,
-							Text = "OUT-••••••",
+							Text = "••••••",
 							TextColor3 = Tokens.color.white,
 							TextTransparency = 0.5,
 							TextSize = skin.textPx(24),

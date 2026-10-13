@@ -616,7 +616,7 @@ local function sharedView(shared: SharedCodes.Shared): OutfitView
 		source = "Shared",
 		index = shared.code :: any,
 		name = shared.name,
-		by = "Shared by @" .. shared.by .. " · " .. shared.code,
+		by = "Shared by @" .. shared.by .. " · code " .. shared.code,
 		items = shared.items,
 		skin = shared.skin,
 		scale = shared.scale,
@@ -910,8 +910,8 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		})
 	end
 
+	-- A share code (it can look like a name, so it joins the normal results).
 	if typedCode then
-		-- A share code: just what it opens (or why not, below).
 		if sharedFound then
 			count += 1
 			local view = sharedView(sharedFound)
@@ -926,7 +926,8 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				end,
 			})
 		end
-	elseif source == "Current" then
+	end
+	if source == "Current" then
 		-- Your own Roblox avatar as it is: wearing it is a reset.
 		if #look.own > 0 then
 			addOutfit(ownView(look), "Reset to your avatar", e(Badge, { kind = "marker", tone = "white", icon = "restart_alt" }))
@@ -999,12 +1000,12 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		end
 	end
 	local message: string? = nil
-	if typedCode and not sharedFound then
+	if typedCode and not sharedFound and count == 0 then
 		message = if sharedError == "busy" then "Too many lookups. Try again in a moment"
-			elseif sharedError then "No outfit has that code"
+			elseif sharedError then "Nothing has that name or code"
 			else "Looking up " .. typedCode .. "…"
 	end
-	if typedCode then
+	if message then
 		-- (set above)
 	elseif source == "Roblox" and needle ~= "" and count == 0 then
 		message = "Nobody you follow has that name"
