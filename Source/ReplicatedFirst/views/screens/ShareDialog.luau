@@ -9,7 +9,9 @@
 	a spinner shows while it's made). The code sits in a box you can select
 	and copy yourself: Roblox experiences can't write to the clipboard (a
 	divergence from the design's Copy button). It works in the Outfits
-	search on any server. The QR slot is for Task 15.
+	search on any server. Beside it, a QR of the share link (LaunchData):
+	scanned with a phone, it joins the experience on this outfit's page
+	(DeepLinkService). Until revealed the QR is a dimmed stand-in.
 
 	Tapping outside, Close or Back (handled by Hud, which owns the dialog)
 	shuts it. It rises in and drops out.
@@ -33,11 +35,13 @@ local PillButton = require(views:WaitForChild("components"):WaitForChild("PillBu
 local GlassPanel = require(views:WaitForChild("components"):WaitForChild("GlassPanel"))
 local ShadowText = require(views:WaitForChild("components"):WaitForChild("ShadowText"))
 local Spinner = require(views:WaitForChild("components"):WaitForChild("Spinner"))
+local QrTile = require(views:WaitForChild("components"):WaitForChild("QrTile"))
 local SharedCodes = require(views:WaitForChild("catalogue"):WaitForChild("SharedCodes"))
+local LaunchData = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("LaunchData"))
 
 local e = React.createElement
 
-local WIDTH, HEIGHT = 460, 270
+local WIDTH, HEIGHT = 480, 300
 local RISE = 30
 
 type Outfit = { id: number, name: string, code: string? }
@@ -48,7 +52,7 @@ local function Card(props: { outfit: Outfit, t: any, onReveal: (id: number) -> (
 	-- (An old-format "OUT-…" code is replaced when you reveal.)
 	local code = if SharedCodes.isCode(props.outfit.code) then props.outfit.code else nil
 	local waiting = revealed and code == nil
-	local qr = skin.px(120)
+	local qr = math.floor(skin.px(150))
 
 	return e("TextButton", {
 		Name = "ShareDialog",
@@ -107,25 +111,11 @@ local function Card(props: { outfit: Outfit, t: any, onReveal: (id: number) -> (
 						maxWidth = skin.px(WIDTH - 40),
 					}),
 				}),
-				-- The QR code arrives with deep links (Task 15).
-				Qr = e("Frame", {
-					AnchorPoint = Vector2.new(1, 0),
-					Position = UDim2.new(1, 0, 0, skin.px(62)),
-					Size = UDim2.fromOffset(qr, qr),
-					BackgroundColor3 = Tokens.color.white,
-					BackgroundTransparency = 0.92,
-					BorderSizePixel = 0,
-				}, {
-					Corner = e("UICorner", { CornerRadius = UDim.new(0, skin.px(12)) }),
-					Text = e("TextLabel", {
-						Size = UDim2.fromScale(1, 1),
-						BackgroundTransparency = 1,
-						Text = "QR code\ncoming soon",
-						TextColor3 = Tokens.color.white,
-						TextTransparency = Tokens.alpha.textDim,
-						TextSize = skin.textPx(11),
-						FontFace = Tokens.font(700),
-					}),
+				Qr = e(QrTile, {
+					text = if revealed and code then LaunchData.shareLink(code) else nil,
+					size = qr,
+					anchorPoint = Vector2.new(1, 0),
+					position = UDim2.new(1, 0, 0, skin.px(62)),
 				}),
 				Code = e("Frame", {
 					Position = UDim2.fromOffset(0, skin.px(62)),
@@ -163,11 +153,11 @@ local function Card(props: { outfit: Outfit, t: any, onReveal: (id: number) -> (
 				}),
 				Hint = e("TextLabel", {
 					Position = UDim2.fromOffset(0, skin.px(122)),
-					Size = UDim2.new(1, -(qr + skin.px(16)), 0, skin.px(60)),
+					Size = UDim2.new(1, -(qr + skin.px(16)), 0, skin.px(90)),
 					BackgroundTransparency = 1,
 					Text = if revealed and code
-						then "Select the code to copy it. Anyone can type it into the Outfits search to open this outfit, on any server. It shows the outfit as it is now."
-						else "Reveal a code anyone can type into the Outfits search to open this outfit.",
+						then "Scan the QR with a phone to open this outfit in Ripple, or type the code into the Outfits search on any server. Select the code to copy it. It shows the outfit as it is now."
+						else "Reveal a code and QR anyone can use to open this outfit.",
 					TextColor3 = Tokens.color.white,
 					TextTransparency = Tokens.alpha.textSoft,
 					TextSize = skin.textPx(12.5),

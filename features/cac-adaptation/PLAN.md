@@ -366,22 +366,30 @@
 - **Outcome:** Decided (user): Roblox DataStores for shared content (open question 16). `SharedContentService` keeps records in a global DataStore ("SharedContent") keyed by code; codes are 6 characters of the design's alphabet (no I/O/0/1, ~1e9), random and claimed atomically with UpdateAsync, one pool for every kind of shared thing (the record carries `kind`; user: a prefix was too much). A code opens the thing as it is now: rename / save-over republish, delete revokes; old `OUT-` codes are replaced on reveal. Wardrobe outfits keep `code`; Roblox-saved outfits (Creations) can be shared too, published from Roblox's own data, their codes in `OutfitsModel.creationCodes` (not the Wardrobe) and refreshed when the dialog opens. Share dialog (design 5e) at Hud level: reveal, the code in a selectable box (Roblox can't write the clipboard: a recorded divergence from the design's Copy), QR slot for Task 15; Back closes it first (Hud's own back handler: child handlers register before the parent's). Codes go in the Community tab's search (user: not the Roblox tab, which stays follows only); a code found from another tab switches there; a code-shaped name still searches normally. Shared outfit page: preview, rows, Wear all items (exact, with skin and scale), Wear selected, basket, buy. Share icon is Material `share`. Analytics: `outfit_share`, `share_resolve`. Not verified: a second account opening a code; live cross-server.
 
 ### Task 15: QR deep links
-- **Status:** [TODO]
+- **Status:** [PARTIAL]
 - **Why here:** Isolated because it depends on unresolved platform support (experience launch data/deep links) and on a QR encoder. Codes already work without it, so a failure here does not block Sharing's core value.
 - **Depends on:** 14
 - **Refs:** Scope > Share (QR deep-links back to that screen); Risks (Deep links from QR)
 - **Acceptance criteria:**
   - The share dialog shows a real, scannable QR whose link lands a joining player on that specific outfit (and later store) screen.
-  - A player already in the experience who opens the same link is taken to the same screen without disruption.
+  - A player already in the experience who opens the same link is taken to the same screen without disruption. *(Revised after 15.1: Roblox can't hand a link to a running session, because opening one always starts a fresh join. In-game, the code shown beside the QR goes in the Outfits › Community search instead.)*
   - Existing acquisition attribution through LaunchData in analytics is not corrupted.
 - **Associated UI:** 5e Share (QR tile, blurred until revealed).
 - **Replication:** logical data; no world entity.
 - **Sub-tasks:**
-  - [TODO] 15.1 Investigation (open question): what launch-data/deep-link route Roblox supports for landing a joiner in a specific experience with a payload (candidates: experience join URL with launch data, `Players:GetJoinData`, `TeleportService` and `MessagingService` for already-in-experience cases); what a QR scanned by a phone camera can open; size limits of the payload.
-  - [TODO] 15.2 Integration risk: `AnalyticsService` stores `LaunchData` as the `launch_data` acquisition property and treats untagged joins as `organic`. Decide how deep-link payloads coexist (namespace the payload, or separate analytics handling); update `AnalyticsService` accordingly and note it in `docs/CONFIG_GUIDE.md`.
-  - [TODO] 15.3 QR encoder: evaluate a Luau QR library already usable in the repo (check `Packages/`) vs adding one; render modules as a client component (pixels as frames or an image).
-  - [TODO] 15.4 Join-time handler: a service (`services/game/DeepLinkService.luau`, event-driven on player join) that reads the launch data and tells the client which screen to open via a state/intent, honoured by `HudApp` navigation. `/create-service`.
+  - [DONE] 15.1 Investigation (open question): what launch-data/deep-link route Roblox supports for landing a joiner in a specific experience with a payload (candidates: experience join URL with launch data, `Players:GetJoinData`, `TeleportService` and `MessagingService` for already-in-experience cases); what a QR scanned by a phone camera can open; size limits of the payload.
+  - [DONE] 15.2 Integration risk: `AnalyticsService` stores `LaunchData` as the `launch_data` acquisition property and treats untagged joins as `organic`. Decide how deep-link payloads coexist (namespace the payload, or separate analytics handling); update `AnalyticsService` accordingly and note it in `docs/CONFIG_GUIDE.md`.
+  - [DONE] 15.3 QR encoder: evaluate a Luau QR library already usable in the repo (check `Packages/`) vs adding one; render modules as a client component (pixels as frames or an image).
+  - [DONE] 15.4 Join-time handler: a service (`services/game/DeepLinkService.luau`, event-driven on player join) that reads the launch data and tells the client which screen to open via a state/intent, honoured by `HudApp` navigation. `/create-service`.
   - [TODO] 15.5 Playtest on a phone scanning a QR shown on another device, in a live published place.
+- **Findings (15.1–15.4):**
+  - **The link.** `https://www.roblox.com/games/start?placeId=<id>&launchData=s:<code>`. Launch data is one string of up to 200 bytes, read with `GetJoinData().LaunchData`.
+  - **Roblox share links don't fit.** Creator Dashboard share links are made one at a time by hand, so they can't carry per-code data.
+  - **Only the code goes in the link.** The code's record already says what it is (`kind`) and who shared it (`ownerId`), so outfits, stores and user referral codes all share one link format. Fields follow the Mall R&D format, `key:value|key:value`.
+  - **Analytics.** Share joins record `launch_data` as "share" (or the link's `c:` campaign field). DeepLinkService sends `share_join` {code, kind, owner_id, own}.
+  - **The encoder.** We wrote our own: `Utils/QRCode`, byte mode, versions 1–10, all four error-correction levels, block interleaving, penalty-chosen mask. The Mall R&D generator (cloned to refs/) only scans up to version 4: it does single-block error correction and crashes on input that isn't byte mode.
+  - **How it was checked.** Every version and level at full capacity decoded correctly with zxing-cpp. So did a Studio screenshot of the dialog's QR.
+  - **On join.** Opens Outfits › Community › the shared outfit's page. Back lands on Community.
 
 ### Task 16: Community outfits
 - **Status:** [TODO]

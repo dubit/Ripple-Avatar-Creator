@@ -23,6 +23,9 @@ local HttpService = game:GetService("HttpService")
 local LocalizationService = game:GetService("LocalizationService")
 local RunService = game:GetService("RunService")
 local ServerScriptService = game:GetService("ServerScriptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LaunchData = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("LaunchData"))
 
 local AnalyticsService = {}
 
@@ -47,7 +50,8 @@ type UserProperties = {
 	-- player:GetJoinData().LaunchData. Tag each ad campaign/creative with a
 	-- distinct launchData ("wknd-adA", …) and this rides on EVERY event the
 	-- player fires (GA4 attaches user properties to all events), so behaviour can
-	-- be segmented by campaign in BigQuery. "organic" when the join wasn't tagged.
+	-- be segmented by campaign in BigQuery. "organic" when the join wasn't tagged;
+	-- "share" when it came through a share link (LaunchData).
 	launch_data: { value: string },
 }
 
@@ -423,34 +427,16 @@ function AnalyticsService:cacheUserProperties(player: Player)
 	end
 
 	-- Acquisition attribution from the join link's launchData (set per ad
-	-- campaign). pcall-guarded — GetJoinData can be empty/absent for some join
-	-- paths. Truncated to GA4's 36-char user-property limit; "organic" when no
-	-- launchData (arrived without a tagged link).
-	local launchData = ""
-	local joinOk, joinData = pcall(function()
-		return player:GetJoinData()
-	end)
-	if joinOk and type(joinData) == "table" and type(joinData.LaunchData) == "string" then
-		launchData = joinData.LaunchData
+	-- campaign; LaunchData.read, which has the Studio `TestLaunchData` hook).
+	-- Truncated to GA4's 36-char user-property limit; "organic" when no
+	-- launchData (arrived without a tagged link). A share link ("s:<code>",
+	-- from a share QR) records as "share" (its own campaign tag "c:" if it
+	-- carries one), so per-code values don't swamp the campaign tags; which
+	-- code brought the player is the `share_join` event (DeepLinkService).
+	local launchData = LaunchData.read(player)
+	if LaunchData.shareCode(launchData) then
+		launchData = LaunchData.parse(launchData).c or "share"
 	end
-
-	-- Studio test hook: Studio playtests can't supply real LaunchData, so when
-	-- there's none AND we're in Studio, fall back to a workspace `TestLaunchData`
-	-- — either an attribute OR a StringValue child (whichever you set in the
-	-- Explorer, e.g. value "wknd-adA"). Lets you verify the launchData →
-	-- user-property → BigQuery chain without a deep link or ad spend. Gated on
-	-- IsStudio, so live joins are never affected.
-	if launchData == "" and RunService:IsStudio() then
-		local testValue = workspace:GetAttribute("TestLaunchData")
-		if type(testValue) ~= "string" or testValue == "" then
-			local sv = workspace:FindFirstChild("TestLaunchData")
-			testValue = if sv and sv:IsA("StringValue") then sv.Value else nil
-		end
-		if type(testValue) == "string" and testValue ~= "" then
-			launchData = testValue
-		end
-	end
-
 	local launchValue = if launchData ~= "" then string.sub(launchData, 1, 36) else "organic"
 
 	userPropertiesCache[clientId] = {

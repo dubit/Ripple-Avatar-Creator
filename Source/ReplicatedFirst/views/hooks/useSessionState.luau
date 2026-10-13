@@ -6,7 +6,8 @@
 	useState that outlives its component for the rest of the session: the
 	value is kept in memory under `key`, so a screen that's closed and opened
 	again (the Catalogue when the panel closes) picks up where it was. Not
-	saved anywhere; a rejoin starts fresh.
+	saved anywhere; a rejoin starts fresh. The values live in SessionStore,
+	so code outside a screen can preset one.
 
 	Usage, like useState (the setter takes a value or an updater function):
 		local category, setCategory = useSessionState("catalogue.category", "Body")
@@ -16,7 +17,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
 
-local store: { [string]: any } = {}
+local store = require(script.Parent:WaitForChild("SessionStore"))
 
 local function useSessionState<T>(key: string, initial: T | () -> T): (T, (T | (T) -> T) -> ())
 	local value, setValue = React.useState(function(): T

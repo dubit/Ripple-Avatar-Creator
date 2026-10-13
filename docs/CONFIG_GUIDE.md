@@ -112,7 +112,7 @@ return config
 
 **Note:** HttpService must be enabled in Game Settings > Security for analytics to work.
 
-**Acquisition attribution** is automatic — no config needed. `AnalyticsService` reads `player:GetJoinData().LaunchData` on join and stores it as the `launch_data` user property, so events can be segmented by ad campaign. Tag each campaign link with a distinct LaunchData; untagged joins record as `"organic"`. To test in Studio, set a `TestLaunchData` attribute/StringValue on Workspace.
+**Acquisition attribution** is automatic — no config needed. `AnalyticsService` reads `player:GetJoinData().LaunchData` on join and stores it as the `launch_data` user property, so events can be segmented by ad campaign. Tag each campaign link with a distinct LaunchData; untagged joins record as `"organic"`. Campaign tags must not contain `:`, which marks `key:value` fields (`Utils/LaunchData`). Share links (`s:<code>`, from the share dialog's QR) record as `"share"`, or as their `c:` field if they carry one. `DeepLinkService` sends a `share_join` event saying which code brought the player in. To test in Studio, set a `TestLaunchData` attribute/StringValue on Workspace (e.g. `wknd-adA`, or `s:<code>` to test a share link).
 
 #### Accessing Server-Side Configs
 
