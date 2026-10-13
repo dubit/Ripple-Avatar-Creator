@@ -62,6 +62,37 @@ local function tint(colour: Color3): ColorSequence
 	})
 end
 
+-- Single body parts (worn as items; shown together as one Body row).
+Parts.BODY_PARTS = { Torso = true, LeftArm = true, RightArm = true, LeftLeg = true, RightLeg = true }
+
+function Parts.isBodyPart(item: any): boolean
+	return item ~= nil and Parts.BODY_PARTS[item.typeName] == true
+end
+
+-- A name for a set of body parts: the words their names share
+-- ("Zombie Left Arm", "Zombie Torso" → "Zombie"), else "Body".
+function Parts.bodyName(items: { any }): string
+	local words: { string }? = nil
+	local shared = 0
+	for _, item in items do
+		local mine = string.split(item.name or "", " ")
+		if not words then
+			words = mine
+			shared = #mine
+		else
+			local n = 0
+			while n < shared and mine[n + 1] == (words :: { string })[n + 1] do
+				n += 1
+			end
+			shared = n
+		end
+	end
+	if not words or shared == 0 then
+		return "Body"
+	end
+	return table.concat(words, " ", 1, shared) .. " body"
+end
+
 function Parts.swatch(colourName: string): Color3
 	return (Tokens.swatch :: any)[colourName] or Tokens.swatch.Orange
 end

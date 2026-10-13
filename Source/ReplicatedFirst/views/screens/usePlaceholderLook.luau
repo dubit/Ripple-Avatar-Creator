@@ -69,6 +69,7 @@ export type Look = {
 	setSkin: (skin: SkinColours.Colours) -> (),
 	refreshOwn: () -> (), -- re-read your Roblox avatar (it may have changed since you joined)
 	takeOffAll: () -> (),
+	takeOffMany: (ids: { number }) -> (), -- as one change (e.g. a body's parts)
 	undo: () -> (),
 	reset: () -> (), -- back to the player's own Roblox avatar
 	isFavourite: (id: number) -> boolean,
@@ -373,6 +374,17 @@ local function usePlaceholderLook(): Look
 		end,
 		takeOffAll = function()
 			intent:FireServer(actions.TakeOffAll)
+		end,
+		takeOffMany = function(ids: { number })
+			local refs = {}
+			for _, id in ids do
+				if canWear(id) then
+					table.insert(refs, ref(id))
+				end
+			end
+			if #refs > 0 then
+				intent:FireServer(actions.TakeOffMany, refs)
+			end
 		end,
 		undo = function()
 			intent:FireServer(actions.Undo)

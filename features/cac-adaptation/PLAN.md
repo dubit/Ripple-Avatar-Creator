@@ -503,6 +503,20 @@
   - [TODO] 21.5 Device pass on desktop, iPad and phone: sizing issues captured in earlier tasks, touch targets, safe areas, performance (frame rate with previews and carousels).
   - [TODO] 21.6 Triage and fix, or log for phase 2, anything found. Confirm with the user that phase 1 is acceptable.
 
+### Task 22: Other avatars in the world
+- **Status:** [TODO]
+- **Why here:** Added during Task 13 (user, 2026-10-13): copying what someone nearby is wearing belongs on the avatars themselves, not as cards on the Roblox tab (the "players in this server" cards were removed). Last in phase 1 so it builds on the finished outfit page.
+- **Depends on:** 13
+- **Refs:** Scope > HUD (tap your own avatar opens Wearing); Task 13 outcome (another user's look on the outfit page; `RobloxAvatarLookupService` already reads an in-server player's look as what they wear here)
+- **Acceptance criteria:**
+  - Tapping another player's avatar in the Workspace opens their look (what they're wearing here) on the outfit page: preview, items, skin colours, Wear all items / Wear selected, Add to basket, Buy, Follow.
+  - Tapping your own avatar still opens Wearing.
+- **Associated UI:** the outfit page (Task 12/13).
+- **Replication:** none new (reads the other player's server-side look on request).
+- **Sub-tasks:**
+  - [TODO] 22.1 Extend the tap-avatar raycast (`useTapAvatar`) to other players' characters; open the outfit page for them.
+  - [TODO] 22.2 Playtest with two clients.
+
 ---
 
 ## Open questions

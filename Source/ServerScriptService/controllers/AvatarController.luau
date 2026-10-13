@@ -12,6 +12,7 @@
 	Actions:
 		TryOn(item)        wear it (replacing its slot / stacking per config)
 		TakeOff(item)      take it off
+		TakeOffMany(items) take several off as one change (up to maxWearMany)
 		WearMany(items, skin?)   wear several (an outfit, the basket), up to
 		                   maxWearMany; `skin` also sets the skin colours
 		SetSkin(skin)      the skin colours: { [part] = "#RRGGBB" } (a part left
@@ -151,6 +152,23 @@ local function setSkin(player: Player, model: any, raw: any)
 	end
 end
 
+local function takeOffMany(player: Player, model: any, raw: any)
+	if type(raw) ~= "table" then
+		return
+	end
+	local items = {}
+	for index, entry in raw do
+		if type(index) == "number" and index <= AvatarConfig.maxWearMany and type(entry) == "table"
+			and type(entry.targetId) == "number" and (entry.kind == "Asset" or entry.kind == "Bundle") then
+			table.insert(items, { targetId = entry.targetId, kind = entry.kind })
+		end
+	end
+	if #items > 0 then
+		model:takeOffMany(items)
+		AvatarService.apply(player)
+	end
+end
+
 local function wearMany(player: Player, model: any, raw: any, rawSkin: any)
 	if type(raw) ~= "table" then
 		return
@@ -222,6 +240,7 @@ local ACTIONS = {
 	[Network.Actions.Avatar.TryOn] = tryOn,
 	[Network.Actions.Avatar.TakeOff] = takeOff,
 	[Network.Actions.Avatar.WearMany] = wearMany,
+	[Network.Actions.Avatar.TakeOffMany] = takeOffMany,
 	[Network.Actions.Avatar.TakeOffAll] = takeOffAll,
 	[Network.Actions.Avatar.Undo] = undo,
 	[Network.Actions.Avatar.Reset] = reset,

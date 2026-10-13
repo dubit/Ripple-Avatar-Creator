@@ -42,7 +42,7 @@ local NetworkBuilder = require(script.Parent:WaitForChild("NetworkBuilder"))
 -- Network Configuration: Single source of truth for all controllers and state
 local NetworkConfig = {
 	Controllers = {
-		Avatar = { "TryOn", "TakeOff", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit", "WearUserLook", "SetSkin", "RefreshOwn" },
+		Avatar = { "TryOn", "TakeOff", "TakeOffMany", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit", "WearUserLook", "SetSkin", "RefreshOwn" },
 		Basket = { "Add", "Remove", "AddMany", "RemoveMany", "Clear" },
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
@@ -151,7 +151,7 @@ local Network = NetworkBuilder.build(NetworkConfig, Bolt)
 -- ============================================================================
 
 -- Action Type Exports (manually defined for type safety)
-export type AvatarAction = "TryOn" | "TakeOff" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit" | "WearUserLook" | "SetSkin" | "RefreshOwn"
+export type AvatarAction = "TryOn" | "TakeOff" | "TakeOffMany" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit" | "WearUserLook" | "SetSkin" | "RefreshOwn"
 export type BasketAction = "Add" | "Remove" | "AddMany" | "RemoveMany" | "Clear"
 export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"

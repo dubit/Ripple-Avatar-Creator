@@ -134,6 +134,10 @@ local function withFeedback(look: any)
 		Sounds.play(if count > 0 then "tryOn" else "error")
 		return count
 	end
+	feedback.takeOffMany = function(ids: { number })
+		Sounds.play("back")
+		look.takeOffMany(ids)
+	end
 	feedback.takeOffAll = function()
 		Sounds.play("back")
 		look.takeOffAll()

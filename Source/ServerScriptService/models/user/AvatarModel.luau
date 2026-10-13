@@ -191,6 +191,26 @@ function AvatarModel:takeOff(item: WornItem): ()
 	self:setWorn(list)
 end
 
+-- Take several off as one change (e.g. a whole body's parts).
+function AvatarModel:takeOffMany(items: { WornItem }): ()
+	local list = {}
+	for _, other in self.worn do
+		local gone = false
+		for _, item in items do
+			if same(other, item) then
+				gone = true
+				break
+			end
+		end
+		if not gone then
+			table.insert(list, other)
+		end
+	end
+	if #list ~= #self.worn then
+		self:setWorn(list)
+	end
+end
+
 function AvatarModel:takeOffAll(): ()
 	self:setWorn({})
 end

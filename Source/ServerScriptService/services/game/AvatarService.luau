@@ -109,6 +109,13 @@ local MAKEUP: { [string]: Enum.MakeupType } = {
 }
 
 local BODY_PARTS = { "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg" }
+-- Body parts that can be worn as single items (their typeName is the
+-- HumanoidDescription property).
+local BODY_PART_ITEMS = { "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg" }
+local BODY_PART_ITEM: { [string]: boolean } = {}
+for _, part in BODY_PART_ITEMS do
+	BODY_PART_ITEM[part] = true
+end
 local BODY_COLOURS = { "HeadColor", "TorsoColor", "LeftArmColor", "RightArmColor", "LeftLegColor", "RightLegColor" }
 local BODY_SCALES = { "HeightScale", "WidthScale", "DepthScale", "HeadScale", "BodyTypeScale", "ProportionScale" }
 -- What a head is: the head mesh, its face and the mood (expression) animation.
@@ -245,7 +252,10 @@ end
 
 -- The player's own avatar, as a list of wearable items (owned: they're on
 -- the player's Roblox avatar).
-local function itemsOf(description: HumanoidDescription, owned: boolean?): { WornItem }
+-- A description's wearable items. `withBody` also lists its body parts
+-- (torso, arms, legs) as items, for someone else's look or a Roblox outfit;
+-- your own body parts are your base, not items.
+local function itemsOf(description: HumanoidDescription, owned: boolean?, withBody: boolean?): { WornItem }
 	local items: { WornItem } = {}
 	for _, accessory in description:GetAccessories(true) do
 		local typeName = TYPE_OF_ACCESSORY[accessory.AccessoryType]
@@ -266,6 +276,14 @@ local function itemsOf(description: HumanoidDescription, owned: boolean?): { Wor
 	end
 	if description.Face ~= 0 then
 		table.insert(items, { targetId = description.Face, kind = "Asset", typeName = "Face", name = "" })
+	end
+	if withBody then
+		for _, part in BODY_PART_ITEMS do
+			local id = (description :: any)[part]
+			if id and id ~= 0 then
+				table.insert(items, { targetId = id, kind = "Asset", typeName = part, name = "" })
+			end
+		end
 	end
 	local emotes = description:GetEmotes()
 	for _, name in description:GetEquippedEmotes() do
@@ -356,7 +374,7 @@ function AvatarService.userAvatar(userId: number): (HumanoidDescription?, { Worn
 	if not ok or not description then
 		return nil, {}
 	end
-	return description, itemsOf(description, false)
+	return description, itemsOf(description, false, true)
 end
 
 -- A description's skin colours, all six parts.
@@ -392,7 +410,7 @@ function AvatarService.robloxOutfit(outfitId: number): (HumanoidDescription?, { 
 	if not ok or not description then
 		return nil, {}
 	end
-	return description, itemsOf(description)
+	return description, itemsOf(description, true, true)
 end
 
 -- Re-read the player's own Roblox avatar (it may have changed since they
@@ -500,6 +518,8 @@ local function describe(player: Player, worn: { WornItem }, skin: any?): (Humano
 			makeup.Parent = description
 		elseif t == "Face" then
 			description.Face = item.targetId
+		elseif BODY_PART_ITEM[t] then
+			(description :: any)[t] = item.targetId
 		elseif t == "Head" or t == "DynamicHead" then
 			description.Head = item.targetId
 		elseif t == "EmoteAnimation" then

@@ -14,8 +14,9 @@
 	    then a "Show my Roblox outfits" card asks. Search: by name.
 	  · Friends: your Roblox friends' current avatars. Search: by name.
 	  · Roblox: the people you follow here (our own follow, private to you:
-	    Roblox gives games no access to its follows), then the players in
-	    this server (what they're wearing here). The first card, Add a
+	    Roblox gives games no access to its follows). (Players in this
+	    server come later, by tapping their avatars: PLAN Task 22.) The
+	    first card, Add a
 	    person, finds someone by exact username or user id (all Roblox lets
 	    a game look up), shows who it found, and follows on confirm. Follow /
 	    Following is also on a person's page. Search: the people listed.
@@ -228,7 +229,15 @@ local function mosaic(items: { number }): { [string]: any }
 		return a.index < b.index
 	end)
 	local images = {}
+	local bodyShown = false
 	for _, entry in ordered do
+		-- One picture for a body's parts.
+		if Parts.isBodyPart(entry.item) then
+			if bodyShown then
+				continue
+			end
+			bodyShown = true
+		end
 		local image = Parts.image(entry.item)
 		if image then
 			table.insert(images, image)
@@ -901,13 +910,6 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				addPerson(user, "@" .. user.username)
 			end
 		end
-		-- Then whoever's in this server, to follow someone you've just seen.
-		for _, player in game:GetService("Players"):GetPlayers() do
-			local user = { userId = player.UserId, username = player.Name, displayName = player.DisplayName }
-			if matches(user.displayName) or matches(user.username) then
-				addPerson(user, "In this server")
-			end
-		end
 	else
 		for _, outfit in outfitsFor(look, source) do
 			addOutfit(outfit, outfit.by)
@@ -1203,9 +1205,66 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 			end,
 		})
 	end
+	-- Body parts show as one Body row (ticking it ticks them all).
+	local bodyIndices: { number } = {}
+	local bodyItems = {}
 	for index, id in items do
 		local item = PlaceholderData.item(id)
-		if not item then
+		if Parts.isBodyPart(item) then
+			table.insert(bodyIndices, index)
+			table.insert(bodyItems, item)
+		end
+	end
+	if #bodyIndices > 0 then
+		local bodyOn = false
+		for _, index in bodyIndices do
+			if not deselected[index] then
+				bodyOn = true
+			end
+		end
+		local first = bodyItems[1]
+		local torso = first
+		for _, item in bodyItems do
+			if item.typeName == "Torso" then
+				torso = item
+			end
+		end
+		local bodyWorn = true
+		for _, item in bodyItems do
+			if not look.isWorn(item.id) then
+				bodyWorn = false
+			end
+		end
+		rows["Row" .. bodyIndices[1]] = e(Parts.ListRow, {
+			title = Parts.bodyName(bodyItems),
+			subtitle = "Body · " .. #bodyItems .. " part" .. (if #bodyItems == 1 then "" else "s"),
+			colour = Parts.swatch(torso.colour),
+			image = Parts.image(torso),
+			layoutOrder = bodyIndices[1],
+			trailingWidth = 150,
+			leading = e(Checkbox, {
+				on = bodyOn,
+				onToggle = function()
+					setDeselected(function(current: { [number]: boolean })
+						local result = table.clone(current)
+						for _, index in bodyIndices do
+							result[index] = if bodyOn then true else nil
+						end
+						return result
+					end)
+				end,
+			}),
+			trailing = {
+				Wearing = if bodyWorn then smallIcon("checkroom", Tokens.color.accentText, 2) else nil,
+			},
+			onActivated = function()
+				props.nav.push({ kind = "item", id = torso.id, label = torso.name })
+			end,
+		})
+	end
+	for index, id in items do
+		local item = PlaceholderData.item(id)
+		if not item or Parts.isBodyPart(item) then
 			continue
 		end
 		local on = not deselected[index]
@@ -1422,7 +1481,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				Size = UDim2.new(1, 0, 1, -(headerHeight + skin.px(10) + buttonsHeight + skin.px(10))),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
-				CanvasSize = UDim2.fromOffset(0, (#items + (if skinTone then 1 else 0)) * (skin.px(64) + skin.px(6)) + skin.px(6)),
+				CanvasSize = UDim2.fromOffset(0, (#items - math.max(#bodyIndices - 1, 0) + (if skinTone then 1 else 0)) * (skin.px(64) + skin.px(6)) + skin.px(6)),
 				ScrollingDirection = Enum.ScrollingDirection.Y,
 				ScrollBarThickness = skin.px(8),
 				ScrollBarImageColor3 = Tokens.color.accent,

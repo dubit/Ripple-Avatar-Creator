@@ -23,9 +23,9 @@
 	Arm" … → "Korblox Deathspeaker", body bundles only) finds the bundle
 	whose contents include the torso, and the parts, plus anything else of
 	that bundle's in the outfit (a hood, a head), become that one bundle
-	item. If no bundle turns up, the parts still show as one entry: the
-	torso, labelled with the shared name (`labels`). Searches are one at a
-	time and cached by torso.
+	item. If no bundle turns up, the parts stay single (wearable) items,
+	which outfit pages show together as one Body row. Searches are one at
+	a time and cached by torso.
 
 	API:
 		status() -> "unknown" | "locked" | "loading" | "ready" | "denied"
@@ -178,33 +178,23 @@ local function itemsOf(outfitId: number): ({ number }, { [number]: string })
 	local bundle = if torso then bodyBundle(torso.id, keyword) else nil
 	local bodyAdded = false
 	for _, entry in assets do
-		local inBody = BODY_PARTS[entry.typeName] or (bundle and bundle.contents[entry.id])
-		if inBody then
-			-- The whole body once, where its first part was.
-			if not bodyAdded and torso then
+		local inBundle = bundle and (BODY_PARTS[entry.typeName] or bundle.contents[entry.id])
+		if inBundle then
+			-- The whole bundle once, where its first part was.
+			if not bodyAdded then
 				bodyAdded = true
-				if bundle then
-					local item = CatalogueClient.remember({
-						targetId = bundle.id,
-						kind = "Bundle",
-						typeName = "BodyParts",
-						name = bundle.name,
-						owned = true,
-					})
-					table.insert(ids, item.id)
-				else
-					local item = CatalogueClient.remember({
-						targetId = torso.id,
-						kind = "Asset",
-						typeName = "Torso",
-						name = torso.name,
-						owned = true,
-					})
-					table.insert(ids, item.id)
-					labels[item.id] = if keyword ~= "" then keyword else "Body"
-				end
+				local item = CatalogueClient.remember({
+					targetId = bundle.id,
+					kind = "Bundle",
+					typeName = "BodyParts",
+					name = bundle.name,
+					owned = true,
+				})
+				table.insert(ids, item.id)
 			end
 		else
+			-- (Without a bundle, body parts stay single items; outfit pages
+			-- show them as one Body row.)
 			local item = CatalogueClient.remember({
 				targetId = entry.id,
 				kind = "Asset",

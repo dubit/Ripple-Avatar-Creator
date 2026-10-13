@@ -17,6 +17,12 @@ local config: AvatarConfig = {
 		DynamicHeadAvatar = "Head",
 		Head = "Head", -- a classic head mesh
 		Face = "Face", -- a classic face
+		-- Single body parts (from someone's look or a Roblox outfit)
+		Torso = "Torso",
+		LeftArm = "LeftArm",
+		RightArm = "RightArm",
+		LeftLeg = "LeftLeg",
+		RightLeg = "RightLeg",
 		-- Layered clothing
 		ShirtAccessory = "Shirt",
 		TShirtAccessory = "TShirt",
@@ -44,7 +50,8 @@ local config: AvatarConfig = {
 		EyelashAccessory = "Eyelashes",
 	},
 	alsoReplaces = {
-		Body = { "Head" }, -- a full body brings its own head
+		-- A full body brings its own head and every part.
+		Body = { "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg" },
 	},
 	groups = {
 		Hat = "Accessories",
