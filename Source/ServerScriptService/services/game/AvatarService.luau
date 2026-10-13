@@ -33,14 +33,19 @@
 		resolve(targetId, kind) -> WornItem?   look an item up (cached); nil if
 		                                      it can't be found
 		ownLook(player) -> { WornItem }        the player's own avatar's items
+		                                      (re-read; updates base / own / ownSkin)
 		apply(player)                          re-dress the character from `worn`
 
 	Also used by OutfitsController (the outfit page's 3D preview) and
 	AvatarController (wearing an outfit saved on Roblox):
-		describeLook(player, worn) -> HumanoidDescription   `worn` on the
+		describeLook(player, worn, skin?) -> HumanoidDescription   `worn`
+		                                      (and skin colours) on the
 		                                      player's own base (gear left out)
+		skinOf(description) / playerSkin(player) -> SkinColours   all six parts
 		ownDescription(player) -> HumanoidDescription?      the player's own
 		                                      Roblox avatar as it is
+		userAvatar(userId) -> (HumanoidDescription?, { WornItem })   another
+		                                      user's current Roblox avatar
 		robloxOutfit(outfitId) -> (HumanoidDescription?, { WornItem })   an
 		                                      outfit saved on Roblox and its
 		                                      wearable items (not its body:
@@ -57,6 +62,8 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Bolt = require(ReplicatedStorage.Bolt)
 
 local AvatarModel = require(ServerScriptService.models.user.AvatarModel)
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 type WornItem = AvatarModel.WornItem
 
@@ -103,6 +110,13 @@ local MAKEUP: { [string]: Enum.MakeupType } = {
 }
 
 local BODY_PARTS = { "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg" }
+-- Body parts that can be worn as single items (their typeName is the
+-- HumanoidDescription property).
+local BODY_PART_ITEMS = { "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg" }
+local BODY_PART_ITEM: { [string]: boolean } = {}
+for _, part in BODY_PART_ITEMS do
+	BODY_PART_ITEM[part] = true
+end
 local BODY_COLOURS = { "HeadColor", "TorsoColor", "LeftArmColor", "RightArmColor", "LeftLegColor", "RightLegColor" }
 local BODY_SCALES = { "HeightScale", "WidthScale", "DepthScale", "HeadScale", "BodyTypeScale", "ProportionScale" }
 -- What a head is: the head mesh, its face and the mood (expression) animation.
@@ -239,7 +253,10 @@ end
 
 -- The player's own avatar, as a list of wearable items (owned: they're on
 -- the player's Roblox avatar).
-local function itemsOf(description: HumanoidDescription): { WornItem }
+-- A description's wearable items. `withBody` also lists its body parts
+-- (torso, arms, legs) as items, for someone else's look or a Roblox outfit;
+-- your own body parts are your base, not items.
+local function itemsOf(description: HumanoidDescription, owned: boolean?, withBody: boolean?): { WornItem }
 	local items: { WornItem } = {}
 	for _, accessory in description:GetAccessories(true) do
 		local typeName = TYPE_OF_ACCESSORY[accessory.AccessoryType]
@@ -251,6 +268,22 @@ local function itemsOf(description: HumanoidDescription): { WornItem }
 		local id = (description :: any)[property]
 		if id and id ~= 0 then
 			table.insert(items, { targetId = id, kind = "Asset", typeName = typeName, name = "" })
+		end
+	end
+	-- The head and face are part of a look too (a head's type, classic or
+	-- dynamic, is filled in from the item details below).
+	if description.Head ~= 0 then
+		table.insert(items, { targetId = description.Head, kind = "Asset", typeName = "Head", name = "" })
+	end
+	if description.Face ~= 0 then
+		table.insert(items, { targetId = description.Face, kind = "Asset", typeName = "Face", name = "" })
+	end
+	if withBody then
+		for _, part in BODY_PART_ITEMS do
+			local id = (description :: any)[part]
+			if id and id ~= 0 then
+				table.insert(items, { targetId = id, kind = "Asset", typeName = part, name = "" })
+			end
 		end
 	end
 	local emotes = description:GetEmotes()
@@ -269,8 +302,10 @@ local function itemsOf(description: HumanoidDescription): { WornItem }
 			end
 		end
 	end
-	for _, item in items do
-		item.owned = true
+	if owned ~= false then
+		for _, item in items do
+			item.owned = true
+		end
 	end
 	-- Names, in one batch.
 	local ids = {}
@@ -284,13 +319,17 @@ local function itemsOf(description: HumanoidDescription): { WornItem }
 			return AvatarEditorService:GetBatchItemDetails(ids, Enum.AvatarItemType.Asset)
 		end)
 		if ok then
-			local names = {}
+			local names, types = {}, {}
 			for _, entry in details do
 				names[entry.Id] = entry.Name
+				types[entry.Id] = typeNameOf(entry.AssetType)
 			end
 			for _, item in items do
 				if item.name == "" then
 					item.name = names[item.targetId] or ""
+				end
+				if item.typeName == "Head" and types[item.targetId] == "DynamicHead" then
+					item.typeName = "DynamicHead"
 				end
 			end
 		end
@@ -327,6 +366,54 @@ local function fetchOwn(player: Player): HumanoidDescription?
 	return description
 end
 
+-- Another Roblox user's current avatar and its wearable items (not owned:
+-- they're someone else's). Not cached here; RobloxAvatarLookupService caches.
+function AvatarService.userAvatar(userId: number): (HumanoidDescription?, { WornItem })
+	local ok, description = pcall(function()
+		return Players:GetHumanoidDescriptionFromUserId(userId)
+	end)
+	if not ok or not description then
+		return nil, {}
+	end
+	return description, itemsOf(description, false, true)
+end
+
+-- A description's skin colours, all six parts.
+function AvatarService.skinOf(description: HumanoidDescription): SkinColours.Colours
+	local colours: SkinColours.Colours = {}
+	for _, part in SkinColours.PARTS do
+		colours[part] = "#" .. string.upper(((description :: any)[SkinColours.property[part]] :: Color3):ToHex())
+	end
+	return colours
+end
+
+-- A description's body scale (all five).
+function AvatarService.scaleOf(description: HumanoidDescription): BodyScale.Scale
+	local raw = {}
+	for _, key in BodyScale.KEYS do
+		raw[key] = (description :: any)[BodyScale.info[key].property]
+	end
+	return BodyScale.normalise(raw)
+end
+
+-- Is this item type layered clothing (it has a place in the layer order)?
+function AvatarService.isLayered(typeName: string): boolean
+	return LAYERED[typeName] ~= nil or typeName == "Shoes"
+end
+
+-- The skin colours a player in this server shows (chosen ones over their own).
+function AvatarService.playerSkin(player: Player): SkinColours.Colours
+	local base = bases[player]
+	local colours = if base then AvatarService.skinOf(base) else {}
+	local model = AvatarModel.get(tostring(player.UserId))
+	if model then
+		for part, hex in SkinColours.normalise(model.skin) do
+			colours[part] = hex
+		end
+	end
+	return colours
+end
+
 function AvatarService.ownDescription(player: Player): HumanoidDescription?
 	return fetchOwn(player)
 end
@@ -338,20 +425,29 @@ function AvatarService.robloxOutfit(outfitId: number): (HumanoidDescription?, { 
 	if not ok or not description then
 		return nil, {}
 	end
-	return description, itemsOf(description)
+	return description, itemsOf(description, true, true)
 end
 
+-- Re-read the player's own Roblox avatar (it may have changed since they
+-- joined: the Roblox app, Save to Roblox) and keep base, `own` and
+-- `ownSkin` in step. Returns its items.
 function AvatarService.ownLook(player: Player): { WornItem }
 	local own = fetchOwn(player)
 	if not own then
 		return {}
 	end
 	bases[player] = baseOf(own)
-	return itemsOf(own)
+	local items = itemsOf(own)
+	local model = AvatarModel.get(tostring(player.UserId))
+	if model then
+		model:setOwn(table.clone(items), AvatarService.skinOf(own), AvatarService.scaleOf(own))
+	end
+	return items
 end
 
 -- `worn` on top of the base.
-local function describe(player: Player, worn: { WornItem }): (HumanoidDescription, number?)
+-- `worn` (and chosen skin colours) on top of the base.
+local function describe(player: Player, worn: { WornItem }, skin: any?, scale: any?): (HumanoidDescription, number?)
 	local description = (bases[player] or Instance.new("HumanoidDescription")):Clone()
 	local accessories = {}
 	local layerOrder = 1
@@ -435,6 +531,12 @@ local function describe(player: Player, worn: { WornItem }): (HumanoidDescriptio
 			makeup.AssetId = item.targetId
 			makeup.MakeupType = MAKEUP[t]
 			makeup.Parent = description
+		elseif t == "Face" then
+			description.Face = item.targetId
+		elseif BODY_PART_ITEM[t] then
+			(description :: any)[t] = item.targetId
+		elseif t == "Head" or t == "DynamicHead" then
+			description.Head = item.targetId
 		elseif t == "EmoteAnimation" then
 			local name = if item.name ~= "" then item.name else tostring(item.targetId)
 			emotes[name] = { item.targetId }
@@ -444,14 +546,27 @@ local function describe(player: Player, worn: { WornItem }): (HumanoidDescriptio
 		end
 	end
 
+	-- Chosen skin colours, part by part, over any bundle's colours.
+	local colours = SkinColours.normalise(skin)
+	for part, hex in colours do
+		(description :: any)[SkinColours.property[part]] = Color3.fromHex(hex)
+	end
+	-- Chosen body scale (width also sets depth, as the avatar editor does).
+	for key, value in BodyScale.normalise(scale) do
+		(description :: any)[BodyScale.info[key].property] = value
+		if key == "width" then
+			description.DepthScale = value
+		end
+	end
+
 	description:SetAccessories(accessories, true)
 	description:SetEmotes(emotes)
 	description:SetEquippedEmotes(equipped)
 	return description, gear
 end
 
-function AvatarService.describeLook(player: Player, worn: { WornItem }): HumanoidDescription
-	local description = describe(player, worn)
+function AvatarService.describeLook(player: Player, worn: { WornItem }, skin: any?, scale: any?): HumanoidDescription
+	local description = describe(player, worn, skin, scale)
 	return description
 end
 
@@ -490,7 +605,7 @@ local function applyNow(player: Player)
 	if not (character and humanoid and model) then
 		return
 	end
-	local description, gear = describe(player, model.worn)
+	local description, gear = describe(player, model.worn, model.skin, model.scale)
 	local ok, err = pcall(function()
 		humanoid:ApplyDescription(description)
 	end)
@@ -530,7 +645,7 @@ local function onPlayer(player: Player)
 	if own then
 		bases[player] = baseOf(own)
 		local ownItems = itemsOf(own)
-		model:setOwn(table.clone(ownItems))
+		model:setOwn(table.clone(ownItems), AvatarService.skinOf(own), AvatarService.scaleOf(own))
 		if not model.seeded then
 			model:seed(ownItems)
 		else

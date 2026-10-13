@@ -13,8 +13,16 @@ local config: AvatarConfig = {
 		-- Body
 		HairAccessory = "Hair", -- one hair, as in the design
 		BodyParts = "Body",
-		DynamicHead = "Head",
+		DynamicHead = "Head", -- a dynamic head (bundle or asset)
 		DynamicHeadAvatar = "Head",
+		Head = "Head", -- a classic head mesh
+		Face = "Face", -- a classic face
+		-- Single body parts (from someone's look or a Roblox outfit)
+		Torso = "Torso",
+		LeftArm = "LeftArm",
+		RightArm = "RightArm",
+		LeftLeg = "LeftLeg",
+		RightLeg = "RightLeg",
 		-- Layered clothing
 		ShirtAccessory = "Shirt",
 		TShirtAccessory = "TShirt",
@@ -42,7 +50,8 @@ local config: AvatarConfig = {
 		EyelashAccessory = "Eyelashes",
 	},
 	alsoReplaces = {
-		Body = { "Head" }, -- a full body brings its own head
+		-- A full body brings its own head and every part.
+		Body = { "Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg" },
 	},
 	groups = {
 		Hat = "Accessories",
@@ -68,6 +77,37 @@ local config: AvatarConfig = {
 		maxItems = 40,
 		nameLength = 30,
 		cooldown = 0.3,
+	},
+	-- Skin tones offered under Catalogue › Body › Skin tone, after "your own"
+	-- and before Custom: Roblox's avatar-editor palette (read from the mobile
+	-- app; colours that are BrickColors use the exact BrickColor value, the
+	-- rest are sampled from a screenshot, within a level or two).
+	skinTones = {
+		{ name = "Dark brown", hex = "#3D2C22" },
+		{ name = "Deep brown", hex = "#4B372E" },
+		{ name = "Medium brown", hex = "#564236" },
+		{ name = "Dark taupe", hex = "#5A4C42" },
+		{ name = "Bronze", hex = "#8A6E49" },
+		{ name = "Tan", hex = "#AB8B64" },
+		{ name = "Linen", hex = "#AF9483" },
+		{ name = "Sand", hex = "#D4A684" },
+		{ name = "Light orange", hex = "#EAB892" },
+		{ name = "Pastel Blue", hex = "#80BBDB" },
+		{ name = "Grey", hex = "#BCBCBC" },
+		{ name = "Red", hex = "#B53A35" },
+		{ name = "Rust", hex = "#A45918" },
+		{ name = "Bright orange", hex = "#DA8541" },
+		{ name = "Pale yellow", hex = "#FBE27D" },
+		{ name = "Olive", hex = "#B4BF45" },
+		{ name = "Bright green", hex = "#4B974B" },
+		{ name = "Dark green", hex = "#287F47" },
+		{ name = "Cyan", hex = "#04AFEC" },
+		{ name = "Toothpaste", hex = "#00FFFF" },
+		{ name = "Blue", hex = "#3779B3" },
+		{ name = "Carnation pink", hex = "#FF98DC" },
+		{ name = "Alder", hex = "#B480FF" },
+		{ name = "Purple", hex = "#835196" },
+		{ name = "Magenta", hex = "#D415B0" },
 	},
 }
 

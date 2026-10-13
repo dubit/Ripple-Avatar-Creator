@@ -13,11 +13,13 @@ export type CatalogueChip = {
     name: string,
     assetTypes: { string }?, -- Enum.AvatarAssetType names
     bundleTypes: { string }?, -- Enum.BundleType names
+    special: string?, -- a chip that isn't a search: "skinTone" (the skin tone picker), "layering" (layer order)
 }
 
 export type CatalogueCategory = {
     name: string, -- top-level tab
     chips: { CatalogueChip }, -- in display order; "All" (every chip's types) is implicit
+    special: string?, -- a tab that isn't a search: "scale" (the body scale sliders)
 }
 
 export type PricePreset = {

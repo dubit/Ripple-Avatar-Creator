@@ -323,7 +323,7 @@
 - **Outcome:** 12.1 decided: one User-scoped `OutfitsModel` holding a list of { id, name, items } (items = worn-item records) with `nextId`; limits in `AvatarConfig.outfits` (50 outfits × 40 items, 30-char names), far under the DataStore per-key cap, so no UserEntity index. `OutfitsController` (Save, Overwrite, Rename, Delete, WearAll, WearSelected) takes outfit ids and item positions only; names are trimmed, capped and filtered with `TextService:FilterStringAsync` + `GetNonChatStringForBroadcastAsync`. Wear all items replaces the look (undoable). Added in testing (user): a 3D outfit preview (the server builds the look with `AvatarService.describeLook` and parents the HumanoidDescription into the player's PlayerGui via the "OutfitPreview" remote; the client builds the rig); Mine order Save card → Your avatar (own Roblox avatar, "Reset to this"; the HUD Reset button is gone and a Basket-sized Wearing button with round count callouts replaces it) → saved outfits → outfits saved on Roblox (`RobloxOutfits`: `GetOutfits` needs `PromptAllowInventoryReadAccess`, so a "Show my Roblox outfits" card asks; body parts are regrouped into their bundle via a catalogue search on the parts' shared name, or one entry; wearing one keeps the player's own body); card mosaics ordered body → heads → layered → accessories → classic → animations; Wearing offers Save as new / Save over existing (picker) and becomes Saved → Go to <outfit> while the look matches; outfit-page Buy / Add to basket need an unowned selection; names save from an orange pencil or Enter (new `edit` icon). `SearchBox` and `ConfirmButton` became shared components. Lessons: when Studio's scripts lag the repo, fix Rojo (restart Studio, accept the sync diff), never write Source by hand; UserSession models must use `getOrCreate`.
 
 ### Task 13: Outfits, Roblox username lookup
-- **Status:** [TODO]
+- **Status:** [DONE]
 - **Why here:** Second source of the layer-5 Outfits tab, and it reuses the outfit screen built in Task 12. It has its own API risk, so it is isolated.
 - **Depends on:** 12
 - **Refs:** Scope > Outfits (Roblox source: search a username to load their saved outfits/current avatar)
@@ -334,11 +334,12 @@
 - **Associated UI:** 5d Outfit screen; Outfits root, Roblox source ("Search a username" placeholder).
 - **Replication:** lookups are server-side requests (**cosmetic**); previews are client-only rigs.
 - **Sub-tasks:**
-  - [TODO] 13.1 Investigation (open question): what the platform exposes for another user's saved outfits vs only their current avatar (candidates: `Players` name/id and appearance lookup methods, `AvatarEditorService` outfit queries). If saved outfits of other users are not retrievable, present the fallback options to the user instead of deciding.
-  - [TODO] 13.2 Service: `services/game/RobloxAvatarLookupService.luau` with caching and throttling. `/create-service`.
-  - [TODO] 13.3 Network/Model/Controller: `Outfits` actions (LookupUser) and a session model holding the player's last lookup result. `/create-model`, `/create-controller`.
-  - [TODO] 13.4 Roblox source tab UI and loading/empty/error states (`/html-to-react-luau`).
-  - [TODO] 13.5 Playtest with real usernames including nonexistent and private cases.
+  - [DONE] 13.1 Investigation (open question): what the platform exposes for another user's saved outfits vs only their current avatar (candidates: `Players` name/id and appearance lookup methods, `AvatarEditorService` outfit queries). If saved outfits of other users are not retrievable, present the fallback options to the user instead of deciding.
+  - [DONE] 13.2 Service: `services/game/RobloxAvatarLookupService.luau` with caching and throttling. `/create-service`.
+  - [DONE] 13.3 Network/Model/Controller: `Outfits` actions (LookupUser) and a session model holding the player's last lookup result. `/create-model`, `/create-controller`.
+  - [DONE] 13.4 Roblox source tab UI and loading/empty/error states (`/html-to-react-luau`).
+  - [DONE] 13.5 Playtest with real usernames including nonexistent and private cases.
+- **Outcome:** 13.1 found: only another user's *current* avatar is readable in-game (`Players:GetUserIdFromNameAsync` / `GetHumanoidDescriptionFromUserId`, `UserService` names, falling back to `GetNameFromUserIdAsync` for accounts it skips, e.g. "mouse"); saved outfits of others, Roblox follows and fuzzy/display-name search aren't available (HttpService can't reach Roblox's web APIs). Built `RobloxAvatarLookupService` (cached, 20 lookups / 30 s, remote functions FindRobloxUser (name or id), RobloxUserLook, RobloxUserInfos) and client `UserLooks`. Decisions in testing (user): Outfits tabs by source — Current (your avatar, reset; refreshes from Roblox) · Wardrobe (default) · Creations (Roblox-saved outfits, `RobloxOutfits`) · Friends · Roblox · Community; the Roblox tab is our own private Follow (`OutfitsModel.following`): an Add a person card (username or id → shown, then confirm Follow), search filters follows, unfollow needs a second press; no auto-tracking of lookups; players-in-server cards dropped in favour of Task 22 (tap avatars). Added scope (user): faces, heads and single body parts are wearable items read from every look (body parts shown as one Body row; Creations regroup parts into their bundle via a catalogue search, else keep them); skin colour per body part (`Utils/SkinColours`; Catalogue › Body › Skin tone with a body-figure part selector, Roblox's 25-colour avatar-editor palette, Custom with hue/saturation/brightness colour sliders (gradient tracks, no fill) or hex; a Skin tone row on outfit pages opens a part-by-part detail page); body Scale (`Utils/BodyScale`; Catalogue › Scale: height, width (also depth), head, body type, proportions within Roblox's limits); Clothing › Layering reorders layered clothing (worn order = layer order). Skin and scale are part of the look: saved, undoable, stored in outfits, copied with Wear all / ticked rows. "Your own" re-reads the Roblox avatar (picker, Scale, Current, Reset). Lessons: Rojo only syncs named children of ReplicatedStorage (shared modules go in `Utils`); the compile check is syntax-only, so use-before-declare bugs only show in play; Studio skips the final save flush when Play stops.
 
 ### Task 14: Sharing, cross-server storage decision and outfit share codes
 - **Status:** [TODO]
@@ -503,6 +504,20 @@
   - [TODO] 21.5 Device pass on desktop, iPad and phone: sizing issues captured in earlier tasks, touch targets, safe areas, performance (frame rate with previews and carousels).
   - [TODO] 21.6 Triage and fix, or log for phase 2, anything found. Confirm with the user that phase 1 is acceptable.
 
+### Task 22: Other avatars in the world
+- **Status:** [TODO]
+- **Why here:** Added during Task 13 (user, 2026-10-13): copying what someone nearby is wearing belongs on the avatars themselves, not as cards on the Roblox tab (the "players in this server" cards were removed). Last in phase 1 so it builds on the finished outfit page.
+- **Depends on:** 13
+- **Refs:** Scope > HUD (tap your own avatar opens Wearing); Task 13 outcome (another user's look on the outfit page; `RobloxAvatarLookupService` already reads an in-server player's look as what they wear here)
+- **Acceptance criteria:**
+  - Tapping another player's avatar in the Workspace opens their look (what they're wearing here) on the outfit page: preview, items, skin colours, Wear all items / Wear selected, Add to basket, Buy, Follow.
+  - Tapping your own avatar still opens Wearing.
+- **Associated UI:** the outfit page (Task 12/13).
+- **Replication:** none new (reads the other player's server-side look on request).
+- **Sub-tasks:**
+  - [TODO] 22.1 Extend the tap-avatar raycast (`useTapAvatar`) to other players' characters; open the outfit page for them.
+  - [TODO] 22.2 Playtest with two clients.
+
 ---
 
 ## Open questions
@@ -529,7 +544,7 @@ Each needs a user decision (or a recorded finding) before or during the named ta
 12. **Card imagery (Task 8).** Thumbnails (cheap, static) vs ViewportFrame previews (lively, heavier on phones).
 13. ~~**What Create avatar does (Task 11).**~~ Decided (user, 2026-10-09): save the current look as a new Roblox outfit (`PromptCreateOutfit`).
 14. ~~**Purchase and ownership specifics (Task 11).**~~ Found: bulk Buy all works (`PromptBulkPurchase`, server-only; result client-only); bundle ownership via `PlayerOwnsBundle`. See Task 11 outcome.
-15. **Roblox username lookup depth (Task 13).** Whether another user's saved outfits are retrievable, or only their current avatar.
+15. ~~**Roblox username lookup depth (Task 13).**~~ Found: only another user's current avatar is retrievable in-game (`Players:GetUserIdFromNameAsync`, `GetHumanoidDescriptionFromUserId`, `UserService:GetUserInfosByUserIdsAsync`); `AvatarEditorService:GetOutfits` lists only the local player's outfits (after `PromptAllowInventoryReadAccess`) and HttpService can't reach Roblox's own web APIs. Decided (user, 2026-10-12): the Roblox tab shows the username search result, then players in this server (what they wear here), recent lookups, then friends.
 16. **Cross-server storage technology (Task 14).** DataStore, OrderedDataStore, MemoryStore, external service, or a mix; consistency, budgets and moderation hooks. Also used by Tasks 16 and 17.
 17. **Moderation (Tasks 12, 14, 16, 17, 19).** Approach to user-named outfits and stores, and takedown/report workflow.
 18. **Deep links and QR (Task 15).** What launch-data/deep-link route Roblox supports for landing on a specific screen, and how it coexists with the existing LaunchData acquisition attribution.

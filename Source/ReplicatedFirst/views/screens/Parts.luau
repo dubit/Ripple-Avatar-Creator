@@ -62,6 +62,37 @@ local function tint(colour: Color3): ColorSequence
 	})
 end
 
+-- Single body parts (worn as items; shown together as one Body row).
+Parts.BODY_PARTS = { Torso = true, LeftArm = true, RightArm = true, LeftLeg = true, RightLeg = true }
+
+function Parts.isBodyPart(item: any): boolean
+	return item ~= nil and Parts.BODY_PARTS[item.typeName] == true
+end
+
+-- A name for a set of body parts: the words their names share
+-- ("Zombie Left Arm", "Zombie Torso" → "Zombie"), else "Body".
+function Parts.bodyName(items: { any }): string
+	local words: { string }? = nil
+	local shared = 0
+	for _, item in items do
+		local mine = string.split(item.name or "", " ")
+		if not words then
+			words = mine
+			shared = #mine
+		else
+			local n = 0
+			while n < shared and mine[n + 1] == (words :: { string })[n + 1] do
+				n += 1
+			end
+			shared = n
+		end
+	end
+	if not words or shared == 0 then
+		return "Body"
+	end
+	return table.concat(words, " ", 1, shared) .. " body"
+end
+
 function Parts.swatch(colourName: string): Color3
 	return (Tokens.swatch :: any)[colourName] or Tokens.swatch.Orange
 end
@@ -74,6 +105,7 @@ end
 export type ThumbProps = {
 	colour: Color3,
 	image: string?, -- thumbnail drawn over the tint; hides the caption
+	flat: boolean?, -- the plain colour, no shading (a colour swatch)
 	radius: number?,
 	size: UDim2?,
 	position: UDim2?,
@@ -96,12 +128,12 @@ function Parts.Thumb(props: ThumbProps)
 		Position = props.position,
 		AnchorPoint = props.anchorPoint,
 		LayoutOrder = props.layoutOrder or 0,
-		BackgroundColor3 = Tokens.color.white,
+		BackgroundColor3 = if props.flat then props.colour else Tokens.color.white,
 		BorderSizePixel = 0,
 		ZIndex = z,
 	}, {
 		Corner = e("UICorner", { CornerRadius = UDim.new(0, skin.px(props.radius or Tokens.radius.itemCard)) }),
-		Gradient = e("UIGradient", { Color = tint(props.colour), Rotation = 70 }),
+		Gradient = if props.flat then nil else e("UIGradient", { Color = tint(props.colour), Rotation = 70 }),
 		Ring = e("UIStroke", {
 			Color = if props.selected or props.hovered then Tokens.color.accentText else Tokens.color.white,
 			Transparency = if props.selected then 0 elseif props.hovered then 1 - 0.7 else 1 - 0.1,
@@ -392,6 +424,7 @@ export type ListRowProps = {
 	trailing: any?, -- elements on the right (price, buttons)
 	trailingWidth: number?, -- design px for them (default 250)
 	leading: any?, -- element before the thumb (e.g. a checkbox)
+	flat: boolean?, -- the thumb is a plain colour swatch
 	onActivated: (() -> ())?,
 	layoutOrder: number?,
 }
@@ -435,6 +468,7 @@ function Parts.ListRow(props: ListRowProps)
 		Thumb = e(Parts.Thumb, {
 			colour = props.colour,
 			image = props.image,
+			flat = props.flat,
 			radius = 10,
 			anchorPoint = Vector2.new(0, 0.5),
 			position = UDim2.new(0, skin.px(8) + leadingWidth + (if props.leading then skin.px(8) else 0), 0.5, 0),

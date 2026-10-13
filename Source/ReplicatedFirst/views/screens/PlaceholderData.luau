@@ -144,14 +144,9 @@ function PlaceholderData.storeItems(storeId: number): { Item }
 	return list
 end
 
--- Item ids below are 1-based (prototype ids + 1).
+-- Placeholder Community outfits until Task 16. Item ids are 1-based
+-- (prototype ids + 1).
 PlaceholderData.outfits = {
-	Mine = {
-		{ name = "Spooky Halloween", by = "Your outfit", items = { 9, 14, 31, 26 } },
-		{ name = "School Day", by = "Your outfit", items = { 1, 10, 15, 19 } },
-		{ name = "Beach Fit", by = "Your outfit", items = { 4, 11, 18, 22 } },
-		{ name = "Wookie Slayer", by = "Your outfit", items = { 5, 12, 17, 32 } },
-	} :: { Outfit },
 	Community = {
 		{ name = "Neon Rider", by = "by pixelfox", items = { 12, 17, 19, 30, 28 } },
 		{ name = "Cottagecore", by = "by mossy_m", items = { 3, 16, 22, 29 } },
@@ -164,14 +159,7 @@ PlaceholderData.outfits = {
 		{ name = "Fairy Core", by = "by glimmer", items = { 8, 16, 21, 25 } },
 		{ name = "Sporty", by = "by dashr", items = { 1, 11, 18, 19 } },
 	} :: { Outfit },
-	Roblox = {
-		{ name = "Current Avatar", by = "Saved on Roblox", items = { 1, 11, 15, 20, 32 } },
-		{ name = "Weekend", by = "Saved on Roblox", items = { 2, 12, 17, 22 } },
-		{ name = "Party", by = "Saved on Roblox", items = { 4, 10, 16, 20, 25 } },
-	} :: { Outfit },
 }
-
-PlaceholderData.outfitSources = { "Mine", "Community", "Roblox" }
 
 function PlaceholderData.item(id: number): Item
 	return PlaceholderData.items[id] or CatalogueClient.item(id) :: Item

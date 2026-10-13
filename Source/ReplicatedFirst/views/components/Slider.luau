@@ -20,6 +20,12 @@
 		onChange: (value: number) -> ()
 		onCommit: (value: number) -> ()
 		layoutOrder: number?
+		trackColours: ColorSequence?   a colour slider (hue, saturation,
+		                               brightness): the track shows this
+		                               gradient and there's no fill, since
+		                               the value is a quality, not an amount
+		knobColour: Color3?            the knob shows this colour (the
+		                               current one) with a white ring
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -41,6 +47,8 @@ export type Props = {
 	onChange: (value: number) -> (),
 	onCommit: (value: number) -> (),
 	layoutOrder: number?,
+	trackColours: ColorSequence?,
+	knobColour: Color3?,
 }
 
 local function isPress(input: InputObject): boolean
@@ -97,7 +105,8 @@ local function Slider(props: Props)
 	end, {})
 
 	local fraction = math.clamp((props.value - props.min) / (props.max - props.min), 0, 1)
-	local knob = skin.px(22)
+	local colourful = props.trackColours ~= nil
+	local knob = skin.px(if colourful then 26 else 22)
 
 	return e("TextButton", {
 		Name = "Slider",
@@ -117,13 +126,17 @@ local function Slider(props: Props)
 		Track = e("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(1, -knob, 0, skin.px(6)),
-			BackgroundColor3 = Tokens.color.inputWell,
+			Size = UDim2.new(1, -knob, 0, skin.px(if colourful then 14 else 6)),
+			BackgroundColor3 = if colourful then Tokens.color.white else Tokens.color.inputWell,
 			BorderSizePixel = 0,
 			ref = trackRef,
 		}, {
 			Corner = e("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
-			Fill = e("Frame", {
+			Colours = if colourful then e("UIGradient", { Color = props.trackColours }) else nil,
+			Edge = if colourful
+				then e("UIStroke", { Color = Tokens.color.black, Thickness = skin.stroke(1), Transparency = 0.4 })
+				else nil,
+			Fill = if colourful then nil else e("Frame", {
 				Size = UDim2.fromScale(fraction, 1),
 				BackgroundColor3 = Tokens.color.accent,
 				BorderSizePixel = 0,
@@ -133,13 +146,18 @@ local function Slider(props: Props)
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(fraction, 0.5),
 				Size = UDim2.fromOffset(knob, knob),
-				BackgroundColor3 = Tokens.color.white,
+				BackgroundColor3 = props.knobColour or Tokens.color.white,
 				BorderSizePixel = 0,
 				ZIndex = 2,
 			}, {
 				Corner = e("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
-				Gradient = e("UIGradient", { Color = Tokens.gradient.knob, Rotation = Tokens.gradient.rotation }),
-				Stroke = e("UIStroke", { Color = Tokens.color.black, Thickness = skin.stroke(1) }),
+				Gradient = if props.knobColour
+					then nil
+					else e("UIGradient", { Color = Tokens.gradient.knob, Rotation = Tokens.gradient.rotation }),
+				Stroke = e("UIStroke", {
+					Color = if props.knobColour then Tokens.color.white else Tokens.color.black,
+					Thickness = skin.stroke(if props.knobColour then 3 else 1),
+				}),
 			}),
 		}),
 	})

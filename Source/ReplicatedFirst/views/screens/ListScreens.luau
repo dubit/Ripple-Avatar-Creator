@@ -390,11 +390,51 @@ local function WearingScreen(props: { nav: any, look: any })
 		end
 		return putOn[a] < putOn[b]
 	end)
+	-- Body parts (from someone's look) show as one Body row.
+	local bodyIds: { number } = {}
+	local bodyItems = {}
+	for _, id in ordered do
+		local item = PlaceholderData.item(id)
+		if Parts.isBodyPart(item) then
+			table.insert(bodyIds, id)
+			table.insert(bodyItems, item)
+		end
+	end
+	local bodyShown = false
 	for index, id in ordered do
 		local item = PlaceholderData.item(id)
 		if not item.owned then
 			unowned += 1
 			cost += item.price
+		end
+		if Parts.isBodyPart(item) then
+			if bodyShown then
+				continue
+			end
+			bodyShown = true
+			local torso = item
+			for _, part in bodyItems do
+				if part.typeName == "Torso" then
+					torso = part
+				end
+			end
+			rows["Body"] = e(Parts.ListRow, {
+				title = Parts.bodyName(bodyItems),
+				subtitle = "Body · " .. #bodyItems .. " part" .. (if #bodyItems == 1 then "" else "s"),
+				colour = Parts.swatch(torso.colour),
+				image = Parts.image(torso),
+				layoutOrder = index,
+				trailingWidth = ROW_TRAILING,
+				trailing = {
+					TakeOff = smallButton("Take off", 4, false, function()
+						look.takeOffMany(bodyIds)
+					end),
+				},
+				onActivated = function()
+					props.nav.push({ kind = "item", id = torso.id, label = torso.name })
+				end,
+			})
+			continue
 		end
 		local inBasket = look.inBasket(id)
 		rows["Row" .. id] = e(Parts.ListRow, {
@@ -428,7 +468,7 @@ local function WearingScreen(props: { nav: any, look: any })
 		BackgroundTransparency = 1,
 	}, {
 		-- (Hidden under the picker: glass shows what's behind it.)
-		Rows = if picking then nil else rowList(skin, rows, #look.worn, "You're not wearing anything"),
+		Rows = if picking then nil else rowList(skin, rows, #look.worn - math.max(#bodyIds - 1, 0), "You're not wearing anything"),
 		Picker = if picking
 			then e(OutfitPicker, {
 				look = look,

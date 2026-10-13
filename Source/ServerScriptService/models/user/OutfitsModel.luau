@@ -6,7 +6,9 @@
 	The player's saved outfits, oldest first: each an id, a name (already
 	text-filtered by OutfitsController) and the items that were worn, as the
 	same short records as the worn list. `nextId` hands out ids, so an
-	outfit keeps its id when others are deleted.
+	outfit keeps its id when others are deleted. `following` holds the user
+	ids the player follows here (newest first): our own follow, private to
+	the player, since Roblox gives games no access to its follows.
 
 	One record for all of a player's outfits: at AvatarConfig.outfits limits
 	(50 outfits × 40 items, ~80 bytes an item) it stays a few hundred KB at
@@ -18,6 +20,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local AbstractModel = require(script.Parent.Parent.AbstractModel)
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 local OutfitsModel = {}
 OutfitsModel.__index = OutfitsModel
@@ -34,18 +38,24 @@ export type Outfit = {
 	id: number,
 	name: string,
 	items: { OutfitItem },
+	skin: any?, -- skin colours worn with it, by body part (SkinColours.normalise)
+	scale: any?, -- body scale worn with it (BodyScale.normalise)
 }
 
 export type OutfitsModel = typeof(setmetatable({} :: {
 	outfits: { Outfit },
 	nextId: number,
+	following: { number }, -- user ids followed here (Outfits › Following), newest first
 }, OutfitsModel)) & AbstractModel.AbstractModel
+
+local MAX_FOLLOWING = 200
 
 function OutfitsModel.new(ownerId: string): OutfitsModel
 	local self = AbstractModel.new("OutfitsModel", ownerId, "User") :: any
 	setmetatable(self, OutfitsModel)
 	self.outfits = {}
 	self.nextId = 1
+	self.following = {}
 	return self :: OutfitsModel
 end
 
@@ -85,11 +95,17 @@ local function keep(items: { OutfitItem }): { OutfitItem }
 end
 
 -- Save a new outfit from these items. Returns it (nil when full).
-function OutfitsModel:add(name: string, items: { OutfitItem }): Outfit?
+function OutfitsModel:add(name: string, items: { OutfitItem }, skin: any?, scale: any?): Outfit?
 	if self:isFull() then
 		return nil
 	end
-	local outfit = { id = self.nextId, name = name, items = keep(items) }
+	local outfit = {
+		id = self.nextId,
+		name = name,
+		items = keep(items),
+		skin = SkinColours.normalise(skin),
+		scale = BodyScale.normalise(scale),
+	}
 	self.nextId += 1
 	table.insert(self.outfits, outfit)
 	self:syncState()
@@ -97,14 +113,32 @@ function OutfitsModel:add(name: string, items: { OutfitItem }): Outfit?
 end
 
 -- Replace an outfit's items (keeping its id and name).
-function OutfitsModel:overwrite(id: number, items: { OutfitItem }): Outfit?
+function OutfitsModel:overwrite(id: number, items: { OutfitItem }, skin: any?, scale: any?): Outfit?
 	local outfit = self:find(id)
 	if not outfit then
 		return nil
 	end
 	outfit.items = keep(items)
+	outfit.skin = SkinColours.normalise(skin)
+	outfit.scale = BodyScale.normalise(scale)
 	self:syncState()
 	return outfit
+end
+
+-- Follow someone (newest first, capped), or unfollow if already following.
+-- Returns whether they're followed now.
+function OutfitsModel:toggleFollow(userId: number): boolean
+	local index = table.find(self.following, userId)
+	if index then
+		table.remove(self.following, index)
+	else
+		table.insert(self.following, 1, userId)
+		while #self.following > MAX_FOLLOWING do
+			table.remove(self.following)
+		end
+	end
+	self:syncState()
+	return index == nil
 end
 
 function OutfitsModel:rename(id: number, name: string): boolean

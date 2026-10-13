@@ -18,11 +18,15 @@
 		Delete({ id })
 		WearAll({ id })            wear exactly the outfit (replaces the look;
 		                           undoable)
-		WearSelected({ id, indices })   put those items on over the current look
+		WearSelected({ id, indices, skin? })   put those items (and with
+		                           `skin`, its skin tone) on over the current look
+		Follow({ userId })         follow someone here, or unfollow (a real
+		                           Roblox user; private to the player)
 
 	The outfit page's 3D preview asks over the "OutfitPreview" remote function
 	(Bolt) with (kind, id): "saved" + a saved outfit's id, "own" (the player's
-	own Roblox avatar) or "roblox" + an outfit saved on Roblox. The server
+	own Roblox avatar), "roblox" + an outfit saved on Roblox, or "user" + a
+	user id (another user's look: RobloxAvatarLookupService). The server
 	builds the look
 	(AvatarService.describeLook, the same code that dresses characters) and
 	parents the HumanoidDescription into the player's PlayerGui (so only they
@@ -44,8 +48,11 @@ local AbstractController = require(script.Parent.AbstractController)
 local OutfitsModel = require(script.Parent.Parent.models.user.OutfitsModel)
 local AvatarModel = require(script.Parent.Parent.models.user.AvatarModel)
 local AvatarService = require(ServerScriptService.services.game.AvatarService)
+local RobloxAvatarLookupService = require(ServerScriptService.services.game.RobloxAvatarLookupService)
 local Network = require(ReplicatedStorage.Network)
 local Bolt = require(ReplicatedStorage.Bolt)
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
 
@@ -114,7 +121,7 @@ local function save(player: Player, model: any, _raw: any)
 	if not avatar or #avatar.worn == 0 then
 		return
 	end
-	local outfit = model:add(defaultName(model), avatar.worn)
+	local outfit = model:add(defaultName(model), avatar.worn, avatar.skin, avatar.scale)
 	if outfit then
 		track(player, "outfit_save", { outfit_id = outfit.id, item_count = #outfit.items })
 	end
@@ -126,7 +133,7 @@ local function overwrite(player: Player, model: any, raw: any)
 	if not id or not avatar or #avatar.worn == 0 then
 		return
 	end
-	local outfit = model:overwrite(id, avatar.worn)
+	local outfit = model:overwrite(id, avatar.worn, avatar.skin, avatar.scale)
 	if outfit then
 		track(player, "outfit_save", { outfit_id = outfit.id, item_count = #outfit.items, replaced = true })
 	end
@@ -171,7 +178,7 @@ local function wearAll(player: Player, model: any, raw: any)
 	if not outfit or not avatar then
 		return
 	end
-	avatar:setWorn(table.clone(outfit.items))
+	avatar:setLook(table.clone(outfit.items), SkinColours.normalise(outfit.skin), BodyScale.normalise(outfit.scale))
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { outfit_id = outfit.id, item_count = #outfit.items, partial = false })
 end
@@ -191,12 +198,30 @@ local function wearSelected(player: Player, model: any, raw: any)
 			table.insert(items, outfit.items[index])
 		end
 	end
-	if #items == 0 then
+	-- The skin tone comes too if its row was ticked.
+	local colours = SkinColours.normalise(outfit.skin)
+	local skin = if raw.skin == true and not SkinColours.isEmpty(colours) then colours else nil
+	local outfitScale = BodyScale.normalise(outfit.scale)
+	local scale = if raw.scale == true and not BodyScale.isEmpty(outfitScale) then outfitScale else nil
+	if #items == 0 and not skin and not scale then
 		return
 	end
-	avatar:wearMany(items)
+	avatar:wearMany(items, skin, scale)
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { outfit_id = outfit.id, item_count = #items, partial = true })
+end
+
+local function follow(player: Player, model: any, raw: any)
+	local userId = if type(raw) == "table" then raw.userId else nil
+	if type(userId) ~= "number" or userId ~= userId or userId <= 0 or userId % 1 ~= 0 or userId == player.UserId then
+		return
+	end
+	-- Unfollowing needs no check; following must be a real user.
+	if not table.find(model.following, userId) and not RobloxAvatarLookupService.user(userId) then
+		return
+	end
+	local on = model:toggleFollow(userId)
+	track(player, if on then "user_follow" else "user_unfollow", { followed_user_id = userId })
 end
 
 local ACTIONS = {
@@ -206,6 +231,7 @@ local ACTIONS = {
 	[Network.Actions.Outfits.Delete] = delete,
 	[Network.Actions.Outfits.WearAll] = wearAll,
 	[Network.Actions.Outfits.WearSelected] = wearSelected,
+	[Network.Actions.Outfits.Follow] = follow,
 }
 
 function OutfitsController:executeAction(player: Player, action: Network.OutfitsAction, raw: any)
@@ -246,13 +272,15 @@ local function preview(player: Player, kind: any, id: any): string?
 		local model = OutfitsModel.get(tostring(player.UserId))
 		local outfit = model and model:find(id)
 		if outfit then
-			local ok, result = pcall(AvatarService.describeLook, player, outfit.items)
+			local ok, result = pcall(AvatarService.describeLook, player, outfit.items, outfit.skin, outfit.scale)
 			description = if ok then result else nil
 		end
 	elseif kind == "own" then
 		description = AvatarService.ownDescription(player)
 	elseif kind == "roblox" then
 		description = AvatarService.robloxOutfit(id)
+	elseif kind == "user" then
+		description = RobloxAvatarLookupService.description(id)
 	end
 	if not description then
 		return nil

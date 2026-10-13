@@ -96,9 +96,17 @@ local function withFeedback(look: any)
 		Sounds.play("tryOn")
 		look.wearOutfit(id)
 	end
-	feedback.wearOutfitItems = function(id: number, indices: { number })
-		Sounds.play(if #indices > 0 then "tryOn" else "error")
-		look.wearOutfitItems(id, indices)
+	feedback.wearOutfitItems = function(id: number, indices: { number }, withSkin: boolean?, withScale: boolean?)
+		Sounds.play(if #indices > 0 or withSkin or withScale then "tryOn" else "error")
+		look.wearOutfitItems(id, indices, withSkin, withScale)
+	end
+	feedback.toggleFollow = function(userId: number)
+		Sounds.play(if look.isFollowing(userId) then "back" else "confirm")
+		look.toggleFollow(userId)
+	end
+	feedback.wearUserLook = function(userId: number)
+		Sounds.play("tryOn")
+		look.wearUserLook(userId)
 	end
 	feedback.wearRobloxOutfit = function(outfitId: number)
 		Sounds.play("tryOn")
@@ -117,10 +125,26 @@ local function withFeedback(look: any)
 		Sounds.play(if count > 0 then "confirm" else "error")
 		return count
 	end
-	feedback.wearAll = function(ids: { number }): number
-		local count = look.wearAll(ids)
+	feedback.setSkin = function(skin: any)
+		Sounds.play("tryOn")
+		look.setSkin(skin)
+	end
+	feedback.setScale = function(scale: any)
+		Sounds.play("tryOn")
+		look.setScale(scale)
+	end
+	feedback.moveLayer = function(id: number, direction: number)
+		Sounds.play("tryOn")
+		look.moveLayer(id, direction)
+	end
+	feedback.wearAll = function(ids: { number }, skin: any?, scale: any?): number
+		local count = look.wearAll(ids, skin, scale)
 		Sounds.play(if count > 0 then "tryOn" else "error")
 		return count
+	end
+	feedback.takeOffMany = function(ids: { number })
+		Sounds.play("back")
+		look.takeOffMany(ids)
 	end
 	feedback.takeOffAll = function()
 		Sounds.play("back")

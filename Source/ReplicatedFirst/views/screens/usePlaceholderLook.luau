@@ -39,6 +39,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 local views = script.Parent.Parent
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
@@ -51,6 +53,8 @@ export type SavedOutfit = {
 	id: number,
 	name: string,
 	items: { number }, -- item ids, in the order they were put on
+	skin: SkinColours.Colours, -- the skin colours saved with it ({} = the wearer's own)
+	scale: any, -- the body scale saved with it ({} = the wearer's own)
 }
 
 export type Look = {
@@ -61,8 +65,17 @@ export type Look = {
 	inBasket: (id: number) -> boolean,
 	canWear: (id: number) -> boolean, -- a real catalogue item (not a mock)
 	toggleWear: (id: number) -> boolean, -- false if the item can't be worn
-	wearAll: (ids: { number }) -> number, -- how many could be worn
+	wearAll: (ids: { number }, skin: SkinColours.Colours?, scale: any?) -> number, -- how many could be worn; `skin` / `scale` set those too
+	scale: any, -- chosen body scale (BodyScale; one left out is your own)
+	ownScale: any, -- your own avatar's scale
+	setScale: (scale: any) -> (),
+	moveLayer: (id: number, direction: number) -> (), -- a layered item in (-1) or out (+1)
+	skin: SkinColours.Colours, -- chosen skin colours by body part (a part left out is your own)
+	ownSkin: SkinColours.Colours, -- your own avatar's colours, all six parts
+	setSkin: (skin: SkinColours.Colours) -> (),
+	refreshOwn: () -> (), -- re-read your Roblox avatar (it may have changed since you joined)
 	takeOffAll: () -> (),
+	takeOffMany: (ids: { number }) -> (), -- as one change (e.g. a body's parts)
 	undo: () -> (),
 	reset: () -> (), -- back to the player's own Roblox avatar
 	isFavourite: (id: number) -> boolean,
@@ -77,12 +90,16 @@ export type Look = {
 	currentOutfit: SavedOutfit?, -- the saved outfit being worn exactly, if any
 	own: { number }, -- the player's own Roblox avatar's items (what Reset puts back)
 	wearRobloxOutfit: (outfitId: number) -> (), -- an outfit saved on Roblox
+	wearUserLook: (userId: number) -> (), -- another user's look (their items, your body)
+	following: { number }, -- user ids followed here, newest first
+	isFollowing: (userId: number) -> boolean,
+	toggleFollow: (userId: number) -> (),
 	saveOutfit: () -> boolean, -- save what's worn; false if nothing is
 	overwriteOutfit: (id: number) -> (), -- replace its items with what's worn
 	renameOutfit: (id: number, name: string) -> (),
 	deleteOutfit: (id: number) -> (),
 	wearOutfit: (id: number) -> (), -- exactly the outfit (replaces the look)
-	wearOutfitItems: (id: number, indices: { number }) -> (), -- over the look
+	wearOutfitItems: (id: number, indices: { number }, withSkin: boolean?, withScale: boolean?) -> (), -- over the look
 	basketTotal: number, -- Robux for unowned basket items
 }
 
@@ -157,7 +174,13 @@ local function usePlaceholderLook(): Look
 		for _, entry in outfit.items or {} do
 			table.insert(ids, CatalogueClient.remember(entry).id)
 		end
-		table.insert(outfits, { id = outfit.id, name = outfit.name, items = ids })
+		table.insert(outfits, {
+			id = outfit.id,
+			name = outfit.name,
+			items = ids,
+			skin = SkinColours.normalise(outfit.skin),
+			scale = BodyScale.normalise(outfit.scale),
+		})
 	end
 	-- Known-owned items show as owned wherever they appear (items are shared).
 	for _, key in ownership.owned or {} do
@@ -337,7 +360,25 @@ local function usePlaceholderLook(): Look
 			intent:FireServer(if isWorn(id) then actions.TakeOff else actions.TryOn, ref(id))
 			return true
 		end,
-		wearAll = function(ids: { number }): number
+		skin = SkinColours.normalise(avatar.skin),
+		ownSkin = SkinColours.normalise(avatar.ownSkin),
+		setSkin = function(skin: SkinColours.Colours)
+			intent:FireServer(actions.SetSkin, skin)
+		end,
+		refreshOwn = function()
+			intent:FireServer(actions.RefreshOwn)
+		end,
+		scale = BodyScale.normalise(avatar.scale),
+		ownScale = BodyScale.normalise(avatar.ownScale),
+		setScale = function(scale: any)
+			intent:FireServer(actions.SetScale, scale)
+		end,
+		moveLayer = function(id: number, direction: number)
+			if canWear(id) then
+				intent:FireServer(actions.MoveLayer, ref(id), direction)
+			end
+		end,
+		wearAll = function(ids: { number }, skin: SkinColours.Colours?, scale: any?): number
 			local refs = {}
 			for _, id in ids do
 				if canWear(id) then
@@ -348,13 +389,24 @@ local function usePlaceholderLook(): Look
 			while #refs > AvatarConfig.maxWearMany do
 				table.remove(refs, 1)
 			end
-			if #refs > 0 then
-				intent:FireServer(actions.WearMany, refs)
+			if #refs > 0 or skin or scale then
+				intent:FireServer(actions.WearMany, refs, { skin = skin, scale = scale })
 			end
-			return #refs
+			return #refs + (if skin then 1 else 0) + (if scale then 1 else 0)
 		end,
 		takeOffAll = function()
 			intent:FireServer(actions.TakeOffAll)
+		end,
+		takeOffMany = function(ids: { number })
+			local refs = {}
+			for _, id in ids do
+				if canWear(id) then
+					table.insert(refs, ref(id))
+				end
+			end
+			if #refs > 0 then
+				intent:FireServer(actions.TakeOffMany, refs)
+			end
 		end,
 		undo = function()
 			intent:FireServer(actions.Undo)
@@ -427,6 +479,16 @@ local function usePlaceholderLook(): Look
 		wearRobloxOutfit = function(outfitId: number)
 			intent:FireServer(actions.WearRobloxOutfit, outfitId)
 		end,
+		wearUserLook = function(userId: number)
+			intent:FireServer(actions.WearUserLook, userId)
+		end,
+		following = outfitState.following or {},
+		isFollowing = function(userId: number): boolean
+			return table.find(outfitState.following or {}, userId) ~= nil
+		end,
+		toggleFollow = function(userId: number)
+			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Follow, { userId = userId })
+		end,
 		saveOutfit = function(): boolean
 			if #worn == 0 then
 				return false
@@ -448,9 +510,12 @@ local function usePlaceholderLook(): Look
 		wearOutfit = function(id: number)
 			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearAll, { id = id })
 		end,
-		wearOutfitItems = function(id: number, indices: { number })
-			if #indices > 0 then
-				Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearSelected, { id = id, indices = indices })
+		wearOutfitItems = function(id: number, indices: { number }, withSkin: boolean?, withScale: boolean?)
+			if #indices > 0 or withSkin or withScale then
+				Network.Intent.Outfits:FireServer(
+					Network.Actions.Outfits.WearSelected,
+					{ id = id, indices = indices, skin = withSkin == true, scale = withScale == true }
+				)
 			end
 		end,
 		basketTotal = total,

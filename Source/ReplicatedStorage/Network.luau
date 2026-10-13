@@ -42,12 +42,12 @@ local NetworkBuilder = require(script.Parent:WaitForChild("NetworkBuilder"))
 -- Network Configuration: Single source of truth for all controllers and state
 local NetworkConfig = {
 	Controllers = {
-		Avatar = { "TryOn", "TakeOff", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit" },
+		Avatar = { "TryOn", "TakeOff", "TakeOffMany", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit", "WearUserLook", "SetSkin", "RefreshOwn", "SetScale", "MoveLayer" },
 		Basket = { "Add", "Remove", "AddMany", "RemoveMany", "Clear" },
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
 		Favourites = { "Toggle" },
-		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected" },
+		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected", "Follow" },
 		Purchase = { "Buy", "Finished", "Check" },
 		Shrine = { "Donate" },
 		SlashCommand = {},  -- No actions, just the intent
@@ -60,6 +60,10 @@ local NetworkConfig = {
 		Avatar = {
 			ownerId = "",
 			worn = {},
+			skin = {},
+			ownSkin = {},
+			scale = {},
+			ownScale = {},
 			seeded = false,
 			own = {},
 			canUndo = false,
@@ -102,6 +106,7 @@ local NetworkConfig = {
 			ownerId = "",
 			outfits = {},
 			nextId = 1,
+			following = {},
 		},
 		-- What the player owns, as far as we've checked, and their latest
 		-- purchase (session only; OwnershipModel). `owned` holds "Asset:123" /
@@ -148,13 +153,13 @@ local Network = NetworkBuilder.build(NetworkConfig, Bolt)
 -- ============================================================================
 
 -- Action Type Exports (manually defined for type safety)
-export type AvatarAction = "TryOn" | "TakeOff" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit"
+export type AvatarAction = "TryOn" | "TakeOff" | "TakeOffMany" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit" | "WearUserLook" | "SetSkin" | "RefreshOwn" | "SetScale" | "MoveLayer"
 export type BasketAction = "Add" | "Remove" | "AddMany" | "RemoveMany" | "Clear"
 export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"
 export type FavouritesAction = "Toggle"
 export type PurchaseAction = "Buy" | "Finished" | "Check"
-export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected"
+export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected" | "Follow"
 export type ShrineAction = "Donate"
 export type WorldOptionsAction = "Set" | "Reset"
 
@@ -172,6 +177,10 @@ export type AvatarState = {
 	worn: { WornItem }, -- in the order put on
 	seeded: boolean, -- filled from the player's own avatar on first join
 	own: { WornItem }, -- the player's own Roblox avatar's items (refreshed every join)
+	skin: { [string]: string }, -- skin colours by body part ("#RRGGBB"); a part left out is the player's own
+	ownSkin: { [string]: string }, -- the player's own avatar's colours, all six parts
+	scale: { [string]: number }, -- body scale (BodyScale keys); one left out is the player's own
+	ownScale: { [string]: number }, -- the player's own avatar's scale
 	canUndo: boolean,
 }
 
@@ -199,12 +208,15 @@ export type Outfit = {
 	id: number,
 	name: string, -- text-filtered
 	items: { WornItem }, -- what was worn, in the order put on (`owned` unset)
+	skin: any?, -- skin colours worn with it (by body part; SkinColours.normalise)
+	scale: any?, -- body scale worn with it (BodyScale.normalise)
 }
 
 export type OutfitsState = {
 	ownerId: string,
 	outfits: { Outfit }, -- oldest first
 	nextId: number,
+	following: { number }, -- user ids followed here (Outfits › Following), newest first
 }
 
 export type PurchaseResult = {
