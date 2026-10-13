@@ -1515,7 +1515,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					Padding = UDim.new(0, skin.px(8)),
 				}),
 				Wear = e("Frame", {
-					Size = UDim2.new(1, if saved then -(buttonsHeight + skin.px(8)) else 0, 1, 0),
+					Size = UDim2.new(1, if saved or kind == "roblox" then -(buttonsHeight + skin.px(8)) else 0, 1, 0),
 					BackgroundTransparency = 1,
 					LayoutOrder = 1,
 				}, {
@@ -1546,7 +1546,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					}),
 				}),
 				-- Share: a code anyone can open (design 5e).
-				Share = if saved and outfitId
+				Share = if (saved or kind == "roblox") and outfitId
 					then e(PillButton, {
 						variant = "round",
 						size = Tokens.size.ctaHeight,
@@ -1556,7 +1556,11 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 						sound = false, -- the dialog plays its own sound
 						layoutOrder = 2,
 						onActivated = function()
-							hud.share(outfitId)
+							if kind == "roblox" then
+								hud.share(outfitId, "creation", outfit.name)
+							else
+								hud.share(outfitId)
+							end
 						end,
 					})
 					else nil,

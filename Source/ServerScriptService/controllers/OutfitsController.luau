@@ -26,6 +26,12 @@
 		                           (once; it's kept): its current state is published to
 		                           SharedContentService, and every rename / save
 		                           over republishes it; Delete revokes it
+		ShareCreation({ outfitId, name })   share one of the player's outfits
+		                           saved on Roblox (Creations): its contents
+		                           come from Roblox (items, body, skin, scale),
+		                           the name is text-filtered; the code is kept
+		                           in `creationCodes` (not a Wardrobe outfit)
+		                           and each call refreshes what it shows
 		WearShared({ code })       wear a shared outfit exactly (replaces the
 		                           look, with its skin colours and scale)
 
@@ -194,6 +200,38 @@ local function share(player: Player, model: any, raw: any)
 	end
 end
 
+local function shareCreation(player: Player, model: any, raw: any)
+	if type(raw) ~= "table" or type(raw.outfitId) ~= "number" or raw.outfitId <= 0 or raw.outfitId % 1 ~= 0 then
+		return
+	end
+	local description, items = AvatarService.robloxOutfit(raw.outfitId)
+	if not description then
+		return
+	end
+	local name = if type(raw.name) == "string" and string.match(raw.name, "%S") then string.sub(raw.name, 1, 60) else "Outfit"
+	local record = {
+		kind = "outfit",
+		ownerId = player.UserId,
+		ownerName = player.Name,
+		updated = os.time(),
+		name = filtered(player, name) or "Outfit",
+		items = items,
+		skin = AvatarService.skinOf(description),
+		scale = AvatarService.scaleOf(description),
+	}
+	local key = tostring(raw.outfitId)
+	local existing = (model.creationCodes or {})[key]
+	if existing and SharedContentService.normalise(existing) then
+		SharedContentService.update(existing, record)
+		return
+	end
+	local code = SharedContentService.claim(record)
+	if code then
+		model:setCreationCode(raw.outfitId, code)
+		track(player, "outfit_share", { item_count = #items, source = "roblox" })
+	end
+end
+
 local function wearShared(player: Player, _model: any, raw: any)
 	local code = if type(raw) == "table" then SharedContentService.normalise(raw.code) else nil
 	local avatar = AvatarModel.get(tostring(player.UserId))
@@ -306,6 +344,7 @@ local ACTIONS = {
 	[Network.Actions.Outfits.WearSelected] = wearSelected,
 	[Network.Actions.Outfits.Follow] = follow,
 	[Network.Actions.Outfits.Share] = share,
+	[Network.Actions.Outfits.ShareCreation] = shareCreation,
 	[Network.Actions.Outfits.WearShared] = wearShared,
 }
 

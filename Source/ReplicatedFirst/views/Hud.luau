@@ -171,8 +171,9 @@ end
 local function Hud()
 	local nav = useNavigation()
 	local rawLook = usePlaceholderLook()
-	-- The outfit whose share dialog is open (its id), if any.
-	local shareId, setShareId = React.useState(nil :: number?)
+	-- What the share dialog is open for, if anything: a saved outfit, or one
+	-- saved on Roblox (a creation).
+	local shareTarget, setShareTarget = React.useState(nil :: { kind: string, id: number, name: string }?)
 	-- The latest purchase we sent (its request id), to sound its outcome,
 	-- and the button that sent it (spinning until the outcome arrives).
 	local buyRequest, setBuyRequest = React.useState(nil :: number?)
@@ -210,9 +211,9 @@ local function Hud()
 	end, { buyingKey })
 
 	useBackInput(function()
-		if shareId then
+		if shareTarget then
 			Sounds.play("back")
-			setShareId(nil)
+			setShareTarget(nil)
 		elseif #nav.stack > 0 then
 			Sounds.play("back")
 			nav.back()
@@ -272,9 +273,15 @@ local function Hud()
 			buying = function(key: string): boolean
 				return buyingKey == key
 			end,
-			share = function(id: number)
+			share = function(id: number, kind: string?, name: string?)
 				Sounds.play("open")
-				setShareId(id)
+				setShareTarget({ kind = kind or "saved", id = id, name = name or "" })
+				if kind == "creation" then
+					-- Refresh its shared copy from Roblox (keeps any code).
+					if latestLook.current.creationCodes[tostring(id)] then
+						latestLook.current.shareCreation(id, name or "")
+					end
+				end
 			end,
 		}
 	end, { buyingKey })
@@ -302,16 +309,30 @@ local function Hud()
 			Panel = e(React.Fragment, nil, panels),
 			Share = e(ShareDialog, {
 				outfit = (function()
+					local target = shareTarget
+					if not target then
+						return nil
+					end
+					if target.kind == "creation" then
+						return { id = target.id, name = target.name, code = rawLook.creationCodes[tostring(target.id)] }
+					end
 					for _, outfit in rawLook.outfits do
-						if outfit.id == shareId then
+						if outfit.id == target.id then
 							return outfit
 						end
 					end
 					return nil
 				end)(),
-				onReveal = rawLook.shareOutfit,
+				onReveal = function(id: number)
+					local target = shareTarget
+					if target and target.kind == "creation" then
+						rawLook.shareCreation(id, target.name)
+					else
+						rawLook.shareOutfit(id)
+					end
+				end,
 				onClose = function()
-					setShareId(nil)
+					setShareTarget(nil)
 				end,
 			}),
 		}),

@@ -99,6 +99,8 @@ export type Look = {
 	overwriteOutfit: (id: number) -> (), -- replace its items with what's worn
 	renameOutfit: (id: number, name: string) -> (),
 	shareOutfit: (id: number) -> (), -- give it a share code (kept)
+	shareCreation: (outfitId: number, name: string) -> (), -- share a Roblox-saved outfit (or refresh it)
+	creationCodes: { [string]: string }, -- share codes of shared Roblox-saved outfits, by outfit id
 	wearShared: (code: string) -> (), -- wear a shared outfit exactly
 	deleteOutfit: (id: number) -> (),
 	wearOutfit: (id: number) -> (), -- exactly the outfit (replaces the look)
@@ -508,6 +510,10 @@ local function usePlaceholderLook(): Look
 		shareOutfit = function(id: number)
 			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Share, { id = id })
 		end,
+		shareCreation = function(outfitId: number, name: string)
+			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.ShareCreation, { outfitId = outfitId, name = name })
+		end,
+		creationCodes = outfitState.creationCodes or {},
 		wearShared = function(code: string)
 			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearShared, { code = code })
 		end,
