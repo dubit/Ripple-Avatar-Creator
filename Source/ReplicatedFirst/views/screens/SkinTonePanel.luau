@@ -103,8 +103,8 @@ local function hexOf(h: number, sat: number, v: number): string
 end
 
 -- Any colour: hue, saturation and brightness sliders, or a hex code; a big
--- preview; Apply colours the selected parts. The back button (or Back)
--- returns to the palette. Each slider's track shows what moving along it
+-- preview; Apply colours the selected parts. Back returns to the palette
+-- (as does the panel's back button above). Each slider's track shows what moving along it
 -- does to the colour (no orange fill: it's a quality, not an amount), and
 -- its knob shows the current colour.
 local function CustomColour(props: {
@@ -173,33 +173,13 @@ local function CustomColour(props: {
 		})
 	end
 	local preview = skin.px(120)
-	local header = skin.px(Tokens.size.small.size)
-	local top = header + skin.px(18)
+	local top = 0
 	return e("Frame", {
 		Name = "CustomColour",
 		Position = props.position,
 		Size = props.size,
 		BackgroundTransparency = 1,
 	}, {
-		Padding = e("UIPadding", { PaddingTop = UDim.new(0, skin.px(14)) }),
-		-- Back to the palette.
-		Back = e(PillButton, {
-			variant = "round",
-			size = Tokens.size.small.size,
-			icon = "arrow_back",
-			iconSize = Tokens.size.small.icon,
-			glowRadius = 0,
-			sound = "back",
-			onActivated = props.onClose,
-		}),
-		Title = e("Frame", {
-			Position = UDim2.fromOffset(header + skin.px(12), 0),
-			Size = UDim2.new(1, -(header + skin.px(12)), 0, header),
-			BackgroundTransparency = 1,
-		}, {
-			Layout = e("UIListLayout", { VerticalAlignment = Enum.VerticalAlignment.Center }),
-			Text = e(ShadowText, { text = "Custom colour", style = Tokens.type.cardTitle }),
-		}),
 		Preview = e("Frame", {
 			Position = UDim2.fromOffset(0, top),
 			Size = UDim2.fromOffset(preview, preview),
@@ -396,6 +376,8 @@ local function SkinTonePanel(props: { look: any, size: UDim2, position: UDim2 })
 
 	local left = skin.px(LEFT)
 	local everything = count == #SkinColours.PARTS
+	-- While Custom is open, a header across the top: back to the palette.
+	local header = if custom then skin.px(Tokens.size.small.size) + skin.px(28) else 0
 	-- The custom editor starts from the first selected part's colour.
 	local startHex = "#AF9483"
 	for _, part in SkinColours.PARTS do
@@ -410,8 +392,36 @@ local function SkinTonePanel(props: { look: any, size: UDim2, position: UDim2 })
 		Size = props.size,
 		BackgroundTransparency = 1,
 	}, {
+		Header = if custom
+			then e("Frame", {
+				Position = UDim2.fromOffset(0, skin.px(6)),
+				Size = UDim2.new(1, 0, 0, skin.px(Tokens.size.small.size)),
+				BackgroundTransparency = 1,
+			}, {
+				Layout = e("UIListLayout", {
+					FillDirection = Enum.FillDirection.Horizontal,
+					VerticalAlignment = Enum.VerticalAlignment.Center,
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					Padding = UDim.new(0, skin.px(12)),
+				}),
+				Back = e(PillButton, {
+					variant = "round",
+					size = Tokens.size.small.size,
+					icon = "arrow_back",
+					iconSize = Tokens.size.small.icon,
+					glowRadius = 0,
+					sound = "back",
+					layoutOrder = 1,
+					onActivated = function()
+						setCustom(false)
+					end,
+				}),
+				Title = e(ShadowText, { text = "Custom colour", style = Tokens.type.cardTitle, layoutOrder = 2 }),
+			})
+			else nil,
 		Figure = e("Frame", {
-			Size = UDim2.new(0, left, 1, 0),
+			Position = UDim2.fromOffset(0, header),
+			Size = UDim2.new(0, left, 1, -header),
 			BackgroundTransparency = 1,
 		}, {
 			Layout = e("UIListLayout", {
@@ -457,8 +467,8 @@ local function SkinTonePanel(props: { look: any, size: UDim2, position: UDim2 })
 			then e(CustomColour, {
 				start = startHex,
 				parts = count,
-				position = UDim2.fromOffset(left + skin.px(20), 0),
-				size = UDim2.new(1, -(left + skin.px(20)), 1, 0),
+				position = UDim2.fromOffset(left + skin.px(20), header + skin.px(6)),
+				size = UDim2.new(1, -(left + skin.px(20)), 1, -(header + skin.px(6))),
 				onApply = function(hex: string)
 					apply(hex)
 				end,
