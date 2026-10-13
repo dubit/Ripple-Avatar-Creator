@@ -42,7 +42,7 @@ local NetworkBuilder = require(script.Parent:WaitForChild("NetworkBuilder"))
 -- Network Configuration: Single source of truth for all controllers and state
 local NetworkConfig = {
 	Controllers = {
-		Avatar = { "TryOn", "TakeOff", "TakeOffMany", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit", "WearUserLook", "SetSkin", "RefreshOwn" },
+		Avatar = { "TryOn", "TakeOff", "TakeOffMany", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit", "WearUserLook", "SetSkin", "RefreshOwn", "SetScale", "MoveLayer" },
 		Basket = { "Add", "Remove", "AddMany", "RemoveMany", "Clear" },
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
@@ -62,6 +62,8 @@ local NetworkConfig = {
 			worn = {},
 			skin = {},
 			ownSkin = {},
+			scale = {},
+			ownScale = {},
 			seeded = false,
 			own = {},
 			canUndo = false,
@@ -151,7 +153,7 @@ local Network = NetworkBuilder.build(NetworkConfig, Bolt)
 -- ============================================================================
 
 -- Action Type Exports (manually defined for type safety)
-export type AvatarAction = "TryOn" | "TakeOff" | "TakeOffMany" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit" | "WearUserLook" | "SetSkin" | "RefreshOwn"
+export type AvatarAction = "TryOn" | "TakeOff" | "TakeOffMany" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit" | "WearUserLook" | "SetSkin" | "RefreshOwn" | "SetScale" | "MoveLayer"
 export type BasketAction = "Add" | "Remove" | "AddMany" | "RemoveMany" | "Clear"
 export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"
@@ -177,6 +179,8 @@ export type AvatarState = {
 	own: { WornItem }, -- the player's own Roblox avatar's items (refreshed every join)
 	skin: { [string]: string }, -- skin colours by body part ("#RRGGBB"); a part left out is the player's own
 	ownSkin: { [string]: string }, -- the player's own avatar's colours, all six parts
+	scale: { [string]: number }, -- body scale (BodyScale keys); one left out is the player's own
+	ownScale: { [string]: number }, -- the player's own avatar's scale
 	canUndo: boolean,
 }
 
@@ -205,6 +209,7 @@ export type Outfit = {
 	name: string, -- text-filtered
 	items: { WornItem }, -- what was worn, in the order put on (`owned` unset)
 	skin: any?, -- skin colours worn with it (by body part; SkinColours.normalise)
+	scale: any?, -- body scale worn with it (BodyScale.normalise)
 }
 
 export type OutfitsState = {

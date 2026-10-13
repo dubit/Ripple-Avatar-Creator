@@ -40,6 +40,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 local views = script.Parent.Parent
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
@@ -53,6 +54,7 @@ export type SavedOutfit = {
 	name: string,
 	items: { number }, -- item ids, in the order they were put on
 	skin: SkinColours.Colours, -- the skin colours saved with it ({} = the wearer's own)
+	scale: any, -- the body scale saved with it ({} = the wearer's own)
 }
 
 export type Look = {
@@ -63,7 +65,11 @@ export type Look = {
 	inBasket: (id: number) -> boolean,
 	canWear: (id: number) -> boolean, -- a real catalogue item (not a mock)
 	toggleWear: (id: number) -> boolean, -- false if the item can't be worn
-	wearAll: (ids: { number }, skin: SkinColours.Colours?) -> number, -- how many could be worn; `skin` sets colours too
+	wearAll: (ids: { number }, skin: SkinColours.Colours?, scale: any?) -> number, -- how many could be worn; `skin` / `scale` set those too
+	scale: any, -- chosen body scale (BodyScale; one left out is your own)
+	ownScale: any, -- your own avatar's scale
+	setScale: (scale: any) -> (),
+	moveLayer: (id: number, direction: number) -> (), -- a layered item in (-1) or out (+1)
 	skin: SkinColours.Colours, -- chosen skin colours by body part (a part left out is your own)
 	ownSkin: SkinColours.Colours, -- your own avatar's colours, all six parts
 	setSkin: (skin: SkinColours.Colours) -> (),
@@ -93,7 +99,7 @@ export type Look = {
 	renameOutfit: (id: number, name: string) -> (),
 	deleteOutfit: (id: number) -> (),
 	wearOutfit: (id: number) -> (), -- exactly the outfit (replaces the look)
-	wearOutfitItems: (id: number, indices: { number }, withSkin: boolean?) -> (), -- over the look
+	wearOutfitItems: (id: number, indices: { number }, withSkin: boolean?, withScale: boolean?) -> (), -- over the look
 	basketTotal: number, -- Robux for unowned basket items
 }
 
@@ -168,7 +174,13 @@ local function usePlaceholderLook(): Look
 		for _, entry in outfit.items or {} do
 			table.insert(ids, CatalogueClient.remember(entry).id)
 		end
-		table.insert(outfits, { id = outfit.id, name = outfit.name, items = ids, skin = SkinColours.normalise(outfit.skin) })
+		table.insert(outfits, {
+			id = outfit.id,
+			name = outfit.name,
+			items = ids,
+			skin = SkinColours.normalise(outfit.skin),
+			scale = BodyScale.normalise(outfit.scale),
+		})
 	end
 	-- Known-owned items show as owned wherever they appear (items are shared).
 	for _, key in ownership.owned or {} do
@@ -356,7 +368,17 @@ local function usePlaceholderLook(): Look
 		refreshOwn = function()
 			intent:FireServer(actions.RefreshOwn)
 		end,
-		wearAll = function(ids: { number }, skin: SkinColours.Colours?): number
+		scale = BodyScale.normalise(avatar.scale),
+		ownScale = BodyScale.normalise(avatar.ownScale),
+		setScale = function(scale: any)
+			intent:FireServer(actions.SetScale, scale)
+		end,
+		moveLayer = function(id: number, direction: number)
+			if canWear(id) then
+				intent:FireServer(actions.MoveLayer, ref(id), direction)
+			end
+		end,
+		wearAll = function(ids: { number }, skin: SkinColours.Colours?, scale: any?): number
 			local refs = {}
 			for _, id in ids do
 				if canWear(id) then
@@ -367,10 +389,10 @@ local function usePlaceholderLook(): Look
 			while #refs > AvatarConfig.maxWearMany do
 				table.remove(refs, 1)
 			end
-			if #refs > 0 or skin then
-				intent:FireServer(actions.WearMany, refs, skin)
+			if #refs > 0 or skin or scale then
+				intent:FireServer(actions.WearMany, refs, { skin = skin, scale = scale })
 			end
-			return #refs + (if skin then 1 else 0)
+			return #refs + (if skin then 1 else 0) + (if scale then 1 else 0)
 		end,
 		takeOffAll = function()
 			intent:FireServer(actions.TakeOffAll)
@@ -488,9 +510,12 @@ local function usePlaceholderLook(): Look
 		wearOutfit = function(id: number)
 			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearAll, { id = id })
 		end,
-		wearOutfitItems = function(id: number, indices: { number }, withSkin: boolean?)
-			if #indices > 0 or withSkin then
-				Network.Intent.Outfits:FireServer(Network.Actions.Outfits.WearSelected, { id = id, indices = indices, skin = withSkin == true })
+		wearOutfitItems = function(id: number, indices: { number }, withSkin: boolean?, withScale: boolean?)
+			if #indices > 0 or withSkin or withScale then
+				Network.Intent.Outfits:FireServer(
+					Network.Actions.Outfits.WearSelected,
+					{ id = id, indices = indices, skin = withSkin == true, scale = withScale == true }
+				)
 			end
 		end,
 		basketTotal = total,

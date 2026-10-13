@@ -13,10 +13,15 @@
 		TryOn(item)        wear it (replacing its slot / stacking per config)
 		TakeOff(item)      take it off
 		TakeOffMany(items) take several off as one change (up to maxWearMany)
-		WearMany(items, skin?)   wear several (an outfit, the basket), up to
-		                   maxWearMany; `skin` also sets the skin colours
+		WearMany(items, extras?)   wear several (an outfit, the basket), up
+		                   to maxWearMany; `extras` { skin?, scale? } also
+		                   sets the skin colours / body scale
 		SetSkin(skin)      the skin colours: { [part] = "#RRGGBB" } (a part left
 		                   out is the player's own; {} = all their own)
+		SetScale(scale)    the body scale ({ height?, width?, head?, bodyType?,
+		                   proportion? }; one left out is the player's own)
+		MoveLayer(item, direction)   move a layered item one step in (-1,
+		                   closer to the body) or out (+1)
 		RefreshOwn()       re-read the player's own Roblox avatar (it may have
 		                   changed since they joined), at most every
 		                   REFRESH_SECONDS; re-dresses them, as their base did
@@ -47,6 +52,7 @@ local Network = require(ReplicatedStorage.Network)
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 local AvatarController = {}
 AvatarController.__index = AvatarController
@@ -169,7 +175,26 @@ local function takeOffMany(player: Player, model: any, raw: any)
 	end
 end
 
-local function wearMany(player: Player, model: any, raw: any, rawSkin: any)
+local function setScale(player: Player, model: any, raw: any)
+	if type(raw) == "table" then
+		model:setScale(BodyScale.normalise(raw))
+		AvatarService.apply(player)
+	end
+end
+
+local function moveLayer(player: Player, model: any, raw: any, direction: any)
+	if type(raw) ~= "table" or type(raw.targetId) ~= "number" or (raw.kind ~= "Asset" and raw.kind ~= "Bundle") then
+		return
+	end
+	if direction ~= 1 and direction ~= -1 then
+		return
+	end
+	if model:moveLayer({ targetId = raw.targetId, kind = raw.kind }, direction, AvatarService.isLayered) then
+		AvatarService.apply(player)
+	end
+end
+
+local function wearMany(player: Player, model: any, raw: any, extras: any)
 	if type(raw) ~= "table" then
 		return
 	end
@@ -183,9 +208,10 @@ local function wearMany(player: Player, model: any, raw: any, rawSkin: any)
 			table.insert(items, item)
 		end
 	end
-	local skin = skinOf(rawSkin)
-	if #items > 0 or skin then
-		model:wearMany(items, skin)
+	local skin = if type(extras) == "table" then skinOf(extras.skin) else nil
+	local scale = if type(extras) == "table" and type(extras.scale) == "table" then BodyScale.normalise(extras.scale) else nil
+	if #items > 0 or skin or scale then
+		model:wearMany(items, skin, scale)
 		AvatarService.apply(player)
 		for _, item in items do
 			track(player, "try_on", itemParams(item))
@@ -205,7 +231,7 @@ local function undo(player: Player, model: any, _raw: any)
 end
 
 local function reset(player: Player, model: any, _raw: any)
-	model:setLook(AvatarService.ownLook(player), {})
+	model:setLook(AvatarService.ownLook(player), {}, {})
 	AvatarService.apply(player)
 	track(player, "reset")
 end
@@ -218,7 +244,7 @@ local function wearRobloxOutfit(player: Player, model: any, raw: any)
 	if not description then
 		return
 	end
-	model:setLook(items, AvatarService.skinOf(description))
+	model:setLook(items, AvatarService.skinOf(description), AvatarService.scaleOf(description))
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { outfit_id = raw, item_count = #items, partial = false, source = "roblox" })
 end
@@ -231,7 +257,7 @@ local function wearUserLook(player: Player, model: any, raw: any)
 	if not look or #look.items == 0 then
 		return
 	end
-	model:setLook(table.clone(look.items), look.skin)
+	model:setLook(table.clone(look.items), look.skin, look.scale)
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { item_count = #look.items, partial = false, source = if look.inServer then "server_player" else "roblox_user" })
 end
@@ -247,6 +273,8 @@ local ACTIONS = {
 	[Network.Actions.Avatar.WearRobloxOutfit] = wearRobloxOutfit,
 	[Network.Actions.Avatar.WearUserLook] = wearUserLook,
 	[Network.Actions.Avatar.SetSkin] = setSkin,
+	[Network.Actions.Avatar.SetScale] = setScale,
+	[Network.Actions.Avatar.MoveLayer] = moveLayer,
 	[Network.Actions.Avatar.RefreshOwn] = refreshOwn,
 }
 

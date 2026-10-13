@@ -96,9 +96,9 @@ local function withFeedback(look: any)
 		Sounds.play("tryOn")
 		look.wearOutfit(id)
 	end
-	feedback.wearOutfitItems = function(id: number, indices: { number }, withSkin: boolean?)
-		Sounds.play(if #indices > 0 or withSkin then "tryOn" else "error")
-		look.wearOutfitItems(id, indices, withSkin)
+	feedback.wearOutfitItems = function(id: number, indices: { number }, withSkin: boolean?, withScale: boolean?)
+		Sounds.play(if #indices > 0 or withSkin or withScale then "tryOn" else "error")
+		look.wearOutfitItems(id, indices, withSkin, withScale)
 	end
 	feedback.toggleFollow = function(userId: number)
 		Sounds.play(if look.isFollowing(userId) then "back" else "confirm")
@@ -129,8 +129,16 @@ local function withFeedback(look: any)
 		Sounds.play("tryOn")
 		look.setSkin(skin)
 	end
-	feedback.wearAll = function(ids: { number }, skin: any?): number
-		local count = look.wearAll(ids, skin)
+	feedback.setScale = function(scale: any)
+		Sounds.play("tryOn")
+		look.setScale(scale)
+	end
+	feedback.moveLayer = function(id: number, direction: number)
+		Sounds.play("tryOn")
+		look.moveLayer(id, direction)
+	end
+	feedback.wearAll = function(ids: { number }, skin: any?, scale: any?): number
+		local count = look.wearAll(ids, skin, scale)
 		Sounds.play(if count > 0 then "tryOn" else "error")
 		return count
 	end

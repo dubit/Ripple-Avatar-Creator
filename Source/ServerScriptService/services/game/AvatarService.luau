@@ -63,6 +63,7 @@ local Bolt = require(ReplicatedStorage.Bolt)
 
 local AvatarModel = require(ServerScriptService.models.user.AvatarModel)
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 type WornItem = AvatarModel.WornItem
 
@@ -386,6 +387,20 @@ function AvatarService.skinOf(description: HumanoidDescription): SkinColours.Col
 	return colours
 end
 
+-- A description's body scale (all five).
+function AvatarService.scaleOf(description: HumanoidDescription): BodyScale.Scale
+	local raw = {}
+	for _, key in BodyScale.KEYS do
+		raw[key] = (description :: any)[BodyScale.info[key].property]
+	end
+	return BodyScale.normalise(raw)
+end
+
+-- Is this item type layered clothing (it has a place in the layer order)?
+function AvatarService.isLayered(typeName: string): boolean
+	return LAYERED[typeName] ~= nil or typeName == "Shoes"
+end
+
 -- The skin colours a player in this server shows (chosen ones over their own).
 function AvatarService.playerSkin(player: Player): SkinColours.Colours
 	local base = bases[player]
@@ -425,14 +440,14 @@ function AvatarService.ownLook(player: Player): { WornItem }
 	local items = itemsOf(own)
 	local model = AvatarModel.get(tostring(player.UserId))
 	if model then
-		model:setOwn(table.clone(items), AvatarService.skinOf(own))
+		model:setOwn(table.clone(items), AvatarService.skinOf(own), AvatarService.scaleOf(own))
 	end
 	return items
 end
 
 -- `worn` on top of the base.
 -- `worn` (and chosen skin colours) on top of the base.
-local function describe(player: Player, worn: { WornItem }, skin: any?): (HumanoidDescription, number?)
+local function describe(player: Player, worn: { WornItem }, skin: any?, scale: any?): (HumanoidDescription, number?)
 	local description = (bases[player] or Instance.new("HumanoidDescription")):Clone()
 	local accessories = {}
 	local layerOrder = 1
@@ -536,6 +551,13 @@ local function describe(player: Player, worn: { WornItem }, skin: any?): (Humano
 	for part, hex in colours do
 		(description :: any)[SkinColours.property[part]] = Color3.fromHex(hex)
 	end
+	-- Chosen body scale (width also sets depth, as the avatar editor does).
+	for key, value in BodyScale.normalise(scale) do
+		(description :: any)[BodyScale.info[key].property] = value
+		if key == "width" then
+			description.DepthScale = value
+		end
+	end
 
 	description:SetAccessories(accessories, true)
 	description:SetEmotes(emotes)
@@ -543,8 +565,8 @@ local function describe(player: Player, worn: { WornItem }, skin: any?): (Humano
 	return description, gear
 end
 
-function AvatarService.describeLook(player: Player, worn: { WornItem }, skin: any?): HumanoidDescription
-	local description = describe(player, worn, skin)
+function AvatarService.describeLook(player: Player, worn: { WornItem }, skin: any?, scale: any?): HumanoidDescription
+	local description = describe(player, worn, skin, scale)
 	return description
 end
 
@@ -583,7 +605,7 @@ local function applyNow(player: Player)
 	if not (character and humanoid and model) then
 		return
 	end
-	local description, gear = describe(player, model.worn, model.skin)
+	local description, gear = describe(player, model.worn, model.skin, model.scale)
 	local ok, err = pcall(function()
 		humanoid:ApplyDescription(description)
 	end)
@@ -623,7 +645,7 @@ local function onPlayer(player: Player)
 	if own then
 		bases[player] = baseOf(own)
 		local ownItems = itemsOf(own)
-		model:setOwn(table.clone(ownItems), AvatarService.skinOf(own))
+		model:setOwn(table.clone(ownItems), AvatarService.skinOf(own), AvatarService.scaleOf(own))
 		if not model.seeded then
 			model:seed(ownItems)
 		else

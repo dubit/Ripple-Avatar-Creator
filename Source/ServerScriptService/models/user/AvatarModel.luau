@@ -16,6 +16,12 @@
 	(SkinColours; a part left out is the player's own colour). It's part of
 	the look: outfits save it and Undo steps back over it. `ownSkin` is the
 	player's own avatar's colours (all six parts), for the Skin tone picker.
+	`scale` is the chosen body scale (BodyScale: height, width, head, body
+	type, proportions; one left out is the player's own), saved and undone
+	the same way; `ownScale` is the player's own.
+
+	Layered clothing goes on in the order it sits in `worn` (first =
+	closest to the body); `moveLayer` changes that order.
 
 	Undo history is session-only (`_undo`, never saved or sent): every change
 	pushes the previous look (items and skin), up to AvatarConfig.undoDepth.
@@ -31,6 +37,7 @@ local AbstractModel = require(script.Parent.Parent.AbstractModel)
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 local AvatarModel = {}
 AvatarModel.__index = AvatarModel
@@ -51,7 +58,9 @@ export type AvatarModel = typeof(setmetatable({} :: {
 	canUndo: boolean,
 	skin: SkinColours.Colours,
 	ownSkin: SkinColours.Colours,
-	_undo: { { worn: { WornItem }, skin: SkinColours.Colours } },
+	scale: BodyScale.Scale,
+	ownScale: BodyScale.Scale,
+	_undo: { { worn: { WornItem }, skin: SkinColours.Colours, scale: BodyScale.Scale } },
 }, AvatarModel)) & AbstractModel.AbstractModel
 
 local function same(a: WornItem, b: WornItem): boolean
@@ -106,6 +115,8 @@ function AvatarModel.new(ownerId: string): AvatarModel
 	self.worn = {}
 	self.skin = {}
 	self.ownSkin = {}
+	self.scale = {}
+	self.ownScale = {}
 	self.seeded = false
 	self.own = {}
 	self.canUndo = false
@@ -133,7 +144,11 @@ function AvatarModel:isWearing(item: WornItem): boolean
 end
 
 local function remember(self: any)
-	table.insert(self._undo, { worn = self.worn, skin = SkinColours.normalise(self.skin) })
+	table.insert(self._undo, {
+		worn = self.worn,
+		skin = SkinColours.normalise(self.skin),
+		scale = BodyScale.normalise(self.scale),
+	})
 	while #self._undo > AvatarConfig.undoDepth do
 		table.remove(self._undo, 1)
 	end
@@ -157,28 +172,67 @@ function AvatarModel:setSkin(skin: SkinColours.Colours): ()
 	self:syncState()
 end
 
--- Replace the whole look, items and skin colours (undoable): wearing an
--- outfit or someone's look. `skin` nil keeps the current colours.
-function AvatarModel:setLook(list: { WornItem }, skin: SkinColours.Colours?): ()
+-- Change the body scale (one left out = the player's own), undoable.
+function AvatarModel:setScale(scale: BodyScale.Scale): ()
+	if BodyScale.equal(scale, BodyScale.normalise(self.scale)) then
+		return
+	end
+	remember(self)
+	self.scale = scale
+	self:syncState()
+end
+
+-- Replace the whole look, items, skin colours and scale (undoable): wearing
+-- an outfit or someone's look. `skin` / `scale` nil keeps the current one.
+function AvatarModel:setLook(list: { WornItem }, skin: SkinColours.Colours?, scale: BodyScale.Scale?): ()
 	remember(self)
 	self.worn = list
 	if skin ~= nil then
 		self.skin = skin
 	end
+	if scale ~= nil then
+		self.scale = scale
+	end
 	self:syncState()
+end
+
+-- Move a layered item one step in (-1, closer to the body) or out (+1),
+-- past the next layered item. Returns whether it moved.
+function AvatarModel:moveLayer(item: WornItem, direction: number, isLayered: (typeName: string) -> boolean): boolean
+	local at = nil
+	for index, other in self.worn do
+		if same(other, item) then
+			at = index
+		end
+	end
+	if not at or not isLayered(self.worn[at].typeName) then
+		return false
+	end
+	local swap = at + direction
+	while self.worn[swap] and not isLayered(self.worn[swap].typeName) do
+		swap += direction
+	end
+	if not self.worn[swap] then
+		return false
+	end
+	local list = table.clone(self.worn)
+	list[at], list[swap] = list[swap], list[at]
+	self:setWorn(list)
+	return true
 end
 
 function AvatarModel:wear(item: WornItem): ()
 	self:setWorn(wearOne(self.worn, item))
 end
 
--- Put several on (and, if given, change the skin colours), as one change.
-function AvatarModel:wearMany(items: { WornItem }, skin: SkinColours.Colours?): ()
+-- Put several on (and, if given, change the skin colours and scale), as
+-- one change.
+function AvatarModel:wearMany(items: { WornItem }, skin: SkinColours.Colours?, scale: BodyScale.Scale?): ()
 	local list = self.worn
 	for _, item in items do
 		list = wearOne(list, item)
 	end
-	self:setLook(list, skin)
+	self:setLook(list, skin, scale)
 end
 
 function AvatarModel:takeOff(item: WornItem): ()
@@ -223,6 +277,7 @@ function AvatarModel:undo(): boolean
 	end
 	self.worn = previous.worn
 	self.skin = previous.skin
+	self.scale = previous.scale or {}
 	self.canUndo = #self._undo > 0
 	self:syncState()
 	return true
@@ -230,9 +285,11 @@ end
 
 -- The player's own Roblox avatar's items, for the Outfits "Your avatar" card
 -- (what Reset puts back).
-function AvatarModel:setOwn(list: { WornItem }, ownSkin: SkinColours.Colours): ()
+function AvatarModel:setOwn(list: { WornItem }, ownSkin: SkinColours.Colours, ownScale: BodyScale.Scale): ()
 	self.own = list
 	self.ownSkin = ownSkin
+	self.ownScale = ownScale
+	self.scale = BodyScale.normalise(self.scale)
 	-- Older looks kept one colour for the whole body.
 	self.skin = SkinColours.normalise(self.skin)
 	self:syncState()

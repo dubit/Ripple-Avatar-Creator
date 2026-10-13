@@ -72,6 +72,7 @@ local HudContext = require(views:WaitForChild("HudContext"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 local e = React.createElement
 
@@ -89,6 +90,7 @@ type OutfitView = {
 	items: { number },
 	labels: { [number]: string }?, -- row names that differ from the item's own
 	skin: any?, -- skin colours that come with it (by body part; SkinColours)
+	scale: any?, -- body scale that comes with it (BodyScale)
 }
 
 -- Card / page order of a type's thumbnail: the most telling first.
@@ -134,6 +136,7 @@ local function savedView(outfit: any): OutfitView
 		by = "Your outfit",
 		items = outfit.items,
 		skin = outfit.skin,
+		scale = outfit.scale,
 	}
 end
 
@@ -614,6 +617,7 @@ local function userView(look: UserLooks.Look): OutfitView
 		by = "@" .. look.username .. (if look.inServer then " · wearing here" else " · Roblox avatar"),
 		items = look.items,
 		skin = look.skin,
+		scale = look.scale,
 	}
 end
 
@@ -1110,6 +1114,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	-- row too).
 	local deselected, setDeselected = React.useState({} :: { [number]: boolean })
 	local skinOff, setSkinOff = React.useState(false)
+	local scaleOff, setScaleOff = React.useState(false)
 
 	-- Find out what's owned, for prices and the Buy label.
 	React.useEffect(function()
@@ -1161,7 +1166,10 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local colours = SkinColours.normalise(outfit.skin)
 	local skinTone = if SkinColours.isEmpty(colours) then nil else colours
 	local skinOn = skinTone ~= nil and not skinOff
-	local allSelected = #selected == #items and (skinTone == nil or skinOn)
+	local bodyScale = BodyScale.normalise(outfit.scale)
+	local scaleRow = if BodyScale.isEmpty(bodyScale) then nil else bodyScale
+	local scaleOn = scaleRow ~= nil and not scaleOff
+	local allSelected = #selected == #items and (skinTone == nil or skinOn) and (scaleRow == nil or scaleOn)
 	local ring = wearingExactly(look, items)
 
 	local rows: { [string]: any } = {
@@ -1205,6 +1213,26 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 			end,
 		})
 	end
+	-- The body scale, as a row too.
+	if scaleRow then
+		rows.Scale = e(Parts.ListRow, {
+			title = "Body scale",
+			subtitle = BodyScale.summary(scaleRow),
+			colour = Parts.swatch(""),
+			layoutOrder = 0,
+			trailingWidth = 40,
+			leading = e(Checkbox, {
+				on = scaleOn,
+				onToggle = function()
+					setScaleOff(scaleOn)
+				end,
+			}),
+			trailing = {
+				Wearing = if BodyScale.equal(BodyScale.normalise(look.scale), scaleRow) then smallIcon("checkroom", Tokens.color.accentText, 1) else nil,
+			},
+		})
+	end
+
 	-- Body parts show as one Body row (ticking it ticks them all).
 	local bodyIndices: { number } = {}
 	local bodyItems = {}
@@ -1447,7 +1475,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				BackgroundTransparency = 1,
 			}, {
 				Count = e(ShadowText, {
-					text = #items .. " items · " .. (#selected + (if skinOn then 1 else 0)) .. " selected",
+					text = #items .. " items · " .. (#selected + (if skinOn then 1 else 0) + (if scaleOn then 1 else 0)) .. " selected",
 					style = { size = 17, weight = 900 },
 				}),
 				Toggle = if #items == 0 and not skinTone then nil else e("TextButton", {
@@ -1469,9 +1497,11 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 							end
 							setDeselected(none)
 							setSkinOff(true)
+							setScaleOff(true)
 						else
 							setDeselected({})
 							setSkinOff(false)
+							setScaleOff(false)
 						end
 					end),
 				}),
@@ -1481,7 +1511,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				Size = UDim2.new(1, 0, 1, -(headerHeight + skin.px(10) + buttonsHeight + skin.px(10))),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
-				CanvasSize = UDim2.fromOffset(0, (#items - math.max(#bodyIndices - 1, 0) + (if skinTone then 1 else 0)) * (skin.px(64) + skin.px(6)) + skin.px(6)),
+				CanvasSize = UDim2.fromOffset(0, (#items - math.max(#bodyIndices - 1, 0) + (if skinTone then 1 else 0) + (if scaleRow then 1 else 0)) * (skin.px(64) + skin.px(6)) + skin.px(6)),
 				ScrollingDirection = Enum.ScrollingDirection.Y,
 				ScrollBarThickness = skin.px(8),
 				ScrollBarImageColor3 = Tokens.color.accent,
@@ -1498,11 +1528,11 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					SortOrder = Enum.SortOrder.LayoutOrder,
 					Padding = UDim.new(0, skin.px(8)),
 				}),
-				WearSelected = bottomButton("Wear selected", "checkroom", 1, #selected == 0 and not skinOn, function()
+				WearSelected = bottomButton("Wear selected", "checkroom", 1, #selected == 0 and not skinOn and not scaleOn, function()
 					if saved and outfitId then
-						look.wearOutfitItems(outfitId, selected, skinOn)
+						look.wearOutfitItems(outfitId, selected, skinOn, scaleOn)
 					else
-						look.wearAll(selectedIds, if skinOn then skinTone else nil)
+						look.wearAll(selectedIds, if skinOn then skinTone else nil, if scaleOn then scaleRow else nil)
 					end
 				end),
 				-- Basket and Buy only when something selected isn't owned yet.

@@ -52,6 +52,7 @@ local RobloxAvatarLookupService = require(ServerScriptService.services.game.Robl
 local Network = require(ReplicatedStorage.Network)
 local Bolt = require(ReplicatedStorage.Bolt)
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
 
@@ -120,7 +121,7 @@ local function save(player: Player, model: any, _raw: any)
 	if not avatar or #avatar.worn == 0 then
 		return
 	end
-	local outfit = model:add(defaultName(model), avatar.worn, avatar.skin)
+	local outfit = model:add(defaultName(model), avatar.worn, avatar.skin, avatar.scale)
 	if outfit then
 		track(player, "outfit_save", { outfit_id = outfit.id, item_count = #outfit.items })
 	end
@@ -132,7 +133,7 @@ local function overwrite(player: Player, model: any, raw: any)
 	if not id or not avatar or #avatar.worn == 0 then
 		return
 	end
-	local outfit = model:overwrite(id, avatar.worn, avatar.skin)
+	local outfit = model:overwrite(id, avatar.worn, avatar.skin, avatar.scale)
 	if outfit then
 		track(player, "outfit_save", { outfit_id = outfit.id, item_count = #outfit.items, replaced = true })
 	end
@@ -177,7 +178,7 @@ local function wearAll(player: Player, model: any, raw: any)
 	if not outfit or not avatar then
 		return
 	end
-	avatar:setLook(table.clone(outfit.items), SkinColours.normalise(outfit.skin))
+	avatar:setLook(table.clone(outfit.items), SkinColours.normalise(outfit.skin), BodyScale.normalise(outfit.scale))
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { outfit_id = outfit.id, item_count = #outfit.items, partial = false })
 end
@@ -200,10 +201,12 @@ local function wearSelected(player: Player, model: any, raw: any)
 	-- The skin tone comes too if its row was ticked.
 	local colours = SkinColours.normalise(outfit.skin)
 	local skin = if raw.skin == true and not SkinColours.isEmpty(colours) then colours else nil
-	if #items == 0 and not skin then
+	local outfitScale = BodyScale.normalise(outfit.scale)
+	local scale = if raw.scale == true and not BodyScale.isEmpty(outfitScale) then outfitScale else nil
+	if #items == 0 and not skin and not scale then
 		return
 	end
-	avatar:wearMany(items, skin)
+	avatar:wearMany(items, skin, scale)
 	AvatarService.apply(player)
 	track(player, "outfit_wear", { outfit_id = outfit.id, item_count = #items, partial = true })
 end
@@ -269,7 +272,7 @@ local function preview(player: Player, kind: any, id: any): string?
 		local model = OutfitsModel.get(tostring(player.UserId))
 		local outfit = model and model:find(id)
 		if outfit then
-			local ok, result = pcall(AvatarService.describeLook, player, outfit.items, outfit.skin)
+			local ok, result = pcall(AvatarService.describeLook, player, outfit.items, outfit.skin, outfit.scale)
 			description = if ok then result else nil
 		end
 	elseif kind == "own" then

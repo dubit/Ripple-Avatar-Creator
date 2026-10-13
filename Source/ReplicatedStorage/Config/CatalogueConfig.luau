@@ -25,6 +25,7 @@ local config: CatalogueConfig = {
 		{
 			name = "Clothing",
 			chips = {
+				{ name = "Layering", special = "layering" }, -- the order your layered clothing goes on
 				{ name = "Shirts", assetTypes = { "ShirtAccessory" } },
 				{ name = "T-Shirts", assetTypes = { "TShirtAccessory" } },
 				{ name = "Sweaters", assetTypes = { "SweaterAccessory" } },
@@ -78,6 +79,11 @@ local config: CatalogueConfig = {
 				{ name = "Eyelashes", assetTypes = { "EyelashAccessory" } },
 				{ name = "Eyebrows", assetTypes = { "EyebrowAccessory" } },
 			},
+		},
+		{
+			name = "Scale", -- body scale sliders (Roblox's avatar editor "Scale")
+			special = "scale",
+			chips = {},
 		},
 	},
 	pageSize = 60,

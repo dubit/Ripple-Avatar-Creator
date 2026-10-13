@@ -21,6 +21,7 @@ local AbstractModel = require(script.Parent.Parent.AbstractModel)
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 local OutfitsModel = {}
 OutfitsModel.__index = OutfitsModel
@@ -38,6 +39,7 @@ export type Outfit = {
 	name: string,
 	items: { OutfitItem },
 	skin: any?, -- skin colours worn with it, by body part (SkinColours.normalise)
+	scale: any?, -- body scale worn with it (BodyScale.normalise)
 }
 
 export type OutfitsModel = typeof(setmetatable({} :: {
@@ -93,11 +95,17 @@ local function keep(items: { OutfitItem }): { OutfitItem }
 end
 
 -- Save a new outfit from these items. Returns it (nil when full).
-function OutfitsModel:add(name: string, items: { OutfitItem }, skin: any?): Outfit?
+function OutfitsModel:add(name: string, items: { OutfitItem }, skin: any?, scale: any?): Outfit?
 	if self:isFull() then
 		return nil
 	end
-	local outfit = { id = self.nextId, name = name, items = keep(items), skin = SkinColours.normalise(skin) }
+	local outfit = {
+		id = self.nextId,
+		name = name,
+		items = keep(items),
+		skin = SkinColours.normalise(skin),
+		scale = BodyScale.normalise(scale),
+	}
 	self.nextId += 1
 	table.insert(self.outfits, outfit)
 	self:syncState()
@@ -105,13 +113,14 @@ function OutfitsModel:add(name: string, items: { OutfitItem }, skin: any?): Outf
 end
 
 -- Replace an outfit's items (keeping its id and name).
-function OutfitsModel:overwrite(id: number, items: { OutfitItem }, skin: any?): Outfit?
+function OutfitsModel:overwrite(id: number, items: { OutfitItem }, skin: any?, scale: any?): Outfit?
 	local outfit = self:find(id)
 	if not outfit then
 		return nil
 	end
 	outfit.items = keep(items)
 	outfit.skin = SkinColours.normalise(skin)
+	outfit.scale = BodyScale.normalise(scale)
 	self:syncState()
 	return outfit
 end

@@ -27,12 +27,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Bolt = require(ReplicatedStorage:WaitForChild("Bolt"))
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 local CatalogueClient = require(script.Parent:WaitForChild("CatalogueClient"))
 
 local UserLooks = {}
 
 export type User = { userId: number, username: string, displayName: string }
-export type Look = User & { inServer: boolean, items: { number }, skin: { [string]: string } }
+export type Look = User & { inServer: boolean, items: { number }, skin: { [string]: string }, scale: { [string]: number } }
 
 local findRemote = Bolt.RemoteFunction("FindRobloxUser")
 local lookRemote = Bolt.RemoteFunction("RobloxUserLook")
@@ -113,6 +114,7 @@ function UserLooks.look(userId: number): (Look?, string?)
 		inServer = raw.inServer == true,
 		items = items,
 		skin = SkinColours.normalise(raw.skin),
+		scale = BodyScale.normalise(raw.scale),
 	}
 	remember(look)
 	looks[userId] = { look = look, at = os.clock() }

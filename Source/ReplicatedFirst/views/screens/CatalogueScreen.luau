@@ -34,6 +34,8 @@ local Chip = require(components:WaitForChild("Chip"))
 local Icon = require(components:WaitForChild("Icon"))
 local SearchBox = require(components:WaitForChild("SearchBox"))
 local SkinTonePanel = require(script.Parent:WaitForChild("SkinTonePanel"))
+local ScalePanel = require(script.Parent:WaitForChild("ScalePanel"))
+local LayeringPanel = require(script.Parent:WaitForChild("LayeringPanel"))
 local PillButton = require(components:WaitForChild("PillButton"))
 local GlassPanel = require(components:WaitForChild("GlassPanel"))
 local Parts = require(script.Parent:WaitForChild("Parts"))
@@ -74,10 +76,12 @@ local function CatalogueScreen(props: { nav: any, look: any })
 	local pasteFocused, setPasteFocused = React.useState(false)
 	local filters, setFilters = useSessionState("catalogue.filters", CatalogueFilters.defaults)
 	local popover, setPopover = React.useState(nil :: CatalogueFilters.Popover?)
-	-- A chip that isn't a search (Body › Skin tone) shows its own panel.
+	-- A tab or chip that isn't a search (Scale, Body › Skin tone, Clothing ›
+	-- Layering) shows its own panel.
 	local special: string? = nil
 	for _, entry in CatalogueConfig.categories do
 		if entry.name == category then
+			special = entry.special
 			for _, chip in entry.chips do
 				if chip.name == sub then
 					special = chip.special
@@ -338,6 +342,21 @@ local function CatalogueScreen(props: { nav: any, look: any })
 				look = props.look,
 				position = UDim2.fromOffset(0, gridTop),
 				size = UDim2.new(1, 0, 1, -gridTop),
+			})
+			else nil,
+		Scale = if special == "scale"
+			then e(ScalePanel, {
+				look = props.look,
+				position = UDim2.fromOffset(0, gridTop),
+				size = UDim2.new(1, 0, 1, -gridTop),
+			})
+			else nil,
+		Layering = if special == "layering"
+			then e(LayeringPanel, {
+				look = props.look,
+				nav = props.nav,
+				position = UDim2.fromOffset(0, gridTop + skin.px(6)),
+				size = UDim2.new(1, 0, 1, -(gridTop + skin.px(6))),
 			})
 			else nil,
 		Grid = if special then nil else e(Parts.CardGrid, {
