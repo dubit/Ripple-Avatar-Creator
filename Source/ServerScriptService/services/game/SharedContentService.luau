@@ -29,9 +29,18 @@
 		claim(record) -> string?                  a new code holding `record`
 		update(code, record) -> boolean           replace a code's record
 		remove(code)                              revoke a code
+		modify(code, fn) -> record?               change a record in place
+		                                          (UpdateAsync; `fn` edits
+		                                          the record, or returns false
+		                                          to leave it); the new record
 		anonymise(code)                           drop the owner's name from a
 		                                          code's record (its owner
 		                                          deleted what it copies)
+		outfitRecord(player, name, items, skin, scale)   a new outfit record
+		sameOutfit(record, name, items, skin, scale) -> boolean   does a copy
+		                                          still match its original?
+		filterName(player, text) -> string?       Roblox text filtering for a
+		                                          name everyone may see
 		lookup(code) -> record?                   cached; nil if unknown
 		normalise(text) -> string?                " 7kq2xm " -> "7KQ2XM"
 		allowed(player) -> boolean                the lookup budget
@@ -39,6 +48,11 @@
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextService = game:GetService("TextService")
+
+local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
+local BodyScale = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("BodyScale"))
 
 local SharedContentService = {}
 
@@ -151,26 +165,78 @@ function SharedContentService.remove(code: string)
 	end
 end
 
-function SharedContentService.anonymise(code: string)
+function SharedContentService.modify(code: string, fn: (record: any) -> boolean?): any?
 	local ds = dataStore()
 	if not ds then
-		return
+		return nil
 	end
-	local ok, result = pcall(function()
-		return ds:UpdateAsync(code, function(old: any)
-			if type(old) ~= "table" or old.anonymous then
+	local result: any = nil
+	local ok, err = pcall(function()
+		ds:UpdateAsync(code, function(old: any)
+			if type(old) ~= "table" or fn(old) == false then
 				return nil
 			end
-			old.ownerName = nil
-			old.anonymous = true
+			result = old
 			return old
 		end)
 	end)
 	if not ok then
-		warn("[SharedContentService] anonymise failed:", result)
-		return
+		warn("[SharedContentService] modify failed:", err)
+		return nil
 	end
-	cache[code] = nil
+	if result then
+		cache[code] = { record = result, at = os.clock() }
+	end
+	return result
+end
+
+function SharedContentService.anonymise(code: string)
+	SharedContentService.modify(code, function(record: any)
+		if record.anonymous then
+			return false
+		end
+		record.ownerName = nil
+		record.anonymous = true
+		return true
+	end)
+end
+
+function SharedContentService.outfitRecord(player: Player, name: string, items: { any }, skin: any, scale: any): { [string]: any }
+	return {
+		kind = "outfit",
+		ownerId = player.UserId,
+		ownerName = player.Name,
+		updated = os.time(),
+		name = name,
+		items = items,
+		skin = SkinColours.normalise(skin),
+		scale = BodyScale.normalise(scale),
+	}
+end
+
+function SharedContentService.sameOutfit(record: any, name: string, items: { any }, skin: any, scale: any): boolean
+	if type(record) ~= "table" or record.name ~= name or type(record.items) ~= "table" or #record.items ~= #items then
+		return false
+	end
+	for index, item in items do
+		local copied = record.items[index]
+		if type(copied) ~= "table" or copied.targetId ~= item.targetId or copied.kind ~= item.kind then
+			return false
+		end
+	end
+	return SkinColours.equal(SkinColours.normalise(record.skin), SkinColours.normalise(skin))
+		and BodyScale.equal(BodyScale.normalise(record.scale), BodyScale.normalise(scale))
+end
+
+function SharedContentService.filterName(player: Player, text: string): string?
+	local ok, result = pcall(function()
+		local filterResult = TextService:FilterStringAsync(text, player.UserId, Enum.TextFilterContext.PublicChat)
+		return filterResult:GetNonChatStringForBroadcastAsync()
+	end)
+	if not ok or type(result) ~= "string" then
+		return nil
+	end
+	return result
 end
 
 function SharedContentService.lookup(code: string): any?

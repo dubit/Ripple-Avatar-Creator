@@ -16,6 +16,11 @@
 	outfit (rename, save over) detaches its code: the code keeps opening the
 	old copy, and sharing again makes a new one.
 
+	Community (CommunityService), the player's own lists of codes, newest
+	first: `published` (Mine: what they've published, kept after the
+	outfit is edited or deleted), `communityFavourites` (starred) and
+	`communityRecent` (opened lately).
+
 	One record for all of a player's outfits: at AvatarConfig.outfits limits
 	(50 outfits × 40 items, ~80 bytes an item) it stays a few hundred KB at
 	worst, far under the DataStore's per-key cap.
@@ -54,9 +59,15 @@ export type OutfitsModel = typeof(setmetatable({} :: {
 	nextId: number,
 	following: { number }, -- user ids followed here (Outfits › Following), newest first
 	creationCodes: { [string]: string }, -- share codes for outfits saved on Roblox, by their outfit id
+	published: { string }, -- codes published to Community (Mine), newest first
+	communityFavourites: { string }, -- Community codes starred, newest first
+	communityRecent: { string }, -- Community codes opened lately, newest first
 }, OutfitsModel)) & AbstractModel.AbstractModel
 
 local MAX_FOLLOWING = 200
+local MAX_PUBLISHED = 200
+local MAX_FAVOURITES = 200
+local MAX_RECENT = 48
 
 function OutfitsModel.new(ownerId: string): OutfitsModel
 	local self = AbstractModel.new("OutfitsModel", ownerId, "User") :: any
@@ -65,6 +76,9 @@ function OutfitsModel.new(ownerId: string): OutfitsModel
 	self.nextId = 1
 	self.following = {}
 	self.creationCodes = {}
+	self.published = {}
+	self.communityFavourites = {}
+	self.communityRecent = {}
 	return self :: OutfitsModel
 end
 
@@ -149,6 +163,54 @@ function OutfitsModel:toggleFollow(userId: number): boolean
 	end
 	self:syncState()
 	return index == nil
+end
+
+-- Put a code first in one of the Community lists (moving it if there).
+local function pushFront(list: { string }, code: string, cap: number)
+	local index = table.find(list, code)
+	if index then
+		table.remove(list, index)
+	end
+	table.insert(list, 1, code)
+	while #list > cap do
+		table.remove(list)
+	end
+end
+
+function OutfitsModel:addPublished(code: string): ()
+	self.published = self.published or {}
+	pushFront(self.published, code, MAX_PUBLISHED)
+	self:syncState()
+end
+
+function OutfitsModel:removePublished(code: string): ()
+	local index = table.find(self.published or {}, code)
+	if index then
+		table.remove(self.published, index)
+		self:syncState()
+	end
+end
+
+-- Star a Community outfit, or unstar it. Returns whether it's starred now.
+function OutfitsModel:toggleCommunityFavourite(code: string): boolean
+	self.communityFavourites = self.communityFavourites or {}
+	local index = table.find(self.communityFavourites, code)
+	if index then
+		table.remove(self.communityFavourites, index)
+	else
+		pushFront(self.communityFavourites, code, MAX_FAVOURITES)
+	end
+	self:syncState()
+	return index == nil
+end
+
+function OutfitsModel:noteRecent(code: string): ()
+	self.communityRecent = self.communityRecent or {}
+	if self.communityRecent[1] == code then
+		return
+	end
+	pushFront(self.communityRecent, code, MAX_RECENT)
+	self:syncState()
 end
 
 -- A Roblox-saved outfit's share code (they aren't in `outfits`).

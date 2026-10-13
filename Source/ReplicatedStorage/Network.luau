@@ -46,6 +46,7 @@ local NetworkConfig = {
 		Basket = { "Add", "Remove", "AddMany", "RemoveMany", "Clear" },
 		Bazaar = { "BuyTreasure" },
 		CashMachine = { "Withdraw", "Deposit" },
+		Community = { "Publish", "Unpublish", "Favourite", "Report", "Open", "Moderate" },
 		Favourites = { "Toggle" },
 		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected", "Follow", "Share", "ShareCreation", "WearShared" },
 		Purchase = { "Buy", "Finished", "Check" },
@@ -108,6 +109,9 @@ local NetworkConfig = {
 			nextId = 1,
 			following = {},
 			creationCodes = {},
+			published = {},
+			communityFavourites = {},
+			communityRecent = {},
 		},
 		-- What the player owns, as far as we've checked, and their latest
 		-- purchase (session only; OwnershipModel). `owned` holds "Asset:123" /
@@ -158,6 +162,7 @@ export type AvatarAction = "TryOn" | "TakeOff" | "TakeOffMany" | "WearMany" | "T
 export type BasketAction = "Add" | "Remove" | "AddMany" | "RemoveMany" | "Clear"
 export type BazaarAction = "BuyTreasure"
 export type CashMachineAction = "Withdraw" | "Deposit"
+export type CommunityAction = "Publish" | "Unpublish" | "Favourite" | "Report" | "Open" | "Moderate"
 export type FavouritesAction = "Toggle"
 export type PurchaseAction = "Buy" | "Finished" | "Check"
 export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected" | "Follow" | "Share" | "ShareCreation" | "WearShared"
@@ -220,6 +225,9 @@ export type OutfitsState = {
 	nextId: number,
 	following: { number }, -- user ids followed here (Outfits › Following), newest first
 	creationCodes: { [string]: string }, -- share codes for Roblox-saved outfits, by outfit id
+	published: { string }, -- codes published to Community (Mine), newest first
+	communityFavourites: { string }, -- Community codes starred, newest first
+	communityRecent: { string }, -- Community codes opened lately, newest first
 }
 
 export type PurchaseResult = {

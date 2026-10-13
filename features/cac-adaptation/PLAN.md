@@ -393,7 +393,7 @@
 - **Outcome:** QR share links work end to end in Studio, using the TestLaunchData hook. The dialog has the QR on the left, with the code and hint on the right. Until the code is revealed the QR's place is an empty well with a lock: a dimmed QR looked as if it was ready to scan. The `s:` field marks share codes so they never collide with campaign tags. User referral codes will reuse this link with `kind = "user"` records. Still unverified: scanning on a phone in the public place (15.5).
 
 ### Task 16: Community outfits
-- **Status:** [TODO]
+- **Status:** [PARTIAL]
 - **Why here:** Layer 7. Reuses the cross-server store and share codes from Task 14 and the outfit screen from Task 12.
 - **Depends on:** 12, 14
 - **Refs:** Scope > Outfits (Community source); Risks (Cross-server data; moderation); Integration points
@@ -405,9 +405,13 @@
 - **Associated UI:** 5d Outfit screen (Community source); Outfits root cards.
 - **Replication:** logical cross-server data (**cosmetic**); outfit preview is a client-only rig.
 - **Sub-tasks:**
-  - [TODO] 16.1 Decisions (open questions): publishing rules (who can publish, limits, edit-after-publish), discovery/ordering (newest, most worn, curated), and moderation workflow. Present options; do not decide for the user.
-  - [TODO] 16.2 Extend `SharedContentService` with community publish/list/unpublish and paging; add a Community browse model (UserSession) delivering pages to the requester. `/create-model`.
-  - [TODO] 16.3 Controller actions (Publish, Unpublish, BrowseCommunity, Report) in `Outfits`/`Community` controller. `/create-controller`.
+  - [DONE] 16.1 Decisions (open questions): publishing rules (who can publish, limits, edit-after-publish), discovery/ordering (newest, most worn, curated), and moderation workflow. Present options; do not decide for the user.
+    - **Publishing:** anyone can publish, with no cap. The best outfits surface through sort chips, modelled on CAC's dropdown: Popular · Trending · Newest · Favourited · Recent · Mine. Most Worn is folded into Popular.
+    - **Frozen at publish (applies to shares as well, which reworks Task 14):** sharing or publishing makes an evergreen copy. Editing the original (rename, save over) detaches its code, so the old code keeps opening the old copy, and sharing again makes a new one. Creations keep their code only while the copy matches Roblox.
+    - **Deleting an outfit:** its copies stay live, and stay published if they were, but the creator credit is hidden (anonymous).
+    - **Moderation:** names are filtered, players can report, and an entry is auto-hidden at 3 distinct reports. Admins can take an entry down with `/community moderate <code> hide|restore|takedown` (rank 200+ in the group, or Studio/creator).
+  - [DONE] 16.2 Extend `SharedContentService` with community publish/list/unpublish and paging; add a Community browse model (UserSession) delivering pages to the requester. `/create-model`.
+  - [DONE] 16.3 Controller actions (Publish, Unpublish, BrowseCommunity, Report) in `Outfits`/`Community` controller. `/create-controller`.
   - [TODO] 16.4 Community source UI (`/html-to-react-luau`): grid, paging, publish toggle on Mine outfit cards/outfit screen.
   - [TODO] 16.5 Analytics: `community_publish`, `community_open`.
   - [TODO] 16.6 Playtest across servers, moderation edge cases (blocked names), unpublish.

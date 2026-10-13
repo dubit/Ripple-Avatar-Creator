@@ -57,13 +57,13 @@
 	cleaned up after PREVIEW_LIFETIME.
 
 	Analytics: outfit_save, outfit_wear (with partial = true for a selection),
-	outfit_delete.
+	outfit_delete; community_wear when a Community outfit is worn by someone
+	other than its creator (also counted for its ordering: CommunityService).
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local TextService = game:GetService("TextService")
 local HttpService = game:GetService("HttpService")
 local Debris = game:GetService("Debris")
 
@@ -73,6 +73,7 @@ local AvatarModel = require(script.Parent.Parent.models.user.AvatarModel)
 local AvatarService = require(ServerScriptService.services.game.AvatarService)
 local RobloxAvatarLookupService = require(ServerScriptService.services.game.RobloxAvatarLookupService)
 local SharedContentService = require(ServerScriptService.services.game.SharedContentService)
+local CommunityService = require(ServerScriptService.services.game.CommunityService)
 local Network = require(ReplicatedStorage.Network)
 local Bolt = require(ReplicatedStorage.Bolt)
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
@@ -129,16 +130,7 @@ local function defaultName(model: any): string
 end
 
 -- Roblox text filtering for a name others may see; nil if it can't be done.
-local function filtered(player: Player, text: string): string?
-	local ok, result = pcall(function()
-		local filterResult = TextService:FilterStringAsync(text, player.UserId, Enum.TextFilterContext.PublicChat)
-		return filterResult:GetNonChatStringForBroadcastAsync()
-	end)
-	if not ok or type(result) ~= "string" then
-		return nil
-	end
-	return result
-end
+local filtered = SharedContentService.filterName
 
 local function save(player: Player, model: any, _raw: any)
 	local avatar = AvatarModel.get(tostring(player.UserId))
@@ -165,31 +157,7 @@ end
 
 -- What everyone sees of a shared outfit: a frozen copy of it now.
 local function shared(player: Player, outfit: any): { [string]: any }
-	return {
-		kind = "outfit",
-		ownerId = player.UserId,
-		ownerName = player.Name,
-		updated = os.time(),
-		name = outfit.name,
-		items = outfit.items,
-		skin = SkinColours.normalise(outfit.skin),
-		scale = BodyScale.normalise(outfit.scale),
-	}
-end
-
--- Does a shared copy still match what it was copied from?
-local function sameContent(record: any, name: string, items: { any }, skin: any, scale: any): boolean
-	if type(record) ~= "table" or record.name ~= name or type(record.items) ~= "table" or #record.items ~= #items then
-		return false
-	end
-	for index, item in items do
-		local copied = record.items[index]
-		if type(copied) ~= "table" or copied.targetId ~= item.targetId or copied.kind ~= item.kind then
-			return false
-		end
-	end
-	return SkinColours.equal(SkinColours.normalise(record.skin), SkinColours.normalise(skin))
-		and BodyScale.equal(BodyScale.normalise(record.scale), BodyScale.normalise(scale))
+	return SharedContentService.outfitRecord(player, outfit.name, outfit.items, outfit.skin, outfit.scale)
 end
 
 local function share(player: Player, model: any, raw: any)
@@ -221,20 +189,17 @@ local function shareCreation(player: Player, model: any, raw: any)
 		return
 	end
 	local name = if type(raw.name) == "string" and string.match(raw.name, "%S") then string.sub(raw.name, 1, 60) else "Outfit"
-	local record = {
-		kind = "outfit",
-		ownerId = player.UserId,
-		ownerName = player.Name,
-		updated = os.time(),
-		name = filtered(player, name) or "Outfit",
-		items = items,
-		skin = AvatarService.skinOf(description),
-		scale = AvatarService.scaleOf(description),
-	}
+	local record = SharedContentService.outfitRecord(
+		player,
+		filtered(player, name) or "Outfit",
+		items,
+		AvatarService.skinOf(description),
+		AvatarService.scaleOf(description)
+	)
 	local key = tostring(raw.outfitId)
 	local existing = (model.creationCodes or {})[key]
 	if existing and SharedContentService.normalise(existing) then
-		if sameContent(SharedContentService.lookup(existing), record.name, record.items, record.skin, record.scale) then
+		if SharedContentService.sameOutfit(SharedContentService.lookup(existing), record.name, record.items, record.skin, record.scale) then
 			return -- the copy still matches
 		end
 		model:setCreationCode(raw.outfitId, nil) -- edited on Roblox: detach the old copy
@@ -256,12 +221,17 @@ local function wearShared(player: Player, _model: any, raw: any)
 		return
 	end
 	local record = SharedContentService.lookup(code)
-	if type(record) ~= "table" or record.kind ~= "outfit" or type(record.items) ~= "table" then
+	if type(record) ~= "table" or record.kind ~= "outfit" or type(record.items) ~= "table" or record.hidden then
 		return
 	end
 	avatar:setLook(table.clone(record.items), SkinColours.normalise(record.skin), BodyScale.normalise(record.scale))
 	AvatarService.apply(player)
-	track(player, "outfit_wear", { item_count = #record.items, partial = false, source = "share_code" })
+	local community = CommunityService.isListed(record)
+	track(player, "outfit_wear", { item_count = #record.items, partial = false, source = if community then "community" else "share_code" })
+	if community and record.ownerId ~= player.UserId then
+		CommunityService.countWear(code)
+		track(player, "community_wear", { code = code })
+	end
 end
 
 local function rename(player: Player, model: any, raw: any)
@@ -415,7 +385,7 @@ local function preview(player: Player, kind: any, id: any): string?
 		description = RobloxAvatarLookupService.description(id)
 	elseif kind == "shared" then
 		local record = SharedContentService.lookup(SharedContentService.normalise(id) or "")
-		if type(record) == "table" and record.kind == "outfit" and type(record.items) == "table" then
+		if type(record) == "table" and record.kind == "outfit" and type(record.items) == "table" and not record.hidden then
 			local ok, result = pcall(AvatarService.describeLook, player, record.items, record.skin, record.scale)
 			description = if ok then result else nil
 		end
@@ -453,10 +423,11 @@ function OutfitsController.new(): OutfitsController
 			return { ok = false, error = "busy" }
 		end
 		local record = SharedContentService.lookup(code)
-		if type(record) ~= "table" or record.kind ~= "outfit" or type(record.items) ~= "table" then
+		if type(record) ~= "table" or record.kind ~= "outfit" or type(record.items) ~= "table" or record.hidden then
 			return { ok = false, error = "notfound" }
 		end
 		track(player, "share_resolve", { kind = "outfit" })
+		local listed = CommunityService.isListed(record)
 		return {
 			ok = true,
 			code = code,
@@ -468,6 +439,11 @@ function OutfitsController.new(): OutfitsController
 				items = record.items,
 				skin = record.skin,
 				scale = record.scale,
+				mine = record.ownerId == player.UserId,
+				-- On Community: its counts (nil when it isn't listed).
+				community = if listed
+					then { wears = tonumber(record.wears) or 0, favourites = tonumber(record.favourites) or 0 }
+					else nil,
 			},
 		}
 	end
