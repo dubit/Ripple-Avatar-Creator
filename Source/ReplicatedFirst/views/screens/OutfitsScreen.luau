@@ -13,7 +13,8 @@
 	    (RobloxOutfits). Roblox only lists them once you allow it, so until
 	    then a "Show my Roblox outfits" card asks. Search: by name.
 	  · Friends: your Roblox friends' current avatars. Search: by name.
-	  · Roblox: the people you follow here (our own follow, private to you:
+	  · Roblox: share codes go in its search (one typed into another tab
+	    that finds something switches here), then the people you follow here (our own follow, private to you:
 	    Roblox gives games no access to its follows). (Players in this
 	    server come later, by tapping their avatars: PLAN Task 22.) The
 	    first card, Add a
@@ -440,7 +441,7 @@ local SOURCES = {
 	{ id = "Wardrobe", label = "Wardrobe", search = "Search my outfits" },
 	{ id = "Creations", label = "Creations", search = "Search my creations" },
 	{ id = "Friends", label = "Friends", search = "Search friends" },
-	{ id = "Roblox", label = "Roblox", search = "Search people you follow" },
+	{ id = "Roblox", label = "Roblox", search = "Search people you follow or a code" },
 	{ id = "Community", label = "Community", search = "Search community outfits" },
 } :: { { id: string, label: string, search: string? } }
 local SOURCE_IDS: { [string]: boolean } = {}
@@ -845,8 +846,20 @@ local function OutfitsScreen(props: { nav: any, look: any })
 
 	useRobloxOutfits(source == "Creations")
 	usePeople(source == "Friends" or source == "Roblox")
-	-- A share code in any tab's search opens that outfit.
-	local sharedFound, sharedError, typedCode = useSharedSearch(query)
+	-- Share codes belong in the Roblox tab's search; one typed into another
+	-- tab that finds something switches to Roblox (keeping the search) to
+	-- show it. A miss stays put: it may just be a name.
+	local codeFound, codeError, codeTyped = useSharedSearch(query)
+	React.useEffect(function()
+		if codeFound and source ~= "Roblox" then
+			setSource("Roblox")
+		end
+		return nil
+	end, { codeFound, source } :: { any })
+	local onRoblox = source == "Roblox"
+	local sharedFound = if onRoblox then codeFound else nil
+	local sharedError = if onRoblox then codeError else nil
+	local typedCode = if onRoblox then codeTyped else nil
 	-- Current shows your Roblox avatar as it is now (it may have changed
 	-- since you joined).
 	React.useEffect(function()
@@ -1040,7 +1053,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			}),
 			Search = if searchHint == nil then nil else e(SearchBox, {
 				text = query,
-				placeholder = if source == "Roblox" or source == "Friends" then searchHint else searchHint .. " or a code",
+				placeholder = searchHint,
 				onChange = setQuery,
 				anchorPoint = Vector2.new(1, 0.5),
 				position = UDim2.fromScale(1, 0.5),
@@ -1537,7 +1550,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					then e(PillButton, {
 						variant = "round",
 						size = Tokens.size.ctaHeight,
-						icon = "ios_share",
+						icon = "share",
 						iconSize = 20,
 						glowRadius = 0,
 						sound = false, -- the dialog plays its own sound
