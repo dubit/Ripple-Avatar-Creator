@@ -23,8 +23,12 @@
 		Follow({ userId })         follow someone here, or unfollow (a real
 		                           Roblox user; private to the player)
 		Share({ id })              give the outfit a 6-character share code: a
-		                           frozen copy of it now (SharedContentService).
-		                           Renaming or saving over it detaches the code
+		                           frozen copy of it now (SharedContentService),
+		                           which is also its Community entry (listed
+		                           with the code; CommunityService). Asking
+		                           again for one that has a code lists it if it
+		                           isn't yet. Renaming or saving over it
+		                           detaches the code
 		                           (it keeps opening the old copy; sharing again
 		                           makes a new one). Deleting it keeps the copy
 		                           but drops the owner's name from it
@@ -37,7 +41,7 @@
 		                           When it doesn't (edited on Roblox), the old
 		                           code is detached: with `check` (the dialog
 		                           opening) that's all; otherwise a new code
-		                           is made
+		                           is made. Listed on Community like Share
 		WearShared({ code })       wear a shared outfit exactly (replaces the
 		                           look, with its skin colours and scale)
 
@@ -57,7 +61,8 @@
 	cleaned up after PREVIEW_LIFETIME.
 
 	Analytics: outfit_save, outfit_wear (with partial = true for a selection),
-	outfit_delete; community_wear when a Community outfit is worn by someone
+	outfit_delete, outfit_share; community_publish when a code is listed;
+	community_wear when a Community outfit is worn by someone
 	other than its creator (also counted for its ordering: CommunityService).
 ]]
 
@@ -160,6 +165,18 @@ local function shared(player: Player, outfit: any): { [string]: any }
 	return SharedContentService.outfitRecord(player, outfit.name, outfit.items, outfit.skin, outfit.scale)
 end
 
+-- A code is its outfit on Community: sharing lists the copy (once; one
+-- shared before Community, or hidden, is left as it is).
+local function listShared(player: Player, model: any, code: string, source: string)
+	if table.find(model.published or {}, code) then
+		return
+	end
+	if CommunityService.publish(code, player.UserId) then
+		model:addPublished(code)
+		track(player, "community_publish", { code = code, source = source })
+	end
+end
+
 local function share(player: Player, model: any, raw: any)
 	local id = idOf(raw)
 	local outfit = id and model:find(id)
@@ -168,7 +185,8 @@ local function share(player: Player, model: any, raw: any)
 	end
 	if outfit.code then
 		if SharedContentService.normalise(outfit.code) then
-			return -- it has one already
+			listShared(player, model, outfit.code, "saved") -- it has one already
+			return
 		end
 		-- An old-format code ("OUT-…"): replace it with a short one.
 		task.spawn(SharedContentService.remove, outfit.code)
@@ -177,6 +195,7 @@ local function share(player: Player, model: any, raw: any)
 	if code and model:find(id) then
 		model:setCode(id, code)
 		track(player, "outfit_share", { outfit_id = id, item_count = #outfit.items })
+		listShared(player, model, code, "saved")
 	end
 end
 
@@ -200,6 +219,9 @@ local function shareCreation(player: Player, model: any, raw: any)
 	local existing = (model.creationCodes or {})[key]
 	if existing and SharedContentService.normalise(existing) then
 		if SharedContentService.sameOutfit(SharedContentService.lookup(existing), record.name, record.items, record.skin, record.scale) then
+			if not raw.check then
+				listShared(player, model, existing, "roblox")
+			end
 			return -- the copy still matches
 		end
 		model:setCreationCode(raw.outfitId, nil) -- edited on Roblox: detach the old copy
@@ -211,6 +233,7 @@ local function shareCreation(player: Player, model: any, raw: any)
 	if code then
 		model:setCreationCode(raw.outfitId, code)
 		track(player, "outfit_share", { item_count = #items, source = "roblox" })
+		listShared(player, model, code, "roblox")
 	end
 end
 

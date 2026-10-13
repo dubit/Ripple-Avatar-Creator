@@ -3,10 +3,11 @@
 --[[
 	CommunityService (loop-based: flushes counts every FLUSH_SECONDS)
 
-	Outfits players publish for everyone, across servers. A Community entry
+	Outfits players share, for everyone, across servers. A Community entry
 	is a frozen shared copy (SharedContentService, a code's record) marked
-	`listed`, so its code, page and preview are the ones sharing already
-	has. Publishing never changes what the copy holds.
+	`listed`: sharing an outfit lists it (OutfitsController), so its code,
+	page and preview are the ones sharing already has. Listing never
+	changes what the copy holds; its owner takes it down with takedown.
 
 	Ordering: three OrderedDataStores keyed by code:
 	  · CommunityNewest       publish time
@@ -29,7 +30,6 @@
 
 	API:
 		publish(code, ownerId) -> boolean       list a copy (its owner only)
-		unpublish(code, ownerId) -> boolean
 		hide(code, reason) / restore(code) / takedown(code)
 		countWear(code) / countFavourite(code, delta)
 		flush()                                 write the counted changes now
@@ -197,21 +197,6 @@ function CommunityService.publish(code: string, ownerId: number): boolean
 		return false
 	end
 	relist(code, record)
-	return true
-end
-
-function CommunityService.unpublish(code: string, ownerId: number): boolean
-	local record = SharedContentService.modify(code, function(record: any)
-		if record.ownerId ~= ownerId or not record.listed then
-			return false
-		end
-		record.listed = false
-		return true
-	end)
-	if not record then
-		return false
-	end
-	delist(code)
 	return true
 end
 

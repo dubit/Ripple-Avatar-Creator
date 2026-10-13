@@ -16,8 +16,8 @@
 		load(sort, key?)            make sure page 1 is loaded (and fresh)
 		more(sort)                  load the next page, if there is one
 		get(sort) -> List           { cards, more, loading, error? }
-		reset()                     forget every list (after publishing,
-		                            unpublishing or reporting)
+		reset()                     forget every list (after sharing,
+		                            removing or reporting)
 		changed                     signal: a list changed
 ]]
 

@@ -31,8 +31,9 @@
 	  · Outfits are real (Task 12): Network.State.Outfits (persisted), changed
 	    through OutfitsController by outfit id (the server holds the items).
 	  · Community (Task 16): the player's lists ride on the same state
-	    (published, communityFavourites, communityRecent); publishing,
-	    starring, reporting and opening go to CommunityController.
+	    (published, communityFavourites, communityRecent). Sharing an
+	    outfit lists it; removing, starring, reporting and opening go to
+	    CommunityController.
 
 	Mock items (the prototype's placeholder data, no thumbnail) can't be
 	worn, put in the basket or bought: the intents skip them and report it.
@@ -49,6 +50,7 @@ local views = script.Parent.Parent
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
 local CatalogueClient = require(views:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
 local CommunityOutfits = require(views:WaitForChild("catalogue"):WaitForChild("CommunityOutfits"))
+local SharedCodes = require(views:WaitForChild("catalogue"):WaitForChild("SharedCodes"))
 local useBoltState = require(views:WaitForChild("hooks"):WaitForChild("useBoltState"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
@@ -102,7 +104,7 @@ export type Look = {
 	saveOutfit: () -> boolean, -- save what's worn; false if nothing is
 	overwriteOutfit: (id: number) -> (), -- replace its items with what's worn
 	renameOutfit: (id: number, name: string) -> (),
-	shareOutfit: (id: number) -> (), -- give it a share code (kept)
+	shareOutfit: (id: number) -> (), -- give it a share code (kept), which lists it on Community
 	shareCreation: (outfitId: number, name: string, check: boolean?) -> (), -- share a Roblox-saved outfit (`check`: only detach a stale code)
 	creationCodes: { [string]: string }, -- share codes of shared Roblox-saved outfits, by outfit id
 	wearShared: (code: string) -> (), -- wear a shared outfit exactly
@@ -115,8 +117,7 @@ export type Look = {
 	communityRecent: { string }, -- Community codes opened lately, newest first
 	isPublished: (code: string?) -> boolean,
 	isCommunityFavourite: (code: string) -> boolean,
-	publish: (target: { [string]: any }) -> (), -- { id } | { outfitId, name } | { code }
-	unpublish: (code: string) -> (),
+	removeShared: (code: string) -> (), -- take your copy down (off Community; the code stops working)
 	toggleCommunityFavourite: (code: string) -> (),
 	reportCommunity: (code: string) -> (),
 	openCommunity: (code: string) -> (), -- its page was opened (Recent)
@@ -523,9 +524,13 @@ local function usePlaceholderLook(): Look
 		end,
 		shareOutfit = function(id: number)
 			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.Share, { id = id })
+			task.delay(2, CommunityOutfits.reset) -- listed now
 		end,
 		shareCreation = function(outfitId: number, name: string, check: boolean?)
 			Network.Intent.Outfits:FireServer(Network.Actions.Outfits.ShareCreation, { outfitId = outfitId, name = name, check = check == true })
+			if not check then
+				task.delay(2, CommunityOutfits.reset) -- listed now
+			end
 		end,
 		creationCodes = outfitState.creationCodes or {},
 		wearShared = function(code: string)
@@ -558,12 +563,9 @@ local function usePlaceholderLook(): Look
 		isCommunityFavourite = function(code: string): boolean
 			return table.find(outfitState.communityFavourites or {}, code) ~= nil
 		end,
-		publish = function(target: { [string]: any })
-			Network.Intent.Community:FireServer(Network.Actions.Community.Publish, target)
-			task.delay(2, CommunityOutfits.reset) -- once the server has it
-		end,
-		unpublish = function(code: string)
-			Network.Intent.Community:FireServer(Network.Actions.Community.Unpublish, { code = code })
+		removeShared = function(code: string)
+			Network.Intent.Community:FireServer(Network.Actions.Community.Remove, { code = code })
+			SharedCodes.forget(code)
 			task.delay(2, CommunityOutfits.reset) -- once the server has it
 		end,
 		toggleCommunityFavourite = function(code: string)

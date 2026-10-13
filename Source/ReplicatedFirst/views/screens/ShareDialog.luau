@@ -13,19 +13,16 @@
 	scanned with a phone, it joins the experience on this outfit's page
 	(DeepLinkService). Until revealed the QR's place is an empty well.
 
-	Publish (bottom left) puts a copy on Community for everyone to find
-	(CommunityController; it uses the outfit's code, or makes one); once
-	it's there the button reads Unpublish (twice to take it off).
+	A code is also the outfit's Community entry: revealing lists the copy
+	there for everyone to find (OutfitsController Share, which also lists
+	an older code that isn't yet). Its owner removes it from its page.
 
 	Tapping outside, Close or Back (handled by Hud, which owns the dialog)
 	shuts it. It rises in and drops out.
 
 	Props:
 		outfit: { id, name, code? } | nil   nil = closed
-		published: boolean                  its code is on Community
-		onReveal: (id) -> ()                ask for a code
-		onPublish: (id) -> ()
-		onUnpublish: (code) -> ()
+		onReveal: (id) -> ()                ask for a code (and list it)
 		onClose: () -> ()
 ]]
 
@@ -44,7 +41,6 @@ local ShadowText = require(views:WaitForChild("components"):WaitForChild("Shadow
 local Spinner = require(views:WaitForChild("components"):WaitForChild("Spinner"))
 local QrTile = require(views:WaitForChild("components"):WaitForChild("QrTile"))
 local Icon = require(views:WaitForChild("components"):WaitForChild("Icon"))
-local ConfirmButton = require(views:WaitForChild("components"):WaitForChild("ConfirmButton"))
 local SharedCodes = require(views:WaitForChild("catalogue"):WaitForChild("SharedCodes"))
 local LaunchData = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("LaunchData"))
 
@@ -52,13 +48,9 @@ local e = React.createElement
 
 local WIDTH, HEIGHT = 480, 300
 local RISE = 30
-local PUBLISH_WAIT = 6 -- seconds the Publish button spins for the server
 
 type Callbacks = {
-	published: boolean,
 	onReveal: (id: number) -> (),
-	onPublish: (id: number) -> (),
-	onUnpublish: (code: string) -> (),
 	onClose: () -> (),
 }
 
@@ -67,22 +59,6 @@ type Outfit = { id: number, name: string, code: string? }
 local function Card(props: Callbacks & { outfit: Outfit, t: any })
 	local skin = useSkin()
 	local revealed, setRevealed = React.useState(false)
-	local publishing, setPublishing = React.useState(false)
-	React.useEffect(function()
-		if not publishing then
-			return nil
-		end
-		if props.published then
-			setPublishing(false)
-			return nil
-		end
-		local thread = task.delay(PUBLISH_WAIT, function()
-			setPublishing(false)
-		end)
-		return function()
-			task.cancel(thread)
-		end
-	end, { publishing, props.published })
 	-- (An old-format "OUT-…" code is replaced when you reveal.)
 	local code = if SharedCodes.isCode(props.outfit.code) then props.outfit.code else nil
 	local waiting = revealed and code == nil
@@ -209,8 +185,8 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 					Size = UDim2.new(1, -(qr + skin.px(16)), 0, skin.px(90)),
 					BackgroundTransparency = 1,
 					Text = if revealed and code
-						then "Scan the QR with a phone to open this outfit in Ripple, or type the code into the Outfits search on any server. Select the code to copy it. It's a copy of the outfit as it is now: if you edit the outfit, share it again for a new code."
-						else "Reveal a code and QR anyone can use to open this outfit, or publish a copy to Community for everyone to find.",
+						then "Scan the QR with a phone to open this outfit in Ripple, or type the code into the Outfits search on any server. Select the code to copy it. It's on Community too, as a copy of the outfit as it is now: if you edit the outfit, share it again for a new code."
+						else "Reveal a code and QR anyone can use to open this outfit. It goes on Community too, for everyone to find.",
 					TextColor3 = Tokens.color.white,
 					TextTransparency = Tokens.alpha.textSoft,
 					TextSize = skin.textPx(12.5),
@@ -234,7 +210,7 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 					Close = e(PillButton, {
 						variant = "pill",
 						size = Tokens.size.ctaHeight,
-						width = 110,
+						width = 130,
 						label = "Close",
 						sound = "back",
 						layoutOrder = 1,
@@ -243,7 +219,7 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 					Reveal = if revealed then nil else e(PillButton, {
 						variant = "pill",
 						size = Tokens.size.ctaHeight,
-						width = 170,
+						width = 190,
 						icon = "visibility",
 						iconSize = 18,
 						label = "Reveal code",
@@ -252,41 +228,9 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 						layoutOrder = 2,
 						onActivated = function()
 							setRevealed(true)
-							if not code then
-								props.onReveal(props.outfit.id)
-							end
+							props.onReveal(props.outfit.id) -- a code, listed (or just listed)
 						end,
 					}),
-				}),
-				-- Bottom left, apart from Close / Reveal.
-				Publish = e("Frame", {
-					AnchorPoint = Vector2.new(0, 1),
-					Position = UDim2.fromScale(0, 1),
-					Size = UDim2.fromOffset(skin.px(140), skin.px(Tokens.size.ctaHeight)),
-					BackgroundTransparency = 1,
-				}, {
-					Button = if props.published and code
-						then e(ConfirmButton, {
-							label = "Unpublish",
-							icon = "cloud_off",
-							armedLabel = "Tap again",
-							onConfirm = function()
-								props.onUnpublish(code)
-							end,
-						})
-						else e(PillButton, {
-							variant = "pill",
-							size = Tokens.size.ctaHeight,
-							icon = "cloud_upload",
-							iconSize = 18,
-							label = "Publish",
-							loading = publishing,
-							sound = "confirm",
-							onActivated = function()
-								setPublishing(true)
-								props.onPublish(props.outfit.id)
-							end,
-						}),
 				}),
 			}),
 		}),
@@ -313,10 +257,7 @@ local function ShareDialog(props: Callbacks & { outfit: Outfit? })
 			children["Share" .. transition.key] = e(Card, {
 				outfit = outfit,
 				t = transition.springProps.t,
-				published = props.published,
 				onReveal = props.onReveal,
-				onPublish = props.onPublish,
-				onUnpublish = props.onUnpublish,
 				onClose = props.onClose,
 			})
 		end

@@ -41,10 +41,10 @@
 
 	OutfitsScreen.Root props: nav, look
 	A shared outfit's page (a code, or a Community card) adds, when it's on
-	Community: its wears and favourites, a star (not on your own), and
-	Report (twice; once each). Your own copy gets Unpublish, or Publish to
-	Community when it isn't listed. Opening a Community outfit's page puts
-	it in your Recent.
+	Community (sharing lists it): its wears and favourites, a star (not on
+	your own), and Report (twice; once each). Your own copy gets Remove
+	from Community (twice), which also stops its code working. Opening a
+	Community outfit's page puts it in your Recent.
 
 	OutfitsScreen.Outfit props: nav, look, source, index (a saved outfit's
 	id for Mine, a Roblox outfit's id, a user id, or a share code)
@@ -661,7 +661,7 @@ local COMMUNITY_EMPTY = {
 	newest = "No one has published an outfit yet",
 	favourited = "Star Community outfits to keep them here",
 	recent = "Community outfits you open show here",
-	mine = "Publish an outfit from its Share button and it shows here",
+	mine = "Outfits you share show here",
 }
 
 -- Codes reported this session (Report shows as done).
@@ -1562,7 +1562,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local outfitId = outfit.id
 	local kind = outfit.kind
 	local showStar = kind == "shared" and listed and not mineShared
-	local twoRows = saved or kind == "user" or (kind == "shared" and (mineShared or listed))
+	local twoRows = saved or kind == "user" or (kind == "shared" and listed)
 	local byText = outfit.by .. " · " .. #items .. " items"
 	if kind == "shared" and listed and sharedOutfit then
 		local counts = sharedOutfit.community or { wears = 0, favourites = 0 }
@@ -1697,32 +1697,21 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					})
 					else nil,
 			}),
-			-- Your own copy: Unpublish, or Publish when it isn't listed.
-			-- Anyone else's on Community: Report (twice; once each).
-			Community = if kind ~= "shared" or not sharedCode then nil
-				elseif mineShared and listed then e(ConfirmButton, {
-					label = "Unpublish",
+			-- Your own copy: Remove (off Community, and the code stops
+			-- working). Anyone else's on Community: Report (twice; once each).
+			Community = if kind ~= "shared" or not sharedCode or not listed then nil
+				elseif mineShared then e(ConfirmButton, {
+					label = "Remove from Community",
 					icon = "cloud_off",
-					armedLabel = "Tap again to unpublish",
+					armedLabel = "Tap again: its code stops working",
 					layoutOrder = 5,
 					onConfirm = function()
 						Sounds.play("back")
-						look.unpublish(sharedCode)
+						look.removeShared(sharedCode)
+						props.nav.back()
 					end,
 				})
-				elseif mineShared then e(PillButton, {
-					variant = "pill",
-					size = Tokens.size.ctaHeight,
-					icon = "cloud_upload",
-					iconSize = 18,
-					label = "Publish to Community",
-					sound = "confirm",
-					layoutOrder = 5,
-					onActivated = function()
-						look.publish({ code = sharedCode })
-					end,
-				})
-				elseif listed then e(ConfirmButton, {
+				else e(ConfirmButton, {
 					label = if reported[sharedCode] then "Reported" else "Report",
 					icon = "flag",
 					armedLabel = "Tap again to report",
@@ -1736,8 +1725,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 							return v + 1
 						end)
 					end,
-				})
-				else nil,
+				}),
 			-- Follow at once; unfollow takes a second press.
 			Follow = if kind == "user" and outfitId and look.isFollowing(outfitId)
 				then e(ConfirmButton, {

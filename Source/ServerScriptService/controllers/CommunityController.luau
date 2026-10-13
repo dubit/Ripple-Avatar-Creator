@@ -3,18 +3,17 @@
 --[[
 	CommunityController
 
-	Community outfits (CommunityService): publishing, starring, reporting,
-	browsing. An entry is a frozen shared copy, so publishing an outfit
-	reuses its share code while it's unedited (or makes one). Requests
-	closer together than COOLDOWN are dropped.
+	Community outfits (CommunityService): removing, starring, reporting,
+	browsing. An entry is a frozen shared copy: sharing an outfit (its
+	code, OutfitsController Share / ShareCreation) is what lists it, so a
+	code and a Community entry are the same thing. Requests closer
+	together than COOLDOWN are dropped.
 
 	Actions:
-		Publish({ id })                 publish a saved outfit
-		Publish({ outfitId, name })     publish an outfit saved on Roblox
-		                                (Creations), copied as it is there now
-		Publish({ code })               republish one of your own copies
-		Unpublish({ code })             take your entry off Community (its
-		                                code keeps working; off Mine too)
+		Remove({ code })                take your own copy down: off
+		                                Community, and the code stops working
+		                                (your outfit loses it; share again
+		                                for a new one)
 		Favourite({ code })             star / unstar a Community outfit
 		                                (not your own)
 		Report({ code })                report it (once per player; enough
@@ -31,9 +30,9 @@
 	(everyone's) or "favourited" | "recent" | "mine" (the player's own
 	lists); page from 1. Cards: CommunityService.Card.
 
-	Analytics: community_publish, community_unpublish, community_open,
-	community_report (community_wear is OutfitsController's, on wearing a
-	listed code).
+	Analytics: community_remove, community_open, community_report
+	(community_publish and community_wear are OutfitsController's: on
+	sharing, and on wearing a listed code).
 ]]
 
 local Players = game:GetService("Players")
@@ -42,7 +41,6 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local AbstractController = require(script.Parent.AbstractController)
 local OutfitsModel = require(script.Parent.Parent.models.user.OutfitsModel)
-local AvatarService = require(ServerScriptService.services.game.AvatarService)
 local SharedContentService = require(ServerScriptService.services.game.SharedContentService)
 local CommunityService = require(ServerScriptService.services.game.CommunityService)
 local Network = require(ReplicatedStorage.Network)
@@ -96,77 +94,31 @@ local function codeOf(raw: any): string?
 	return SharedContentService.normalise(if type(text) == "number" then tostring(text) else text)
 end
 
--- The code to publish for a request: an existing copy or a new one.
-local function codeToPublish(player: Player, model: any, raw: any): (string?, string?)
-	if type(raw) ~= "table" then
-		return nil, nil
-	end
-	if type(raw.id) == "number" then
-		local outfit = model:find(raw.id)
-		if not outfit then
-			return nil, nil
-		end
-		if outfit.code and SharedContentService.normalise(outfit.code) then
-			return outfit.code, "saved"
-		end
-		local code = SharedContentService.claim(
-			SharedContentService.outfitRecord(player, outfit.name, outfit.items, outfit.skin, outfit.scale)
-		)
-		if code and model:find(raw.id) then
-			model:setCode(raw.id, code)
-		end
-		return code, "saved"
-	end
-	if type(raw.outfitId) == "number" and raw.outfitId > 0 and raw.outfitId % 1 == 0 then
-		local description, items = AvatarService.robloxOutfit(raw.outfitId)
-		if not description then
-			return nil, nil
-		end
-		local name = if type(raw.name) == "string" and string.match(raw.name, "%S") then string.sub(raw.name, 1, 60) else "Outfit"
-		local record = SharedContentService.outfitRecord(
-			player,
-			SharedContentService.filterName(player, name) or "Outfit",
-			items,
-			AvatarService.skinOf(description),
-			AvatarService.scaleOf(description)
-		)
-		local existing = (model.creationCodes or {})[tostring(raw.outfitId)]
-		if
-			existing
-			and SharedContentService.normalise(existing)
-			and SharedContentService.sameOutfit(SharedContentService.lookup(existing), record.name, record.items, record.skin, record.scale)
-		then
-			return existing, "roblox"
-		end
-		local code = SharedContentService.claim(record)
-		if code then
-			model:setCreationCode(raw.outfitId, code)
-		end
-		return code, "roblox"
-	end
-	local code = codeOf(raw)
-	if code then
-		return code, "copy"
-	end
-	return nil, nil
-end
-
-local function publish(player: Player, model: any, raw: any)
-	local code, source = codeToPublish(player, model, raw)
-	if code and CommunityService.publish(code, player.UserId) then
-		model:addPublished(code)
-		track(player, "community_publish", { code = code, source = source })
-	end
-end
-
-local function unpublish(player: Player, model: any, raw: any)
+-- Take your own copy down: off Community and its code stops working.
+-- Your outfit loses the code, so sharing it again makes a new one.
+local function remove(player: Player, model: any, raw: any)
 	local code = codeOf(raw)
 	if not code then
 		return
 	end
-	if CommunityService.unpublish(code, player.UserId) or table.find(model.published or {}, code) then
-		model:removePublished(code)
-		track(player, "community_unpublish", { code = code })
+	local record = SharedContentService.lookup(code)
+	if type(record) == "table" and record.ownerId ~= player.UserId then
+		return
+	end
+	if record then
+		CommunityService.takedown(code)
+		track(player, "community_remove", { code = code })
+	end
+	model:removePublished(code)
+	for _, outfit in model.outfits or {} do
+		if outfit.code == code then
+			model:setCode(outfit.id, nil)
+		end
+	end
+	for outfitId, creationCode in model.creationCodes or {} do
+		if creationCode == code then
+			model:setCreationCode(tonumber(outfitId), nil)
+		end
 	end
 end
 
@@ -224,8 +176,7 @@ local function moderate(player: Player, _model: any, raw: any, op: any)
 end
 
 local ACTIONS = {
-	[Network.Actions.Community.Publish] = publish,
-	[Network.Actions.Community.Unpublish] = unpublish,
+	[Network.Actions.Community.Remove] = remove,
 	[Network.Actions.Community.Favourite] = favourite,
 	[Network.Actions.Community.Report] = report,
 	[Network.Actions.Community.Open] = open,
