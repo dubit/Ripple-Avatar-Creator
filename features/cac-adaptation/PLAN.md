@@ -366,7 +366,7 @@
 - **Outcome:** Decided (user): Roblox DataStores for shared content (open question 16). `SharedContentService` keeps records in a global DataStore ("SharedContent") keyed by code; codes are 6 characters of the design's alphabet (no I/O/0/1, ~1e9), random and claimed atomically with UpdateAsync, one pool for every kind of shared thing (the record carries `kind`; user: a prefix was too much). A code opens the thing as it is now: rename / save-over republish, delete revokes; old `OUT-` codes are replaced on reveal. Wardrobe outfits keep `code`; Roblox-saved outfits (Creations) can be shared too, published from Roblox's own data, their codes in `OutfitsModel.creationCodes` (not the Wardrobe) and refreshed when the dialog opens. Share dialog (design 5e) at Hud level: reveal, the code in a selectable box (Roblox can't write the clipboard: a recorded divergence from the design's Copy), QR slot for Task 15; Back closes it first (Hud's own back handler: child handlers register before the parent's). Codes go in the Community tab's search (user: not the Roblox tab, which stays follows only); a code found from another tab switches there; a code-shaped name still searches normally. Shared outfit page: preview, rows, Wear all items (exact, with skin and scale), Wear selected, basket, buy. Share icon is Material `share`. Analytics: `outfit_share`, `share_resolve`. Not verified: a second account opening a code; live cross-server.
 
 ### Task 15: QR deep links
-- **Status:** [PARTIAL]
+- **Status:** [DONE]
 - **Why here:** Isolated because it depends on unresolved platform support (experience launch data/deep links) and on a QR encoder. Codes already work without it, so a failure here does not block Sharing's core value.
 - **Depends on:** 14
 - **Refs:** Scope > Share (QR deep-links back to that screen); Risks (Deep links from QR)
@@ -381,7 +381,7 @@
   - [DONE] 15.2 Integration risk: `AnalyticsService` stores `LaunchData` as the `launch_data` acquisition property and treats untagged joins as `organic`. Decide how deep-link payloads coexist (namespace the payload, or separate analytics handling); update `AnalyticsService` accordingly and note it in `docs/CONFIG_GUIDE.md`.
   - [DONE] 15.3 QR encoder: evaluate a Luau QR library already usable in the repo (check `Packages/`) vs adding one; render modules as a client component (pixels as frames or an image).
   - [DONE] 15.4 Join-time handler: a service (`services/game/DeepLinkService.luau`, event-driven on player join) that reads the launch data and tells the client which screen to open via a state/intent, honoured by `HudApp` navigation. `/create-service`.
-  - [TODO] 15.5 Playtest on a phone scanning a QR shown on another device, in a live published place.
+  - [TODO] 15.5 Playtest on a phone scanning a QR shown on another device, in a live published place. *(Deferred: the experience is still private, so the link only opens for its owner. Test this once it's public and age-rated.)*
 - **Findings (15.1–15.4):**
   - **The link.** `https://www.roblox.com/games/start?placeId=<id>&launchData=s:<code>`. Launch data is one string of up to 200 bytes, read with `GetJoinData().LaunchData`.
   - **Roblox share links don't fit.** Creator Dashboard share links are made one at a time by hand, so they can't carry per-code data.
@@ -390,6 +390,7 @@
   - **The encoder.** We wrote our own: `Utils/QRCode`, byte mode, versions 1–10, all four error-correction levels, block interleaving, penalty-chosen mask. The Mall R&D generator (cloned to refs/) only scans up to version 4: it does single-block error correction and crashes on input that isn't byte mode.
   - **How it was checked.** Every version and level at full capacity decoded correctly with zxing-cpp. So did a Studio screenshot of the dialog's QR.
   - **On join.** Opens Outfits › Community › the shared outfit's page. Back lands on Community.
+- **Outcome:** QR share links work end to end in Studio, using the TestLaunchData hook. The dialog has the QR on the left, with the code and hint on the right. Until the code is revealed the QR's place is an empty well with a lock: a dimmed QR looked as if it was ready to scan. The `s:` field marks share codes so they never collide with campaign tags. User referral codes will reuse this link with `kind = "user"` records. Still unverified: scanning on a phone in the public place (15.5).
 
 ### Task 16: Community outfits
 - **Status:** [TODO]
