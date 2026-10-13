@@ -42,6 +42,7 @@
 		                           code is detached: with `check` (the dialog
 		                           opening) that's all; otherwise a new code
 		                           is made. Listed on Community like Share
+		                           (a matching copy is listed on the check too)
 		WearShared({ code })       wear a shared outfit exactly (replaces the
 		                           look, with its skin colours and scale)
 
@@ -219,10 +220,8 @@ local function shareCreation(player: Player, model: any, raw: any)
 	local existing = (model.creationCodes or {})[key]
 	if existing and SharedContentService.normalise(existing) then
 		if SharedContentService.sameOutfit(SharedContentService.lookup(existing), record.name, record.items, record.skin, record.scale) then
-			if not raw.check then
-				listShared(player, model, existing, "roblox")
-			end
-			return -- the copy still matches
+			listShared(player, model, existing, "roblox")
+			return -- the copy still matches (listed, if it wasn't)
 		end
 		model:setCreationCode(raw.outfitId, nil) -- edited on Roblox: detach the old copy
 	end

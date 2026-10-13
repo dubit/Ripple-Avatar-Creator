@@ -300,11 +300,20 @@ local function Hud()
 			share = function(id: number, kind: string?, name: string?)
 				Sounds.play("open")
 				setShareTarget({ kind = kind or "saved", id = id, name = name or "" })
+				-- An outfit with a code shows it at once, so make sure the code
+				-- is listed on Community (one shared before codes were listed).
 				if kind == "creation" then
 					-- If it was edited on Roblox since it was shared, its old
-					-- code is detached (Reveal then makes a new one).
+					-- code is detached (Reveal then makes a new one); if not,
+					-- it's listed.
 					if latestLook.current.creationCodes[tostring(id)] then
 						latestLook.current.shareCreation(id, name or "", true)
+					end
+				else
+					for _, outfit in latestLook.current.outfits do
+						if outfit.id == id and outfit.code and not latestLook.current.isPublished(outfit.code) then
+							latestLook.current.shareOutfit(id)
+						end
 					end
 				end
 			end,

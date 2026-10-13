@@ -415,8 +415,9 @@
   - [DONE] 16.3 Controller actions (Remove, Favourite, BrowseCommunity, Report; listing happens in Share) in `Outfits`/`Community` controller. `/create-controller`.
   - [PARTIAL] 16.4 Community source UI (`/html-to-react-luau`): grid, paging, publish toggle on Mine outfit cards/outfit screen. Built, awaiting the user's playtest:
     - The Community tab has chips under the tabs and real cards (`catalogue/CommunityOutfits`, pages of 24 loaded on scroll). Search filters the loaded cards by name, or finds a share code. The placeholder Community outfits are gone.
-    - No Publish button: revealing a code in the Share dialog lists the outfit (see 16.1).
-    - A shared outfit's page, when listed, shows wears and favourites, a star (not on your own outfits; the server refuses self-stars too) and Report (two taps). Your own copy shows Remove from Community (two taps; the code stops working). Opening the page adds it to Recent.
+    - No Publish button: revealing a code in the Share dialog lists the outfit (see 16.1), and a "Published to Community" line says so. An outfit with a code opens the dialog already revealed, with its QR, until an edit detaches the code; the outfit page shows "code XXXXXX" too. Opening the dialog lists an older code that wasn't yet.
+    - You can star your own outfits, as on social media (changed after stage C).
+    - A shared outfit's page, when listed, shows wears and favourites, a star (your own too) and Report (two taps). Your own copy shows Remove from Community (two taps; the code stops working). Opening the page adds it to Recent.
     - New icons: `flag`, `cloud_off`.
   - [TODO] 16.5 Analytics: `community_publish`, `community_open`.
   - [TODO] 16.6 Playtest across servers, moderation edge cases (blocked names), unpublish.

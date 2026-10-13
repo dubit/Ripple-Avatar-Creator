@@ -42,7 +42,7 @@
 	OutfitsScreen.Root props: nav, look
 	A shared outfit's page (a code, or a Community card) adds, when it's on
 	Community (sharing lists it): its wears and favourites, a star (not on
-	your own), and Report (twice; once each). Your own copy gets Remove
+	your own too), and Report (twice; once each; not your own). Your own copy gets Remove
 	from Community (twice), which also stops its code working. Opening a
 	Community outfit's page puts it in your Recent.
 
@@ -104,6 +104,7 @@ type OutfitView = {
 	labels: { [number]: string }?, -- row names that differ from the item's own
 	skin: any?, -- skin colours that come with it (by body part; SkinColours)
 	scale: any?, -- body scale that comes with it (BodyScale)
+	code: string?, -- its share code, while it has one (saved / Roblox outfits)
 }
 
 -- Card / page order of a type's thumbnail: the most telling first.
@@ -150,6 +151,7 @@ local function savedView(outfit: any): OutfitView
 		items = outfit.items,
 		skin = outfit.skin,
 		scale = outfit.scale,
+		code = if SharedCodes.isCode(outfit.code) then outfit.code else nil,
 	}
 end
 
@@ -184,7 +186,10 @@ local function findOutfit(look: any, source: string, index: number): OutfitView?
 	elseif source == "RobloxSaved" then
 		for _, outfit in RobloxOutfits.outfits() do
 			if outfit.id == index then
-				return robloxView(outfit)
+				local view = robloxView(outfit)
+				local code = look.creationCodes[tostring(outfit.id)]
+				view.code = if SharedCodes.isCode(code) then code else nil
+				return view
 			end
 		end
 	end
@@ -1561,9 +1566,10 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local saved = outfit.kind == "saved"
 	local outfitId = outfit.id
 	local kind = outfit.kind
-	local showStar = kind == "shared" and listed and not mineShared
+	local showStar = kind == "shared" and listed
 	local twoRows = saved or kind == "user" or (kind == "shared" and listed)
-	local byText = outfit.by .. " · " .. #items .. " items"
+	-- A saved / Roblox outfit with a code shows it (Share shows its QR).
+	local byText = outfit.by .. (if outfit.code then " · code " .. outfit.code else "") .. " · " .. #items .. " items"
 	if kind == "shared" and listed and sharedOutfit then
 		local counts = sharedOutfit.community or { wears = 0, favourites = 0 }
 		local atLoad = starredAtLoad.current
@@ -1680,7 +1686,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 						end,
 					})
 					else nil,
-				-- Star a Community outfit (Favourited); not your own.
+				-- Star a Community outfit (Favourited), your own too.
 				Star = if showStar and sharedCode
 					then e(PillButton, {
 						variant = "round",

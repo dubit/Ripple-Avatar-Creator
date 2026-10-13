@@ -4,9 +4,11 @@
 	ShareDialog (design frame 5e: Share an outfit)
 
 	Over a dimmed screen: "Share outfit", the outfit's name, and its code
-	(6 characters), hidden ("••••••") until you press Reveal code. Revealing
-	gives the outfit a code if it hasn't one (the server keeps it for good;
-	a spinner shows while it's made). The code sits in a box you can select
+	(6 characters). An outfit with a code shows it (and its QR) at once;
+	one without has it hidden ("••••••") until you press Reveal code,
+	which gives it one (a spinner shows while it's made). The code lasts
+	until the outfit is edited (then it's hidden again: reveal for a new
+	one). The code sits in a box you can select
 	and copy yourself: Roblox experiences can't write to the clipboard (a
 	divergence from the design's Copy button). It works in the Outfits
 	search on any server. Left of it, a QR of the share link (LaunchData):
@@ -14,8 +16,9 @@
 	(DeepLinkService). Until revealed the QR's place is an empty well.
 
 	A code is also the outfit's Community entry: revealing lists the copy
-	there for everyone to find (OutfitsController Share, which also lists
-	an older code that isn't yet). Its owner removes it from its page.
+	there for everyone to find (OutfitsController Share; Hud lists an older
+	code that isn't yet when the dialog opens), and a line under the code
+	says so. Its owner removes it from its page.
 
 	Tapping outside, Close or Back (handled by Hud, which owns the dialog)
 	shuts it. It rises in and drops out.
@@ -58,9 +61,10 @@ type Outfit = { id: number, name: string, code: string? }
 
 local function Card(props: Callbacks & { outfit: Outfit, t: any })
 	local skin = useSkin()
-	local revealed, setRevealed = React.useState(false)
+	local pressed, setPressed = React.useState(false)
 	-- (An old-format "OUT-…" code is replaced when you reveal.)
 	local code = if SharedCodes.isCode(props.outfit.code) then props.outfit.code else nil
+	local revealed = pressed or code ~= nil
 	local waiting = revealed and code == nil
 	local qr = math.floor(skin.px(150))
 
@@ -180,12 +184,37 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 						then e(Spinner, { size = 26, anchorPoint = Vector2.new(0.5, 0.5), position = UDim2.fromScale(0.5, 0.5) })
 						else nil,
 				}),
+				Published = if revealed and code
+					then e("Frame", {
+						Position = UDim2.fromOffset(qr + skin.px(16), skin.px(124)),
+						Size = UDim2.new(1, -(qr + skin.px(16)), 0, skin.px(20)),
+						BackgroundTransparency = 1,
+					}, {
+						Layout = e("UIListLayout", {
+							FillDirection = Enum.FillDirection.Horizontal,
+							VerticalAlignment = Enum.VerticalAlignment.Center,
+							SortOrder = Enum.SortOrder.LayoutOrder,
+							Padding = UDim.new(0, skin.px(6)),
+						}),
+						Icon = e(Icon, { name = "check_circle", size = 18, color = Tokens.color.accentText, layoutOrder = 1 }),
+						Text = e("TextLabel", {
+							Size = UDim2.new(1, -skin.px(24), 1, 0),
+							BackgroundTransparency = 1,
+							Text = "Published to Community",
+							TextColor3 = Tokens.color.accentText,
+							TextSize = skin.textPx(13.5),
+							FontFace = Tokens.font(800),
+							TextXAlignment = Enum.TextXAlignment.Left,
+							LayoutOrder = 2,
+						}),
+					})
+					else nil,
 				Hint = e("TextLabel", {
-					Position = UDim2.fromOffset(qr + skin.px(16), skin.px(122)),
+					Position = UDim2.fromOffset(qr + skin.px(16), skin.px(if revealed and code then 150 else 122)),
 					Size = UDim2.new(1, -(qr + skin.px(16)), 0, skin.px(90)),
 					BackgroundTransparency = 1,
 					Text = if revealed and code
-						then "Scan the QR with a phone to open this outfit in Ripple, or type the code into the Outfits search on any server. Select the code to copy it. It's on Community too, as a copy of the outfit as it is now: if you edit the outfit, share it again for a new code."
+						then "Scan the QR with a phone to open this outfit in Ripple, or type the code into the Outfits search on any server. Select the code to copy it. Everyone can find it on Community, as a copy of the outfit as it is now: if you edit the outfit, share it again for a new code."
 						else "Reveal a code and QR anyone can use to open this outfit. It goes on Community too, for everyone to find.",
 					TextColor3 = Tokens.color.white,
 					TextTransparency = Tokens.alpha.textSoft,
@@ -227,7 +256,7 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 						sound = "confirm",
 						layoutOrder = 2,
 						onActivated = function()
-							setRevealed(true)
+							setPressed(true)
 							props.onReveal(props.outfit.id) -- a code, listed (or just listed)
 						end,
 					}),
