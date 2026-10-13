@@ -34,6 +34,7 @@ local ShadowText = require(views:WaitForChild("components"):WaitForChild("Shadow
 local PillButton = require(views:WaitForChild("components"):WaitForChild("PillButton"))
 local BodyFigure = require(views:WaitForChild("components"):WaitForChild("BodyFigure"))
 local Slider = require(views:WaitForChild("components"):WaitForChild("Slider"))
+local useBackInput = require(views:WaitForChild("hooks"):WaitForChild("useBackInput"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
 
@@ -102,7 +103,10 @@ local function hexOf(h: number, sat: number, v: number): string
 end
 
 -- Any colour: hue, saturation and brightness sliders, or a hex code; a big
--- preview; Apply colours the selected parts.
+-- preview; Apply colours the selected parts. The back button (or Back)
+-- returns to the palette. Each slider's track shows what moving along it
+-- does to the colour (no orange fill: it's a quality, not an amount), and
+-- its knob shows the current colour.
 local function CustomColour(props: {
 	start: string,
 	parts: number,
@@ -117,6 +121,21 @@ local function CustomColour(props: {
 		return { h = math.floor(h * 360 + 0.5), s = math.floor(sat * 100 + 0.5), v = math.floor(v * 100 + 0.5) }
 	end)
 	local hex = hexOf(hsv.h, hsv.s, hsv.v)
+	local current = Color3.fromHex(hex)
+	useBackInput(function()
+		props.onClose()
+		return true
+	end)
+	-- What each track shows.
+	local hueStops = {}
+	for i = 0, 6 do
+		table.insert(hueStops, ColorSequenceKeypoint.new(i / 6, Color3.fromHSV((i % 6) / 6, 1, 1)))
+	end
+	local tracks = {
+		h = ColorSequence.new(hueStops),
+		s = ColorSequence.new(Color3.fromHSV(hsv.h / 360, 0, hsv.v / 100), Color3.fromHSV(hsv.h / 360, 1, hsv.v / 100)),
+		v = ColorSequence.new(Color3.new(0, 0, 0), Color3.fromHSV(hsv.h / 360, hsv.s / 100, 1)),
+	}
 	local function slider(label: string, key: string, max: number, order: number)
 		return e("Frame", {
 			Size = UDim2.new(1, 0, 0, skin.px(52)),
@@ -139,6 +158,8 @@ local function CustomColour(props: {
 					min = 0,
 					max = max,
 					step = 1,
+					trackColours = tracks[key],
+					knobColour = current,
 					onChange = function(value: number)
 						setHsv(function(current)
 							local next = table.clone(current)
@@ -152,13 +173,35 @@ local function CustomColour(props: {
 		})
 	end
 	local preview = skin.px(120)
+	local header = skin.px(Tokens.size.small.size)
+	local top = header + skin.px(18)
 	return e("Frame", {
 		Name = "CustomColour",
 		Position = props.position,
 		Size = props.size,
 		BackgroundTransparency = 1,
 	}, {
+		Padding = e("UIPadding", { PaddingTop = UDim.new(0, skin.px(14)) }),
+		-- Back to the palette.
+		Back = e(PillButton, {
+			variant = "round",
+			size = Tokens.size.small.size,
+			icon = "arrow_back",
+			iconSize = Tokens.size.small.icon,
+			glowRadius = 0,
+			sound = "back",
+			onActivated = props.onClose,
+		}),
+		Title = e("Frame", {
+			Position = UDim2.fromOffset(header + skin.px(12), 0),
+			Size = UDim2.new(1, -(header + skin.px(12)), 0, header),
+			BackgroundTransparency = 1,
+		}, {
+			Layout = e("UIListLayout", { VerticalAlignment = Enum.VerticalAlignment.Center }),
+			Text = e(ShadowText, { text = "Custom colour", style = Tokens.type.cardTitle }),
+		}),
 		Preview = e("Frame", {
+			Position = UDim2.fromOffset(0, top),
 			Size = UDim2.fromOffset(preview, preview),
 			BackgroundColor3 = Color3.fromHex(hex),
 			BorderSizePixel = 0,
@@ -167,11 +210,13 @@ local function CustomColour(props: {
 			Ring = e("UIStroke", { Color = Tokens.color.white, Transparency = 0.7, Thickness = skin.stroke(1.5) }),
 		}),
 		Controls = e("Frame", {
-			Position = UDim2.fromOffset(preview + skin.px(24), 0),
-			Size = UDim2.new(1, -(preview + skin.px(24)), 1, 0),
+			Position = UDim2.fromOffset(preview + skin.px(24), top),
+			Size = UDim2.new(1, -(preview + skin.px(24)), 1, -top),
 			BackgroundTransparency = 1,
 		}, {
-			Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(8)) }),
+			Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(10)) }),
+			-- A little room between the colour code and the buttons.
+			Gap = e("Frame", { Size = UDim2.new(1, 0, 0, skin.px(8)), BackgroundTransparency = 1, LayoutOrder = 5 }),
 			Hue = slider("Hue", "h", 360, 1),
 			Saturation = slider("Saturation", "s", 100, 2),
 			Brightness = slider("Brightness", "v", 100, 3),
@@ -223,7 +268,7 @@ local function CustomColour(props: {
 			Buttons = e("Frame", {
 				Size = UDim2.new(1, 0, 0, skin.px(Tokens.size.ctaHeight)),
 				BackgroundTransparency = 1,
-				LayoutOrder = 5,
+				LayoutOrder = 6,
 			}, {
 				Layout = e("UIListLayout", {
 					FillDirection = Enum.FillDirection.Horizontal,
@@ -244,15 +289,6 @@ local function CustomColour(props: {
 					onActivated = function()
 						props.onApply(hex)
 					end,
-				}),
-				Back = e(PillButton, {
-					variant = "pill",
-					size = Tokens.size.ctaHeight,
-					width = 160,
-					label = "Palette",
-					sound = "back",
-					layoutOrder = 2,
-					onActivated = props.onClose,
 				}),
 			}),
 		}),
