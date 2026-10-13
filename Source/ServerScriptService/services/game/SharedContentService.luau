@@ -17,8 +17,10 @@
 	Codes are 6 characters from the design's alphabet (no I, O, 0 or 1: about
 	a billion codes), picked at random and claimed atomically (UpdateAsync
 	only writes if the key is free), so two things can't share one. The
-	owner keeps the code: republishing updates the record (the code shows
-	the thing as it is now), removing it revokes the code.
+	record is a frozen copy: what the code opens never changes (an edit to
+	the original detaches its code, and sharing again claims a new one), so
+	a popular code can't be turned into something else. Removing a record
+	revokes its code (admin takedown).
 
 	Lookups are cached per server for CACHE_SECONDS; each player gets
 	LOOKUP_BUDGET lookups per window.
@@ -27,6 +29,9 @@
 		claim(record) -> string?                  a new code holding `record`
 		update(code, record) -> boolean           replace a code's record
 		remove(code)                              revoke a code
+		anonymise(code)                           drop the owner's name from a
+		                                          code's record (its owner
+		                                          deleted what it copies)
 		lookup(code) -> record?                   cached; nil if unknown
 		normalise(text) -> string?                " 7kq2xm " -> "7KQ2XM"
 		allowed(player) -> boolean                the lookup budget
@@ -144,6 +149,28 @@ function SharedContentService.remove(code: string)
 	if not ok then
 		warn("[SharedContentService] remove failed:", err)
 	end
+end
+
+function SharedContentService.anonymise(code: string)
+	local ds = dataStore()
+	if not ds then
+		return
+	end
+	local ok, result = pcall(function()
+		return ds:UpdateAsync(code, function(old: any)
+			if type(old) ~= "table" or old.anonymous then
+				return nil
+			end
+			old.ownerName = nil
+			old.anonymous = true
+			return old
+		end)
+	end)
+	if not ok then
+		warn("[SharedContentService] anonymise failed:", result)
+		return
+	end
+	cache[code] = nil
 end
 
 function SharedContentService.lookup(code: string): any?

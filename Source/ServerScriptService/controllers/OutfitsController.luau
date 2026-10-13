@@ -22,16 +22,22 @@
 		                           `skin`, its skin tone) on over the current look
 		Follow({ userId })         follow someone here, or unfollow (a real
 		                           Roblox user; private to the player)
-		Share({ id })              give the outfit a 6-character share code
-		                           (once; it's kept): its current state is published to
-		                           SharedContentService, and every rename / save
-		                           over republishes it; Delete revokes it
-		ShareCreation({ outfitId, name })   share one of the player's outfits
-		                           saved on Roblox (Creations): its contents
-		                           come from Roblox (items, body, skin, scale),
-		                           the name is text-filtered; the code is kept
-		                           in `creationCodes` (not a Wardrobe outfit)
-		                           and each call refreshes what it shows
+		Share({ id })              give the outfit a 6-character share code: a
+		                           frozen copy of it now (SharedContentService).
+		                           Renaming or saving over it detaches the code
+		                           (it keeps opening the old copy; sharing again
+		                           makes a new one). Deleting it keeps the copy
+		                           but drops the owner's name from it
+		ShareCreation({ outfitId, name, check? })   share one of the player's
+		                           outfits saved on Roblox (Creations): its
+		                           contents come from Roblox (items, body, skin,
+		                           scale), the name is text-filtered; the code
+		                           is kept in `creationCodes` (not a Wardrobe
+		                           outfit) while the copy still matches Roblox.
+		                           When it doesn't (edited on Roblox), the old
+		                           code is detached: with `check` (the dialog
+		                           opening) that's all; otherwise a new code
+		                           is made
 		WearShared({ code })       wear a shared outfit exactly (replaces the
 		                           look, with its skin colours and scale)
 
@@ -153,12 +159,11 @@ local function overwrite(player: Player, model: any, raw: any)
 	end
 	local outfit = model:overwrite(id, avatar.worn, avatar.skin, avatar.scale)
 	if outfit then
-		republish(player, outfit)
 		track(player, "outfit_save", { outfit_id = outfit.id, item_count = #outfit.items, replaced = true })
 	end
 end
 
--- What everyone sees of a shared outfit: its current state.
+-- What everyone sees of a shared outfit: a frozen copy of it now.
 local function shared(player: Player, outfit: any): { [string]: any }
 	return {
 		kind = "outfit",
@@ -172,12 +177,19 @@ local function shared(player: Player, outfit: any): { [string]: any }
 	}
 end
 
--- Keep a shared outfit's published copy current (in the background).
-local function republish(player: Player, outfit: any)
-	if outfit and outfit.code then
-		local record = shared(player, outfit)
-		task.spawn(SharedContentService.update, outfit.code, record)
+-- Does a shared copy still match what it was copied from?
+local function sameContent(record: any, name: string, items: { any }, skin: any, scale: any): boolean
+	if type(record) ~= "table" or record.name ~= name or type(record.items) ~= "table" or #record.items ~= #items then
+		return false
 	end
+	for index, item in items do
+		local copied = record.items[index]
+		if type(copied) ~= "table" or copied.targetId ~= item.targetId or copied.kind ~= item.kind then
+			return false
+		end
+	end
+	return SkinColours.equal(SkinColours.normalise(record.skin), SkinColours.normalise(skin))
+		and BodyScale.equal(BodyScale.normalise(record.scale), BodyScale.normalise(scale))
 end
 
 local function share(player: Player, model: any, raw: any)
@@ -222,7 +234,12 @@ local function shareCreation(player: Player, model: any, raw: any)
 	local key = tostring(raw.outfitId)
 	local existing = (model.creationCodes or {})[key]
 	if existing and SharedContentService.normalise(existing) then
-		SharedContentService.update(existing, record)
+		if sameContent(SharedContentService.lookup(existing), record.name, record.items, record.skin, record.scale) then
+			return -- the copy still matches
+		end
+		model:setCreationCode(raw.outfitId, nil) -- edited on Roblox: detach the old copy
+	end
+	if raw.check then
 		return
 	end
 	local code = SharedContentService.claim(record)
@@ -266,8 +283,8 @@ local function rename(player: Player, model: any, raw: any)
 		return
 	end
 	local clean = filtered(player, name)
-	if clean and model:rename(id, clean) then
-		republish(player, model:find(id))
+	if clean then
+		model:rename(id, clean)
 	end
 end
 
@@ -276,7 +293,8 @@ local function delete(player: Player, model: any, raw: any)
 	local outfit = id and model:delete(id)
 	if outfit then
 		if outfit.code then
-			task.spawn(SharedContentService.remove, outfit.code)
+			-- Its copy lives on (codes others have keep working), unsigned.
+			task.spawn(SharedContentService.anonymise, outfit.code)
 		end
 		track(player, "outfit_delete", { outfit_id = outfit.id, item_count = #outfit.items })
 	end
@@ -445,8 +463,8 @@ function OutfitsController.new(): OutfitsController
 			kind = "outfit",
 			outfit = {
 				name = record.name,
-				by = record.ownerName,
-				ownerId = record.ownerId,
+				by = if record.anonymous then nil else record.ownerName,
+				ownerId = if record.anonymous then 0 else record.ownerId,
 				items = record.items,
 				skin = record.skin,
 				scale = record.scale,

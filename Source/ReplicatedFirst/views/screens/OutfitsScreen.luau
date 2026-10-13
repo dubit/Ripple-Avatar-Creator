@@ -618,7 +618,7 @@ local function sharedView(shared: SharedCodes.Shared): OutfitView
 		source = "Shared",
 		index = shared.code :: any,
 		name = shared.name,
-		by = "Shared by @" .. shared.by .. " · code " .. shared.code,
+		by = (if shared.by ~= "" then "Shared by @" .. shared.by .. " · " else "Shared · ") .. "code " .. shared.code,
 		items = shared.items,
 		skin = shared.skin,
 		scale = shared.scale,
@@ -932,7 +932,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			local view = sharedView(sharedFound)
 			cards.Shared = e(OutfitCard, {
 				outfit = view,
-				sub = "Shared by @" .. sharedFound.by,
+				sub = if sharedFound.by ~= "" then "Shared by @" .. sharedFound.by else "Shared outfit",
 				ring = wearingExactly(look, view.items),
 				layoutOrder = count,
 				onActivated = function()

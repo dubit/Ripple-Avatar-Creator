@@ -301,9 +301,10 @@ local function Hud()
 				Sounds.play("open")
 				setShareTarget({ kind = kind or "saved", id = id, name = name or "" })
 				if kind == "creation" then
-					-- Refresh its shared copy from Roblox (keeps any code).
+					-- If it was edited on Roblox since it was shared, its old
+					-- code is detached (Reveal then makes a new one).
 					if latestLook.current.creationCodes[tostring(id)] then
-						latestLook.current.shareCreation(id, name or "")
+						latestLook.current.shareCreation(id, name or "", true)
 					end
 				end
 			end,

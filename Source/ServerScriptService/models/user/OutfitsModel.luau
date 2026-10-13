@@ -12,6 +12,10 @@
 	`creationCodes` maps the player's Roblox-saved outfits (Creations) that
 	they've shared to their codes; those outfits aren't saved here.
 
+	A share code opens a frozen copy (SharedContentService), so editing an
+	outfit (rename, save over) detaches its code: the code keeps opening the
+	old copy, and sharing again makes a new one.
+
 	One record for all of a player's outfits: at AvatarConfig.outfits limits
 	(50 outfits × 40 items, ~80 bytes an item) it stays a few hundred KB at
 	worst, far under the DataStore's per-key cap.
@@ -42,7 +46,7 @@ export type Outfit = {
 	items: { OutfitItem },
 	skin: any?, -- skin colours worn with it, by body part (SkinColours.normalise)
 	scale: any?, -- body scale worn with it (BodyScale.normalise)
-	code: string?, -- its share code ("7KQ2XM"), once shared
+	code: string?, -- its share code ("7KQ2XM") while unedited since sharing
 }
 
 export type OutfitsModel = typeof(setmetatable({} :: {
@@ -126,6 +130,7 @@ function OutfitsModel:overwrite(id: number, items: { OutfitItem }, skin: any?, s
 	outfit.items = keep(items)
 	outfit.skin = SkinColours.normalise(skin)
 	outfit.scale = BodyScale.normalise(scale)
+	outfit.code = nil -- edited: the shared copy no longer matches
 	self:syncState()
 	return outfit
 end
@@ -147,13 +152,13 @@ function OutfitsModel:toggleFollow(userId: number): boolean
 end
 
 -- A Roblox-saved outfit's share code (they aren't in `outfits`).
-function OutfitsModel:setCreationCode(robloxOutfitId: number, code: string): ()
+function OutfitsModel:setCreationCode(robloxOutfitId: number, code: string?): ()
 	self.creationCodes = self.creationCodes or {}
 	self.creationCodes[tostring(robloxOutfitId)] = code
 	self:syncState()
 end
 
-function OutfitsModel:setCode(id: number, code: string): ()
+function OutfitsModel:setCode(id: number, code: string?): ()
 	local outfit = self:find(id)
 	if outfit then
 		outfit.code = code
@@ -167,6 +172,7 @@ function OutfitsModel:rename(id: number, name: string): boolean
 		return false
 	end
 	outfit.name = name
+	outfit.code = nil -- edited: the shared copy no longer matches
 	self:syncState()
 	return true
 end

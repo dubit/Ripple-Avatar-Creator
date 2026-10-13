@@ -176,7 +176,7 @@ local function Card(props: { outfit: Outfit, t: any, onReveal: (id: number) -> (
 					Size = UDim2.new(1, -(qr + skin.px(16)), 0, skin.px(90)),
 					BackgroundTransparency = 1,
 					Text = if revealed and code
-						then "Scan the QR with a phone to open this outfit in Ripple, or type the code into the Outfits search on any server. Select the code to copy it. It shows the outfit as it is now."
+						then "Scan the QR with a phone to open this outfit in Ripple, or type the code into the Outfits search on any server. Select the code to copy it. It's a copy of the outfit as it is now: if you edit the outfit, share it again for a new code."
 						else "Reveal a code and QR anyone can use to open this outfit.",
 					TextColor3 = Tokens.color.white,
 					TextTransparency = Tokens.alpha.textSoft,
