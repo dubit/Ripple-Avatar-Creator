@@ -18,6 +18,7 @@
 	             extent sized from measured width (no AutomaticCanvasSize, which
 	             mis-sizes under the canvas UIScale)
 	  Heading    section title with optional "See all"-style trailing element
+	  CardRow    a carousel: one row of cells that scrolls sideways
 
 	Real catalogue items show their thumbnail over the tint; mock items show
 	their sub-category caption instead.
@@ -641,6 +642,56 @@ function Parts.CardGrid(props: CardGridProps)
 		Grid = e("UIGridLayout", {
 			CellSize = UDim2.fromOffset(cellWidth, cellHeight),
 			CellPadding = UDim2.fromOffset(gap, gap),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		Cells = e(React.Fragment, nil, props.children),
+	})
+end
+
+export type CardRowProps = {
+	cardWidth: number, -- design px
+	extraHeight: number?, -- design px below each square cell (labels; default 40)
+	gap: number?, -- design px
+	count: number,
+	layoutOrder: number?,
+	children: any, -- cells, keyed, with LayoutOrder
+}
+
+-- The row's height in pixels for these props (to lay out what's around it).
+function Parts.cardRowHeight(skin: any, cardWidth: number, extraHeight: number?): number
+	return skin.px(cardWidth) + skin.px(extraHeight or 40) + skin.px(3) * 2 + skin.px(12)
+end
+
+-- A carousel: one row of fixed-width cells that scrolls sideways (drag on
+-- touch, or the scroll bar under it).
+function Parts.CardRow(props: CardRowProps)
+	local skin = useSkin()
+	local width = skin.px(props.cardWidth)
+	local height = width + skin.px(props.extraHeight or 40)
+	local gap = skin.px(props.gap or 12)
+	local inset = skin.px(3) -- room for strokes and glows, as in CardGrid
+	local count = props.count
+	return e("ScrollingFrame", {
+		Name = "CardRow",
+		Size = UDim2.new(1, 0, 0, Parts.cardRowHeight(skin, props.cardWidth, props.extraHeight)),
+		LayoutOrder = props.layoutOrder or 0,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.fromOffset(count * width + math.max(0, count - 1) * gap + inset * 2, 0),
+		ScrollingDirection = Enum.ScrollingDirection.X,
+		ScrollBarThickness = skin.px(6),
+		ScrollBarImageColor3 = Tokens.color.accent,
+		HorizontalScrollBarInset = Enum.ScrollBarInset.Always,
+	}, {
+		Inset = e("UIPadding", {
+			PaddingTop = UDim.new(0, inset),
+			PaddingLeft = UDim.new(0, inset),
+			PaddingRight = UDim.new(0, inset),
+		}),
+		Grid = e("UIGridLayout", {
+			CellSize = UDim2.fromOffset(width, height),
+			CellPadding = UDim2.fromOffset(gap, gap),
+			FillDirection = Enum.FillDirection.Horizontal,
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
 		Cells = e(React.Fragment, nil, props.children),

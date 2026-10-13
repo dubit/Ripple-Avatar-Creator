@@ -173,9 +173,9 @@ end
 local function Hud()
 	local nav = useNavigation()
 	local rawLook = usePlaceholderLook()
-	-- What the share dialog is open for, if anything: a saved outfit, or one
-	-- saved on Roblox (a creation).
-	local shareTarget, setShareTarget = React.useState(nil :: { kind: string, id: number, name: string }?)
+	-- What the share dialog is open for, if anything: a saved outfit, one
+	-- saved on Roblox (a creation), or a store (id = its code).
+	local shareTarget, setShareTarget = React.useState(nil :: { kind: string, id: any, name: string }?)
 	-- The latest purchase we sent (its request id), to sound its outcome,
 	-- and the button that sent it (spinning until the outcome arrives).
 	local buyRequest, setBuyRequest = React.useState(nil :: number?)
@@ -228,7 +228,8 @@ local function Hud()
 	end)
 
 	-- Joined through a share link (DeepLinkService): open what it shares,
-	-- under Outfits › Community. Kinds we don't show yet are skipped.
+	-- an outfit under Outfits › Community, a store under Stores. Kinds we
+	-- don't show yet are skipped.
 	React.useEffect(function()
 		local thread = task.spawn(function()
 			local ok, link = pcall(function()
@@ -242,6 +243,9 @@ local function Hud()
 				SessionStore["outfits.query"] = ""
 				nav.openRoot("Outfits")
 				nav.push({ kind = "outfit", id = { source = "Shared", index = link.code }, label = "Shared outfit" })
+			elseif link.kind == "store" then
+				nav.openRoot("Stores")
+				nav.push({ kind = "store", id = link.code, label = "Store" })
 			end
 		end)
 		return function()
@@ -278,7 +282,7 @@ local function Hud()
 
 	local actions = React.useMemo(function()
 		return {
-			buy = function(itemIds: { number }, key: string?)
+			buy = function(itemIds: { number }, key: string?, store: string?)
 				local unowned = {}
 				for _, id in itemIds do
 					local item = PlaceholderData.item(id)
@@ -286,7 +290,7 @@ local function Hud()
 						table.insert(unowned, id)
 					end
 				end
-				local request = if #unowned > 0 then latestLook.current.buy(unowned) else nil
+				local request = if #unowned > 0 then latestLook.current.buy(unowned, store) else nil
 				if request then
 					setBuyRequest(request)
 					setBuyingKey(key or (if #itemIds == 1 then "item:" .. itemIds[1] else "items"))
@@ -297,9 +301,12 @@ local function Hud()
 			buying = function(key: string): boolean
 				return buyingKey == key
 			end,
-			share = function(id: number, kind: string?, name: string?)
+			share = function(id: any, kind: string?, name: string?)
 				Sounds.play("open")
 				setShareTarget({ kind = kind or "saved", id = id, name = name or "" })
+				if kind == "store" then
+					return -- a store always has its code
+				end
 				-- An outfit with a code shows it at once, so make sure the code
 				-- is listed on Community (one shared before codes were listed).
 				if kind == "creation" then
@@ -349,6 +356,8 @@ local function Hud()
 					end
 					if target.kind == "creation" then
 						return { id = target.id, name = target.name, code = rawLook.creationCodes[tostring(target.id)] }
+					elseif target.kind == "store" then
+						return { id = 0, name = target.name, code = target.id, kind = "store" }
 					end
 					for _, outfit in rawLook.outfits do
 						if outfit.id == target.id then

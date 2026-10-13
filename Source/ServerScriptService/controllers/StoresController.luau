@@ -33,6 +33,8 @@
 		Report(code)                       once per player; enough hide it
 		Open(code)                         the player opened its page: a
 		                                   visit (once a day, not the owner's)
+		Share(code)                        the player opened its share dialog
+		                                   (analytics only)
 		Moderate(code, op)                 admins only, op "hide" |
 		                                   "restore" | "takedown"
 
@@ -46,7 +48,7 @@
 	is a code ("7KQ2XM") or a published store's exact name.
 
 	Analytics: store_create, store_publish, store_unpublish, store_delete,
-	store_open, store_favourite, store_report.
+	store_open, store_favourite, store_share, store_report.
 ]]
 
 local Players = game:GetService("Players")
@@ -391,6 +393,16 @@ local function open(player: Player, model: any, raw: any): Result
 	return done(code)
 end
 
+local function share(player: Player, _model: any, raw: any): Result
+	local code = codeOf(args(raw).code)
+	local record = code and SharedContentService.lookup(code)
+	if not code or not StoresService.isListed(record) then
+		return fail("notfound")
+	end
+	track(player, "store_share", { code = code, own = record.ownerId == player.UserId })
+	return done(code)
+end
+
 local function moderate(player: Player, _model: any, raw: any, ...: any): Result
 	if not CommunityService.isAdmin(player) then
 		return fail("bad")
@@ -436,6 +448,7 @@ local ACTIONS: { [string]: (Player, any, any, ...any) -> Result } = {
 	[Network.Actions.Stores.Favourite] = favourite,
 	[Network.Actions.Stores.Report] = report,
 	[Network.Actions.Stores.Open] = open,
+	[Network.Actions.Stores.Share] = share,
 	[Network.Actions.Stores.Moderate] = moderate,
 }
 

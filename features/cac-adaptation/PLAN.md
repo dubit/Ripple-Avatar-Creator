@@ -470,7 +470,7 @@
   - [PARTIAL] 17.7 Slash-command playtest. Checked: create, add items (duplicates refused), Publish refused under 4 items, duplicate and taken names refused, 3-store cap, rename frees the old name, delete, outfits added once, own visit not counted, own favourite counted, hide/restore off and back on rankings, flush of visits/favourites/sales (an item not in the store ignored), page sections. Not yet: a second player's visit, 3 real reports, Buy through a store, and the remotes from a real client (Task 18's UI).
 
 ### Task 18: Stores UI, home, store page, collections, favourites, store share
-- **Status:** [TODO]
+- **Status:** [PARTIAL]
 - **Why here:** The browsing half of layer 8, once the backend returns real data. It reuses the item card, carousel and share dialog from earlier tasks.
 - **Depends on:** 3, 8, 15, 17
 - **Refs:** Scope > Stores (Home, Store page); Scope > Share (store); Success criteria (fewer taps, nothing hidden)
@@ -483,13 +483,13 @@
 - **Associated UI:** 5h Stores home; 5c Store page; 5e Share (store variant); item cards from 5b.
 - **Replication:** **Cosmetic**, client-rendered UI; featured item viewer previews are client-only rigs.
 - **Sub-tasks:**
-  - [TODO] 18.1 Stores home (`/html-to-react-luau`, frame 5h): category tabs toggle, carousels with swipe/scroll (reuse `useDrag` where a drag carousel is wanted), See all grid, search/code entry, empty states.
-  - [TODO] 18.2 Store page (`/html-to-react-luau`, frame 5c): header, featured viewer with arrows, carousels, collection tiles, collection grid.
-  - [TODO] 18.3 Favourite store toggle (extends the Favourites controller/model); Favourites carousel.
-  - [TODO] 18.4 Store share (frame 5e store variant) using the Task 14 dialog.
-  - [TODO] 18.5 Item cards inside stores reuse the Task 8 card menu (Try, basket, buy, View).
-  - [TODO] 18.6 Analytics: `store_open`, `store_favourite`, `store_share`.
-  - [TODO] 18.7 Playtest: browse by every route, tap counts to reach an item vs CAC, phone layouts.
+  - [DONE] 18.1 Stores home (frame 5h): tabs Popular · Top rated · Favourites · My stores (Sponsored paused, 17.1) that toggle a grid, a carousel per tab with See all (`Parts.CardRow`: a sideways ScrollingFrame, not `useDrag`), search by loaded names plus a code or exact name from any server, empty states. Store cards are a mosaic of the store's first items (no store logos yet).
+  - [DONE] 18.2 Store page (frame 5c): header (favourites and visits instead of % liked), featured viewer with arrows (Try on, Basket; picture or name opens the item), Bestsellers and New arrivals carousels with See all, an Outfits row (the store's Community outfits), collection tiles, and the See all / collection grid (`storeSection`). Report (twice) on others' stores.
+  - [DONE] 18.3 Favourite store toggle (StoresController / StoresModel rather than FavouritesModel); the count moves at once; Favourites carousel and tab.
+  - [DONE] 18.4 Store share: the share dialog's store variant, shown at once (a store always has its code; no `STR-` prefix, per 14.2). A QR join opens the store (Hud, DeepLinkService).
+  - [DONE] 18.5 Item cards inside stores reuse the card menu; Buy from a store carries its code (Bestsellers, purchase analytics).
+  - [DONE] 18.6 Analytics: `store_open`, `store_favourite`, `store_share` (a Share action, analytics only).
+  - [PARTIAL] 18.7 Playtest. Checked on desktop in Studio: home carousels, tab toggle to grid and back, search by name, code and a miss, store page sections, share dialog, a collection grid with breadcrumbs, no console errors. Not yet: the user's playtest, phone / iPad layouts, tap counts vs CAC.
 
 ### Task 19: My stores and Create store
 - **Status:** [TODO]

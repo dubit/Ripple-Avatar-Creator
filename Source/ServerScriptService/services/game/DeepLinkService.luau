@@ -8,9 +8,10 @@
 
 	On join the code is read and kept for the player; the client takes it
 	once the HUD is up over the "TakeJoinLink" remote function (Bolt) ->
-	{ code, kind } or nil, and opens it (an outfit: its page under Outfits).
+	{ code, kind } or nil, and opens it (an outfit: its page under Outfits;
+	a store: its page under Stores).
 	The kind comes from the code's record, so the client can skip kinds it
-	doesn't know yet (stores, users). A link opened while already playing
+	doesn't know yet. A link opened while already playing
 	starts a fresh join (Roblox has no hand-off into a running session), so
 	this only ever runs at join; in-game, codes go in the Outfits search.
 

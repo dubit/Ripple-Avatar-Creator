@@ -33,10 +33,11 @@
 	visit once a day per player, never the owner's).
 
 	A store page (view) puts the store's items into sections, from
-	StoresConfig: Featured (the first items), New arrivals (the latest
-	added), Bestsellers (most bought through the store, then most
+	StoresConfig: Featured (the first items), New arrivals (latest added
+	first), Bestsellers (most bought through the store, then most
 	favourited on Roblox) and rule-based Collections (price, category,
-	types). Item details come from Roblox (AvatarEditorService, batched and
+	types). New arrivals and Bestsellers order every item: the page's
+	carousels show the first StoresConfig.sectionSize, See all the rest. Item details come from Roblox (AvatarEditorService, batched and
 	cached for DETAIL_SECONDS); pages are cached per server for
 	VIEW_SECONDS, and dropped when this server edits the store.
 
@@ -669,7 +670,6 @@ local function build(code: string, record: any): Page
 	local items = itemsOf(record)
 	detailsFor(items)
 	local count = #items
-	local size = StoresConfig.sectionSize
 
 	local featured = {}
 	for index = 1, math.min(count, StoresConfig.featured) do
@@ -677,7 +677,7 @@ local function build(code: string, record: any): Page
 	end
 
 	local newArrivals = {}
-	for index = count, math.max(1, count - size + 1), -1 do
+	for index = count, 1, -1 do
 		table.insert(newArrivals, index)
 	end
 
@@ -699,7 +699,7 @@ local function build(code: string, record: any): Page
 		end
 		return a < b
 	end)
-	local bestsellers = table.move(order, 1, math.min(count, size), 1, {})
+	local bestsellers = order
 
 	local collections: { Section } = {}
 	for _, rule in StoresConfig.collections do

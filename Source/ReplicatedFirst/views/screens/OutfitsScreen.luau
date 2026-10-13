@@ -1875,4 +1875,10 @@ end
 return {
 	Root = OutfitsScreen,
 	Outfit = OutfitScreen,
+	-- Shared with the store page (a store's outfits, its card art).
+	OutfitCard = OutfitCard,
+	sharedView = sharedView,
+	communitySub = communitySub,
+	mosaic = mosaic,
+	wearingExactly = wearingExactly,
 }

@@ -21,11 +21,15 @@
 	says so. Once shared it stays (deleting the outfit drops your name
 	from it).
 
+	A store (kind "store") always has its code, so it shows at once: "Share
+	store", and the code works in the Stores search.
+
 	Tapping outside, Close or Back (handled by Hud, which owns the dialog)
 	shuts it. It rises in and drops out.
 
 	Props:
-		outfit: { id, name, code? } | nil   nil = closed
+		outfit: { id, name, code?, kind? } | nil   nil = closed; kind "store"
+		                                    for a store
 		onReveal: (id) -> ()                ask for a code (and list it)
 		onClose: () -> ()
 ]]
@@ -58,7 +62,7 @@ type Callbacks = {
 	onClose: () -> (),
 }
 
-type Outfit = { id: number, name: string, code: string? }
+type Outfit = { id: number, name: string, code: string?, kind: string? }
 
 local function Card(props: Callbacks & { outfit: Outfit, t: any })
 	local skin = useSkin()
@@ -67,6 +71,7 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 	local code = if SharedCodes.isCode(props.outfit.code) then props.outfit.code else nil
 	local revealed = pressed or code ~= nil
 	local waiting = revealed and code == nil
+	local store = props.outfit.kind == "store"
 	local qr = math.floor(skin.px(150))
 
 	return e("TextButton", {
@@ -112,7 +117,7 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 					PaddingLeft = UDim.new(0, skin.px(20)),
 					PaddingRight = UDim.new(0, skin.px(20)),
 				}),
-				Title = e(ShadowText, { text = "Share outfit", style = { size = 20, weight = 900 } }),
+				Title = e(ShadowText, { text = if store then "Share store" else "Share outfit", style = { size = 20, weight = 900 } }),
 				Name = e("Frame", {
 					Position = UDim2.fromOffset(0, skin.px(30)),
 					Size = UDim2.new(1, 0, 0, skin.px(18)),
@@ -185,7 +190,7 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 						then e(Spinner, { size = 26, anchorPoint = Vector2.new(0.5, 0.5), position = UDim2.fromScale(0.5, 0.5) })
 						else nil,
 				}),
-				Published = if revealed and code
+				Published = if revealed and code and not store
 					then e("Frame", {
 						Position = UDim2.fromOffset(qr + skin.px(16), skin.px(124)),
 						Size = UDim2.new(1, -(qr + skin.px(16)), 0, skin.px(20)),
@@ -211,10 +216,12 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 					})
 					else nil,
 				Hint = e("TextLabel", {
-					Position = UDim2.fromOffset(qr + skin.px(16), skin.px(if revealed and code then 150 else 122)),
+					Position = UDim2.fromOffset(qr + skin.px(16), skin.px(if revealed and code and not store then 150 else 122)),
 					Size = UDim2.new(1, -(qr + skin.px(16)), 0, skin.px(90)),
 					BackgroundTransparency = 1,
-					Text = if revealed and code
+					Text = if store
+						then "Scan the QR with a phone to open this store in Ripple, or type the code into the Stores search on any server. Select the code to copy it. The code stays with the store, even when it changes."
+						elseif revealed and code
 						then "Scan the QR with a phone to open this outfit in Ripple, or type the code into the Outfits search on any server. Select the code to copy it. Everyone can find it on Community, as a copy of the outfit as it is now: if you edit the outfit, share it again for a new code."
 						else "Reveal a code and QR anyone can use to open this outfit. It goes on Community too, for everyone to find.",
 					TextColor3 = Tokens.color.white,
