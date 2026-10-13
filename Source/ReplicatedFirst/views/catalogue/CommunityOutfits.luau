@@ -11,13 +11,20 @@
 
 	Each card is also handed to SharedCodes, so its page opens at once.
 
+	Wears show at once: wearing someone else's Community outfit is counted
+	here (noteWear) over the server's count, which takes over once it has
+	caught up (counts reach it within a minute: CommunityService).
+
 	API:
 		SORTS                       the chips, in order: { id, label }
 		load(sort, key?)            make sure page 1 is loaded (and fresh)
 		more(sort)                  load the next page, if there is one
 		get(sort) -> List           { cards, more, loading, error? }
-		reset()                     forget every list (after sharing,
-		                            removing or reporting)
+		reset()                     forget every list (after sharing or
+		                            reporting)
+		noteWear(code, seen)        you wore it; `seen` is the count shown
+		wears(code, server) -> number   the count to show: the server's, or
+		                            yours added to what you'd seen
 		changed                     signal: a list changed
 ]]
 
@@ -64,6 +71,7 @@ local changedEvent = Instance.new("BindableEvent")
 CommunityOutfits.changed = changedEvent.Event
 
 local lists: { [string]: State } = {}
+local worn: { [string]: { seen: number, added: number } } = {}
 
 local function toCard(raw: any): Card?
 	if type(raw) ~= "table" or type(raw.code) ~= "string" then
@@ -163,6 +171,24 @@ end
 
 function CommunityOutfits.get(sort: string): List
 	return lists[sort] or { cards = {}, more = false, loading = true, error = nil }
+end
+
+function CommunityOutfits.noteWear(code: string, seen: number)
+	local entry = worn[code]
+	if entry and seen <= entry.seen + entry.added then
+		entry.added += 1
+	else
+		worn[code] = { seen = seen, added = 1 }
+	end
+	changedEvent:Fire()
+end
+
+function CommunityOutfits.wears(code: string, server: number): number
+	local entry = worn[code]
+	if not entry then
+		return server
+	end
+	return math.max(server, entry.seen + entry.added)
 end
 
 function CommunityOutfits.reset()

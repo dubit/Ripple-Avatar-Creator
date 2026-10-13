@@ -409,7 +409,7 @@
     - **Publishing:** anyone can publish, with no cap. The best outfits surface through sort chips, modelled on CAC's dropdown: Popular · Trending · Newest · Favourited · Recent · Mine. Most Worn is folded into Popular.
     - **Frozen at publish (applies to shares as well, which reworks Task 14):** sharing or publishing makes an evergreen copy. Editing the original (rename, save over) detaches its code, so the old code keeps opening the old copy, and sharing again makes a new one. Creations keep their code only while the copy matches Roblox.
     - **Deleting an outfit:** its copies stay live, and stay published if they were, but the creator credit is hidden (anonymous).
-    - **A code is its Community entry (changed after stage C):** revealing a share code lists the outfit on Community, so there's no separate Publish. The owner's only way to take it off is Remove (on the copy's page, under Mine), which takes the copy down: the code stops working and the outfit loses it (sharing again makes a new one). So a code exists only while it's on Community.
+    - **A code is its Community entry (changed after stage C):** revealing a share code lists the outfit on Community, so there's no separate Publish. Once published it stays, and it belongs to Community: there's no owner Remove (it was tried, then dropped). Deleting the outfit from your Wardrobe makes the copy anonymous; only admins take entries down.
     - **Moderation:** names are filtered, players can report, and an entry is auto-hidden at 3 distinct reports. Admins can take an entry down with `/communitycontroller Moderate <code> hide|restore|takedown` (rank 200+ in the group, or Studio/creator).
   - [DONE] 16.2 Extend `SharedContentService` with community publish/list/unpublish and paging; add a Community browse model (UserSession) delivering pages to the requester. `/create-model`.
   - [DONE] 16.3 Controller actions (Remove, Favourite, BrowseCommunity, Report; listing happens in Share) in `Outfits`/`Community` controller. `/create-controller`.
@@ -417,16 +417,15 @@
     - The Community tab has chips under the tabs and real cards (`catalogue/CommunityOutfits`, pages of 24 loaded on scroll). Search filters the loaded cards by name, or finds a share code. The placeholder Community outfits are gone.
     - No Publish button: revealing a code in the Share dialog lists the outfit (see 16.1), and a "Published to Community" line says so. An outfit with a code opens the dialog already revealed, with its QR, until an edit detaches the code; the outfit page shows "code XXXXXX" too. Opening the dialog lists an older code that wasn't yet.
     - You can star your own outfits, as on social media (changed after stage C).
-    - A shared outfit's page, when listed, shows wears and favourites, a star (your own too) and Report (two taps). Your own copy shows Remove from Community (two taps; the code stops working). Opening the page adds it to Recent.
+    - A shared outfit's page, when listed, shows wears and favourites, a star (your own too) and Report (two taps). Opening the page adds it to Recent. Your own wear (on someone else's outfit) and your own star show at once, until the server's counts catch up.
     - New icons: `flag`, `cloud_off`.
-  - [PARTIAL] 16.5 Analytics: `community_publish`, `community_open`. In Studio these were queued and sent to GA4: outfit_share, community_publish (on reveal), community_open, community_wear, outfit_wear (source "community"), community_report and community_remove. They aren't confirmed in BigQuery yet: the BigQuery connection set up here (`bq_wgc`) is another game's property, so checking needs Ripple's GA4 export connected.
+  - [PARTIAL] 16.5 Analytics: `community_publish`, `community_open`. In Studio these were queued and sent to GA4: outfit_share, community_publish (on reveal), community_open, community_wear, outfit_wear (source "community"), and community_report. They aren't confirmed in BigQuery yet: the BigQuery connection set up here (`bq_wgc`) is another game's property, so checking needs Ripple's GA4 export connected.
   - [PARTIAL] 16.6 Playtest across servers, moderation edge cases (blocked names), unpublish. Done in Studio (one player; test entries owned by user id 1, cleaned up afterwards):
     - Wearing someone else's outfit counts a wear. The minute's flush wrote wears 1, Popular 1 and Trending 1.
     - With 2 reports seeded, the UI's report was the third and hid the entry ("reports"); it left the orderings and the grid.
     - The chat command `/communitycontroller Moderate <code> restore` relisted it, and `takedown` deleted it.
-    - Remove from Community deletes the copy and detaches the code.
     - Name filtering fails safe: a failed filter refuses the rename, and a Creation's name falls back to "Outfit".
-    - Still to do on the live game: two servers, real report thresholds, filtered names (Studio doesn't filter) and code removal seen from another server.
+    - Still to do on the live game: two servers, real report thresholds, filtered names (Studio doesn't filter) and admin takedown seen from another server.
 
 ### Task 17: Stores data and backend
 - **Status:** [TODO]

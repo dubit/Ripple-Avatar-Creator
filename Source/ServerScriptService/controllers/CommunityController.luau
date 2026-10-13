@@ -3,17 +3,14 @@
 --[[
 	CommunityController
 
-	Community outfits (CommunityService): removing, starring, reporting,
-	browsing. An entry is a frozen shared copy: sharing an outfit (its
+	Community outfits (CommunityService): starring, reporting, browsing. An entry is a frozen shared copy: sharing an outfit (its
 	code, OutfitsController Share / ShareCreation) is what lists it, so a
-	code and a Community entry are the same thing. Requests closer
-	together than COOLDOWN are dropped.
+	code and a Community entry are the same thing. Once shared it stays
+	(only admins take entries down); deleting the outfit drops the
+	owner's name from it. Requests closer together than COOLDOWN are
+	dropped.
 
 	Actions:
-		Remove({ code })                take your own copy down: off
-		                                Community, and the code stops working
-		                                (your outfit loses it; share again
-		                                for a new one)
 		Favourite({ code })             star / unstar a Community outfit
 		                                (your own too)
 		Report({ code })                report it (once per player; enough
@@ -30,7 +27,7 @@
 	(everyone's) or "favourited" | "recent" | "mine" (the player's own
 	lists); page from 1. Cards: CommunityService.Card.
 
-	Analytics: community_remove, community_open, community_report
+	Analytics: community_open, community_report
 	(community_publish and community_wear are OutfitsController's: on
 	sharing, and on wearing a listed code).
 ]]
@@ -94,34 +91,6 @@ local function codeOf(raw: any): string?
 	return SharedContentService.normalise(if type(text) == "number" then tostring(text) else text)
 end
 
--- Take your own copy down: off Community and its code stops working.
--- Your outfit loses the code, so sharing it again makes a new one.
-local function remove(player: Player, model: any, raw: any)
-	local code = codeOf(raw)
-	if not code then
-		return
-	end
-	local record = SharedContentService.lookup(code)
-	if type(record) == "table" and record.ownerId ~= player.UserId then
-		return
-	end
-	if record then
-		CommunityService.takedown(code)
-		track(player, "community_remove", { code = code })
-	end
-	model:removePublished(code)
-	for _, outfit in model.outfits or {} do
-		if outfit.code == code then
-			model:setCode(outfit.id, nil)
-		end
-	end
-	for outfitId, creationCode in model.creationCodes or {} do
-		if creationCode == code then
-			model:setCreationCode(tonumber(outfitId), nil)
-		end
-	end
-end
-
 local function favourite(player: Player, model: any, raw: any)
 	local code = codeOf(raw)
 	if not code then
@@ -172,7 +141,6 @@ local function moderate(player: Player, _model: any, raw: any, op: any)
 end
 
 local ACTIONS = {
-	[Network.Actions.Community.Remove] = remove,
 	[Network.Actions.Community.Favourite] = favourite,
 	[Network.Actions.Community.Report] = report,
 	[Network.Actions.Community.Open] = open,

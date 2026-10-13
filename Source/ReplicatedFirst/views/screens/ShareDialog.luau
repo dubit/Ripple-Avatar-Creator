@@ -18,7 +18,8 @@
 	A code is also the outfit's Community entry: revealing lists the copy
 	there for everyone to find (OutfitsController Share; Hud lists an older
 	code that isn't yet when the dialog opens), and a line under the code
-	says so. Its owner removes it from its page.
+	says so. Once shared it stays (deleting the outfit drops your name
+	from it).
 
 	Tapping outside, Close or Back (handled by Hud, which owns the dialog)
 	shuts it. It rises in and drops out.

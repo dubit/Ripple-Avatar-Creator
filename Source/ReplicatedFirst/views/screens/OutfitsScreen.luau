@@ -41,10 +41,11 @@
 
 	OutfitsScreen.Root props: nav, look
 	A shared outfit's page (a code, or a Community card) adds, when it's on
-	Community (sharing lists it): its wears and favourites, a star (not on
-	your own too), and Report (twice; once each; not your own). Your own copy gets Remove
-	from Community (twice), which also stops its code working. Opening a
-	Community outfit's page puts it in your Recent.
+	Community (sharing lists it): its wears and favourites (your own wear
+	and star show at once), a star (your own too), and Report (twice;
+	once each; not your own). Once shared it stays: deleting the outfit
+	drops your name from it. Opening a Community outfit's page puts it in
+	your Recent.
 
 	OutfitsScreen.Outfit props: nav, look, source, index (a saved outfit's
 	id for Mine, a Roblox outfit's id, a user id, or a share code)
@@ -630,7 +631,7 @@ end
 
 -- A Community card's line under its name.
 local function communitySub(card: CommunityOutfits.Card): string
-	local wears = plural(card.wears, "wear")
+	local wears = plural(CommunityOutfits.wears(card.code, card.wears), "wear")
 	if card.mine then
 		return "Yours · " .. wears
 	end
@@ -1317,6 +1318,17 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 		starredAtLoad.current = { code = sharedCode, starred = starred }
 	end
 	local _reportedVersion, setReportedVersion = React.useState(0)
+	-- Your wear shows at once (CommunityOutfits.noteWear).
+	React.useEffect(function()
+		local connection = CommunityOutfits.changed:Connect(function()
+			setReportedVersion(function(v: number)
+				return v + 1
+			end)
+		end)
+		return function()
+			connection:Disconnect()
+		end
+	end, {})
 	-- Opening a Community outfit puts it in your Recent.
 	React.useEffect(function()
 		if sharedCode and listed then
@@ -1567,7 +1579,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local outfitId = outfit.id
 	local kind = outfit.kind
 	local showStar = kind == "shared" and listed
-	local twoRows = saved or kind == "user" or (kind == "shared" and listed)
+	local twoRows = saved or kind == "user" or (kind == "shared" and listed and not mineShared)
 	-- A saved / Roblox outfit with a code shows it (Share shows its QR).
 	local byText = outfit.by .. (if outfit.code then " · code " .. outfit.code else "") .. " · " .. #items .. " items"
 	if kind == "shared" and listed and sharedOutfit then
@@ -1576,7 +1588,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 		local favourites = counts.favourites
 			+ (if atLoad and atLoad.starred ~= starred then (if starred then 1 else -1) else 0)
 		byText = (if mineShared then "Yours" elseif sharedOutfit.by ~= "" then "@" .. sharedOutfit.by else "Community")
-			.. " · " .. plural(counts.wears, "wear")
+			.. " · " .. plural(CommunityOutfits.wears(sharedOutfit.code, counts.wears), "wear")
 			.. " · " .. plural(math.max(favourites, 0), "favourite")
 	end
 	local leftWidth = skin.px(LEFT_WIDTH)
@@ -1659,6 +1671,11 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 								look.wearUserLook(outfitId)
 							elseif kind == "shared" and outfitId then
 								look.wearShared(outfitId)
+								-- Counted at once (the server counts others' wears).
+								if listed and not mineShared and sharedOutfit then
+									local counts = sharedOutfit.community or { wears = 0 }
+									CommunityOutfits.noteWear(outfitId, CommunityOutfits.wears(outfitId, counts.wears))
+								end
 							elseif kind == "saved" and outfitId then
 								look.wearOutfit(outfitId)
 							else
@@ -1703,20 +1720,8 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					})
 					else nil,
 			}),
-			-- Your own copy: Remove (off Community, and the code stops
-			-- working). Anyone else's on Community: Report (twice; once each).
-			Community = if kind ~= "shared" or not sharedCode or not listed then nil
-				elseif mineShared then e(ConfirmButton, {
-					label = "Remove from Community",
-					icon = "cloud_off",
-					armedLabel = "Tap again: its code stops working",
-					layoutOrder = 5,
-					onConfirm = function()
-						Sounds.play("back")
-						look.removeShared(sharedCode)
-						props.nav.back()
-					end,
-				})
+			-- Anyone else's on Community: Report (twice; once each).
+			Community = if kind ~= "shared" or not sharedCode or not listed or mineShared then nil
 				else e(ConfirmButton, {
 					label = if reported[sharedCode] then "Reported" else "Report",
 					icon = "flag",

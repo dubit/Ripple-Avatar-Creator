@@ -32,7 +32,7 @@
 	    through OutfitsController by outfit id (the server holds the items).
 	  · Community (Task 16): the player's lists ride on the same state
 	    (published, communityFavourites, communityRecent). Sharing an
-	    outfit lists it; removing, starring, reporting and opening go to
+	    outfit lists it; starring, reporting and opening go to
 	    CommunityController.
 
 	Mock items (the prototype's placeholder data, no thumbnail) can't be
@@ -50,7 +50,6 @@ local views = script.Parent.Parent
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
 local CatalogueClient = require(views:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
 local CommunityOutfits = require(views:WaitForChild("catalogue"):WaitForChild("CommunityOutfits"))
-local SharedCodes = require(views:WaitForChild("catalogue"):WaitForChild("SharedCodes"))
 local useBoltState = require(views:WaitForChild("hooks"):WaitForChild("useBoltState"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
@@ -117,7 +116,6 @@ export type Look = {
 	communityRecent: { string }, -- Community codes opened lately, newest first
 	isPublished: (code: string?) -> boolean,
 	isCommunityFavourite: (code: string) -> boolean,
-	removeShared: (code: string) -> (), -- take your copy down (off Community; the code stops working)
 	toggleCommunityFavourite: (code: string) -> (),
 	reportCommunity: (code: string) -> (),
 	openCommunity: (code: string) -> (), -- its page was opened (Recent)
@@ -562,11 +560,6 @@ local function usePlaceholderLook(): Look
 		end,
 		isCommunityFavourite = function(code: string): boolean
 			return table.find(outfitState.communityFavourites or {}, code) ~= nil
-		end,
-		removeShared = function(code: string)
-			Network.Intent.Community:FireServer(Network.Actions.Community.Remove, { code = code })
-			SharedCodes.forget(code)
-			task.delay(2, CommunityOutfits.reset) -- once the server has it
 		end,
 		toggleCommunityFavourite = function(code: string)
 			Network.Intent.Community:FireServer(Network.Actions.Community.Favourite, { code = code })
