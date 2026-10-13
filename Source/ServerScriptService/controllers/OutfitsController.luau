@@ -22,16 +22,27 @@
 		                           `skin`, its skin tone) on over the current look
 		Follow({ userId })         follow someone here, or unfollow (a real
 		                           Roblox user; private to the player)
-		Share({ id })              give the outfit a 6-character share code
-		                           (once; it's kept): its current state is published to
-		                           SharedContentService, and every rename / save
-		                           over republishes it; Delete revokes it
-		ShareCreation({ outfitId, name })   share one of the player's outfits
-		                           saved on Roblox (Creations): its contents
-		                           come from Roblox (items, body, skin, scale),
-		                           the name is text-filtered; the code is kept
-		                           in `creationCodes` (not a Wardrobe outfit)
-		                           and each call refreshes what it shows
+		Share({ id })              give the outfit a 6-character share code: a
+		                           frozen copy of it now (SharedContentService),
+		                           which is also its Community entry (listed
+		                           with the code; CommunityService). Asking
+		                           again for one that has a code lists it if it
+		                           isn't yet. Renaming or saving over it
+		                           detaches the code
+		                           (it keeps opening the old copy; sharing again
+		                           makes a new one). Deleting it keeps the copy
+		                           but drops the owner's name from it
+		ShareCreation({ outfitId, name, check? })   share one of the player's
+		                           outfits saved on Roblox (Creations): its
+		                           contents come from Roblox (items, body, skin,
+		                           scale), the name is text-filtered; the code
+		                           is kept in `creationCodes` (not a Wardrobe
+		                           outfit) while the copy still matches Roblox.
+		                           When it doesn't (edited on Roblox), the old
+		                           code is detached: with `check` (the dialog
+		                           opening) that's all; otherwise a new code
+		                           is made. Listed on Community like Share
+		                           (a matching copy is listed on the check too)
 		WearShared({ code })       wear a shared outfit exactly (replaces the
 		                           look, with its skin colours and scale)
 
@@ -51,13 +62,14 @@
 	cleaned up after PREVIEW_LIFETIME.
 
 	Analytics: outfit_save, outfit_wear (with partial = true for a selection),
-	outfit_delete.
+	outfit_delete, outfit_share; community_publish when a code is listed;
+	community_wear when a Community outfit is worn by someone
+	other than its creator (also counted for its ordering: CommunityService).
 ]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local TextService = game:GetService("TextService")
 local HttpService = game:GetService("HttpService")
 local Debris = game:GetService("Debris")
 
@@ -67,6 +79,7 @@ local AvatarModel = require(script.Parent.Parent.models.user.AvatarModel)
 local AvatarService = require(ServerScriptService.services.game.AvatarService)
 local RobloxAvatarLookupService = require(ServerScriptService.services.game.RobloxAvatarLookupService)
 local SharedContentService = require(ServerScriptService.services.game.SharedContentService)
+local CommunityService = require(ServerScriptService.services.game.CommunityService)
 local Network = require(ReplicatedStorage.Network)
 local Bolt = require(ReplicatedStorage.Bolt)
 local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("SkinColours"))
@@ -123,16 +136,7 @@ local function defaultName(model: any): string
 end
 
 -- Roblox text filtering for a name others may see; nil if it can't be done.
-local function filtered(player: Player, text: string): string?
-	local ok, result = pcall(function()
-		local filterResult = TextService:FilterStringAsync(text, player.UserId, Enum.TextFilterContext.PublicChat)
-		return filterResult:GetNonChatStringForBroadcastAsync()
-	end)
-	if not ok or type(result) ~= "string" then
-		return nil
-	end
-	return result
-end
+local filtered = SharedContentService.filterName
 
 local function save(player: Player, model: any, _raw: any)
 	local avatar = AvatarModel.get(tostring(player.UserId))
@@ -153,30 +157,24 @@ local function overwrite(player: Player, model: any, raw: any)
 	end
 	local outfit = model:overwrite(id, avatar.worn, avatar.skin, avatar.scale)
 	if outfit then
-		republish(player, outfit)
 		track(player, "outfit_save", { outfit_id = outfit.id, item_count = #outfit.items, replaced = true })
 	end
 end
 
--- What everyone sees of a shared outfit: its current state.
+-- What everyone sees of a shared outfit: a frozen copy of it now.
 local function shared(player: Player, outfit: any): { [string]: any }
-	return {
-		kind = "outfit",
-		ownerId = player.UserId,
-		ownerName = player.Name,
-		updated = os.time(),
-		name = outfit.name,
-		items = outfit.items,
-		skin = SkinColours.normalise(outfit.skin),
-		scale = BodyScale.normalise(outfit.scale),
-	}
+	return SharedContentService.outfitRecord(player, outfit.name, outfit.items, outfit.skin, outfit.scale)
 end
 
--- Keep a shared outfit's published copy current (in the background).
-local function republish(player: Player, outfit: any)
-	if outfit and outfit.code then
-		local record = shared(player, outfit)
-		task.spawn(SharedContentService.update, outfit.code, record)
+-- A code is its outfit on Community: sharing lists the copy (once; one
+-- shared before Community, or hidden, is left as it is).
+local function listShared(player: Player, model: any, code: string, source: string)
+	if table.find(model.published or {}, code) then
+		return
+	end
+	if CommunityService.publish(code, player.UserId) then
+		model:addPublished(code)
+		track(player, "community_publish", { code = code, source = source })
 	end
 end
 
@@ -188,7 +186,8 @@ local function share(player: Player, model: any, raw: any)
 	end
 	if outfit.code then
 		if SharedContentService.normalise(outfit.code) then
-			return -- it has one already
+			listShared(player, model, outfit.code, "saved") -- it has one already
+			return
 		end
 		-- An old-format code ("OUT-…"): replace it with a short one.
 		task.spawn(SharedContentService.remove, outfit.code)
@@ -197,6 +196,7 @@ local function share(player: Player, model: any, raw: any)
 	if code and model:find(id) then
 		model:setCode(id, code)
 		track(player, "outfit_share", { outfit_id = id, item_count = #outfit.items })
+		listShared(player, model, code, "saved")
 	end
 end
 
@@ -209,26 +209,30 @@ local function shareCreation(player: Player, model: any, raw: any)
 		return
 	end
 	local name = if type(raw.name) == "string" and string.match(raw.name, "%S") then string.sub(raw.name, 1, 60) else "Outfit"
-	local record = {
-		kind = "outfit",
-		ownerId = player.UserId,
-		ownerName = player.Name,
-		updated = os.time(),
-		name = filtered(player, name) or "Outfit",
-		items = items,
-		skin = AvatarService.skinOf(description),
-		scale = AvatarService.scaleOf(description),
-	}
+	local record = SharedContentService.outfitRecord(
+		player,
+		filtered(player, name) or "Outfit",
+		items,
+		AvatarService.skinOf(description),
+		AvatarService.scaleOf(description)
+	)
 	local key = tostring(raw.outfitId)
 	local existing = (model.creationCodes or {})[key]
 	if existing and SharedContentService.normalise(existing) then
-		SharedContentService.update(existing, record)
+		if SharedContentService.sameOutfit(SharedContentService.lookup(existing), record.name, record.items, record.skin, record.scale) then
+			listShared(player, model, existing, "roblox")
+			return -- the copy still matches (listed, if it wasn't)
+		end
+		model:setCreationCode(raw.outfitId, nil) -- edited on Roblox: detach the old copy
+	end
+	if raw.check then
 		return
 	end
 	local code = SharedContentService.claim(record)
 	if code then
 		model:setCreationCode(raw.outfitId, code)
 		track(player, "outfit_share", { item_count = #items, source = "roblox" })
+		listShared(player, model, code, "roblox")
 	end
 end
 
@@ -239,12 +243,17 @@ local function wearShared(player: Player, _model: any, raw: any)
 		return
 	end
 	local record = SharedContentService.lookup(code)
-	if type(record) ~= "table" or record.kind ~= "outfit" or type(record.items) ~= "table" then
+	if type(record) ~= "table" or record.kind ~= "outfit" or type(record.items) ~= "table" or record.hidden then
 		return
 	end
 	avatar:setLook(table.clone(record.items), SkinColours.normalise(record.skin), BodyScale.normalise(record.scale))
 	AvatarService.apply(player)
-	track(player, "outfit_wear", { item_count = #record.items, partial = false, source = "share_code" })
+	local community = CommunityService.isListed(record)
+	track(player, "outfit_wear", { item_count = #record.items, partial = false, source = if community then "community" else "share_code" })
+	if community and record.ownerId ~= player.UserId then
+		CommunityService.countWear(code)
+		track(player, "community_wear", { code = code })
+	end
 end
 
 local function rename(player: Player, model: any, raw: any)
@@ -266,8 +275,8 @@ local function rename(player: Player, model: any, raw: any)
 		return
 	end
 	local clean = filtered(player, name)
-	if clean and model:rename(id, clean) then
-		republish(player, model:find(id))
+	if clean then
+		model:rename(id, clean)
 	end
 end
 
@@ -276,7 +285,8 @@ local function delete(player: Player, model: any, raw: any)
 	local outfit = id and model:delete(id)
 	if outfit then
 		if outfit.code then
-			task.spawn(SharedContentService.remove, outfit.code)
+			-- Its copy lives on (codes others have keep working), unsigned.
+			task.spawn(SharedContentService.anonymise, outfit.code)
 		end
 		track(player, "outfit_delete", { outfit_id = outfit.id, item_count = #outfit.items })
 	end
@@ -397,7 +407,7 @@ local function preview(player: Player, kind: any, id: any): string?
 		description = RobloxAvatarLookupService.description(id)
 	elseif kind == "shared" then
 		local record = SharedContentService.lookup(SharedContentService.normalise(id) or "")
-		if type(record) == "table" and record.kind == "outfit" and type(record.items) == "table" then
+		if type(record) == "table" and record.kind == "outfit" and type(record.items) == "table" and not record.hidden then
 			local ok, result = pcall(AvatarService.describeLook, player, record.items, record.skin, record.scale)
 			description = if ok then result else nil
 		end
@@ -435,21 +445,27 @@ function OutfitsController.new(): OutfitsController
 			return { ok = false, error = "busy" }
 		end
 		local record = SharedContentService.lookup(code)
-		if type(record) ~= "table" or record.kind ~= "outfit" or type(record.items) ~= "table" then
+		if type(record) ~= "table" or record.kind ~= "outfit" or type(record.items) ~= "table" or record.hidden then
 			return { ok = false, error = "notfound" }
 		end
 		track(player, "share_resolve", { kind = "outfit" })
+		local listed = CommunityService.isListed(record)
 		return {
 			ok = true,
 			code = code,
 			kind = "outfit",
 			outfit = {
 				name = record.name,
-				by = record.ownerName,
-				ownerId = record.ownerId,
+				by = if record.anonymous then nil else record.ownerName,
+				ownerId = if record.anonymous then 0 else record.ownerId,
 				items = record.items,
 				skin = record.skin,
 				scale = record.scale,
+				mine = record.ownerId == player.UserId,
+				-- On Community: its counts (nil when it isn't listed).
+				community = if listed
+					then { wears = tonumber(record.wears) or 0, favourites = tonumber(record.favourites) or 0 }
+					else nil,
 			},
 		}
 	end

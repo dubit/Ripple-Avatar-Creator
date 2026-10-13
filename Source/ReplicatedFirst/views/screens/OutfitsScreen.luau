@@ -20,9 +20,11 @@
 	    person, finds someone by exact username or user id (all Roblox lets
 	    a game look up), shows who it found, and follows on confirm. Follow /
 	    Following is also on a person's page. Search: the people listed.
-	  · Community: share codes go in its search (one typed into another tab
-	    that finds something switches here); placeholder outfits until
-	    Task 16 publishes real ones.
+	  · Community: outfits players published (CommunityOutfits), under
+	    chips for the ordering: Popular · Trending · Newest (everyone's) and
+	    Favourited · Recent · Mine (your own lists). Pages load as you
+	    scroll. Search: the loaded outfits by name, or a share code (one
+	    typed into another tab that finds something switches here).
 	The outfit you're wearing exactly gets the orange ring. People are cards
 	with their avatar picture (UserLooks); Roblox only lets a game read
 	another user's current avatar, not their saved outfits, and their page
@@ -38,8 +40,15 @@
 	selected (priced for the unowned items selected).
 
 	OutfitsScreen.Root props: nav, look
-	OutfitsScreen.Outfit props: nav, look, source, index (a saved outfit's id
-	for Mine; the placeholder list position otherwise)
+	A shared outfit's page (a code, or a Community card) adds, when it's on
+	Community (sharing lists it): its wears and favourites (your own wear
+	and star show at once), a star (your own too), and Report (twice;
+	once each; not your own). Once shared it stays: deleting the outfit
+	drops your name from it. Opening a Community outfit's page puts it in
+	your Recent.
+
+	OutfitsScreen.Outfit props: nav, look, source, index (a saved outfit's
+	id for Mine, a Roblox outfit's id, a user id, or a share code)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -69,6 +78,8 @@ local OutfitPreview = require(script.Parent:WaitForChild("OutfitPreview"))
 local RobloxOutfits = require(views:WaitForChild("catalogue"):WaitForChild("RobloxOutfits"))
 local UserLooks = require(views:WaitForChild("catalogue"):WaitForChild("UserLooks"))
 local SharedCodes = require(views:WaitForChild("catalogue"):WaitForChild("SharedCodes"))
+local CommunityOutfits = require(views:WaitForChild("catalogue"):WaitForChild("CommunityOutfits"))
+local Chip = require(components:WaitForChild("Chip"))
 local Badge = require(components:WaitForChild("Badge"))
 local Spinner = require(components:WaitForChild("Spinner"))
 local HudContext = require(views:WaitForChild("HudContext"))
@@ -84,16 +95,17 @@ local LEFT_WIDTH = 300
 
 -- An outfit as the screens see it, whichever source it came from.
 type OutfitView = {
-	kind: "saved" | "own" | "roblox" | "user" | "shared" | "placeholder",
+	kind: "saved" | "own" | "roblox" | "user" | "shared",
 	id: any?, -- the saved / Roblox outfit's id, a user id, or a share code
-	source: string, -- nav source: "Mine" (saved), "Own", "RobloxSaved", "User", or a placeholder tab
-	index: number, -- nav index: the id, or the placeholder list position
+	source: string, -- nav source: "Mine" (saved), "Own", "RobloxSaved", "User", "Shared"
+	index: number, -- nav index: the id (a share code for "Shared")
 	name: string,
 	by: string,
 	items: { number },
 	labels: { [number]: string }?, -- row names that differ from the item's own
 	skin: any?, -- skin colours that come with it (by body part; SkinColours)
 	scale: any?, -- body scale that comes with it (BodyScale)
+	code: string?, -- its share code, while it has one (saved / Roblox outfits)
 }
 
 -- Card / page order of a type's thumbnail: the most telling first.
@@ -140,6 +152,7 @@ local function savedView(outfit: any): OutfitView
 		items = outfit.items,
 		skin = outfit.skin,
 		scale = outfit.scale,
+		code = if SharedCodes.isCode(outfit.code) then outfit.code else nil,
 	}
 end
 
@@ -160,19 +173,6 @@ local function robloxView(outfit: RobloxOutfits.Outfit): OutfitView
 	}
 end
 
-local function outfitsFor(look: any, source: string): { OutfitView }
-	local list: { OutfitView } = {}
-	if source == "Mine" then
-		for _, outfit in look.outfits do
-			table.insert(list, savedView(outfit))
-		end
-	else
-		for index, outfit in (PlaceholderData.outfits :: any)[source] or {} do
-			table.insert(list, { kind = "placeholder", id = nil, source = source, index = index, name = outfit.name, by = outfit.by, items = outfit.items })
-		end
-	end
-	return list
-end
 
 local function findOutfit(look: any, source: string, index: number): OutfitView?
 	if source == "Mine" then
@@ -187,15 +187,14 @@ local function findOutfit(look: any, source: string, index: number): OutfitView?
 	elseif source == "RobloxSaved" then
 		for _, outfit in RobloxOutfits.outfits() do
 			if outfit.id == index then
-				return robloxView(outfit)
+				local view = robloxView(outfit)
+				local code = look.creationCodes[tostring(outfit.id)]
+				view.code = if SharedCodes.isCode(code) then code else nil
+				return view
 			end
 		end
-		return nil
 	end
-	local outfit = ((PlaceholderData.outfits :: any)[source] or {})[index]
-	return if outfit
-		then { kind = "placeholder", id = nil, source = source, index = index, name = outfit.name, by = outfit.by, items = outfit.items }
-		else nil
+	return nil
 end
 
 -- Re-render when the Roblox-saved outfits (or their items) arrive.
@@ -618,12 +617,61 @@ local function sharedView(shared: SharedCodes.Shared): OutfitView
 		source = "Shared",
 		index = shared.code :: any,
 		name = shared.name,
-		by = "Shared by @" .. shared.by .. " · code " .. shared.code,
+		by = (if shared.by ~= "" then "Shared by @" .. shared.by .. " · " else "Shared · ") .. "code " .. shared.code,
 		items = shared.items,
 		skin = shared.skin,
 		scale = shared.scale,
 	}
 end
+
+-- "1 wear" / "2.4K wears"
+local function plural(n: number, word: string): string
+	return PlaceholderData.formatCount(n) .. " " .. word .. (if n == 1 then "" else "s")
+end
+
+-- A Community card's line under its name.
+local function communitySub(card: CommunityOutfits.Card): string
+	local wears = plural(CommunityOutfits.wears(card.code, card.wears), "wear")
+	if card.mine then
+		return "Yours · " .. wears
+	end
+	return if card.by ~= "" then "@" .. card.by .. " · " .. wears else wears
+end
+
+-- The chosen Community ordering's list, loaded (and re-rendered as pages
+-- arrive). `key` reloads a personal list when it changes.
+local function useCommunity(active: boolean, sort: string, key: string): CommunityOutfits.List
+	local _version, setVersion = React.useState(0)
+	React.useEffect(function()
+		if not active then
+			return nil
+		end
+		local connection = CommunityOutfits.changed:Connect(function()
+			CommunityOutfits.load(sort, key) -- again if the lists were reset
+			setVersion(function(v: number)
+				return v + 1
+			end)
+		end)
+		CommunityOutfits.load(sort, key)
+		return function()
+			connection:Disconnect()
+		end
+	end, { active, sort, key } :: { any })
+	return CommunityOutfits.get(sort)
+end
+
+local PERSONAL_LISTS = { favourited = "communityFavourites", recent = "communityRecent", mine = "published" }
+local COMMUNITY_EMPTY = {
+	popular = "No one has published an outfit yet",
+	trending = "Nothing has been worn this week yet",
+	newest = "No one has published an outfit yet",
+	favourited = "Star Community outfits to keep them here",
+	recent = "Community outfits you open show here",
+	mine = "Outfits you share show here",
+}
+
+-- Codes reported this session (Report shows as done).
+local reported: { [string]: boolean } = {}
 
 -- A shared outfit, loaded for its page.
 local function useSharedOutfit(code: string?): SharedCodes.Shared?
@@ -819,6 +867,8 @@ local function OutfitsScreen(props: { nav: any, look: any })
 	local query, setQuery = useSessionState("outfits.query", "")
 	local searchHint: string? = nil
 	local adding, setAdding = React.useState(false) -- the Add a person panel (Roblox tab)
+	local storedSort, setSort = useSessionState("outfits.community", "popular")
+	local sort = if COMMUNITY_EMPTY[storedSort] then storedSort else "popular"
 
 	local tabs: { [string]: any } = {
 		Layout = e("UIListLayout", {
@@ -862,6 +912,8 @@ local function OutfitsScreen(props: { nav: any, look: any })
 	local sharedFound = if onCommunity then codeFound else nil
 	local sharedError = if onCommunity then codeError else nil
 	local typedCode = if onCommunity then codeTyped else nil
+	local personal = PERSONAL_LISTS[sort]
+	local community = useCommunity(onCommunity, sort, if personal then table.concat((look :: any)[personal] or {}, ",") else "")
 	-- Current shows your Roblox avatar as it is now (it may have changed
 	-- since you joined).
 	React.useEffect(function()
@@ -932,7 +984,7 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			local view = sharedView(sharedFound)
 			cards.Shared = e(OutfitCard, {
 				outfit = view,
-				sub = "Shared by @" .. sharedFound.by,
+				sub = if sharedFound.by ~= "" then "Shared by @" .. sharedFound.by else "Shared outfit",
 				ring = wearingExactly(look, view.items),
 				layoutOrder = count,
 				onActivated = function()
@@ -957,8 +1009,8 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				onActivated = look.saveOutfit,
 			})
 		end
-		for _, outfit in outfitsFor(look, "Mine") do
-			addOutfit(outfit, #outfit.items .. " items")
+		for _, outfit in look.outfits do
+			addOutfit(savedView(outfit), #outfit.items .. " items")
 		end
 	elseif source == "Creations" then
 		-- Outfits saved on Roblox itself (once Roblox lets us see them).
@@ -1009,9 +1061,15 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				addPerson(user, "@" .. user.username)
 			end
 		end
-	else
-		for _, outfit in outfitsFor(look, source) do
-			addOutfit(outfit, outfit.by)
+	elseif source == "Community" then
+		for _, card in community.cards do
+			if not (sharedFound and sharedFound.code == card.code) then
+				addOutfit(sharedView(card), communitySub(card))
+			end
+		end
+		if community.loading then
+			count += 1
+			cards.CommunityLoading = e(Parts.LoadingCard, { layoutOrder = count })
 		end
 	end
 	local message: string? = nil
@@ -1028,10 +1086,35 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		message = if needle ~= "" then "No friends with that name" else "Your friends will show here"
 	elseif source == "Creations" and count == 0 and RobloxOutfits.status() == "ready" then
 		message = "You haven't saved any outfits on Roblox"
+	elseif onCommunity and count == 0 and not community.loading then
+		message = if community.error == "busy" then ERRORS.busy
+			elseif community.error then "Couldn't load Community outfits. Try again"
+			elseif needle ~= "" then "Nothing here has that name"
+			else COMMUNITY_EMPTY[sort]
 	end
 
 	local tabsHeight = skin.px(Tokens.size.textTabHeight)
 	local searchWidth = skin.px(SEARCH_WIDTH)
+	-- Community's chips sit under the tabs, pushing the grid down.
+	local chipsHeight = if onCommunity then skin.px(Tokens.size.chipHeight) + skin.px(12) else 0
+	local gridTop = tabsHeight + skin.px(14) + chipsHeight
+	local chips: { [string]: any } = {
+		Layout = e("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, skin.px(8)),
+		}),
+	}
+	for index, entry in CommunityOutfits.SORTS do
+		chips["Chip" .. index] = e(Chip, {
+			label = entry.label,
+			active = entry.id == sort,
+			layoutOrder = index,
+			onActivated = function()
+				setSort(entry.id)
+			end,
+		})
+	end
 	return e("Frame", {
 		Name = "OutfitsScreen",
 		Size = UDim2.fromScale(1, 1),
@@ -1062,6 +1145,13 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				size = UDim2.fromOffset(searchWidth, skin.px(40)),
 			}),
 		}),
+		Chips = if onCommunity
+			then e("Frame", {
+				Position = UDim2.fromOffset(0, tabsHeight + skin.px(14)),
+				Size = UDim2.new(1, 0, 0, skin.px(Tokens.size.chipHeight)),
+				BackgroundTransparency = 1,
+			}, chips)
+			else nil,
 		AddPerson = if adding and source == "Roblox"
 			then e(AddPersonPanel, {
 				look = look,
@@ -1078,13 +1168,18 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			columns = 5,
 			extraHeight = 40,
 			count = count,
-			position = UDim2.fromOffset(0, tabsHeight + skin.px(14)),
-			size = UDim2.new(1, 0, 1, -(tabsHeight + skin.px(14))),
-			scrollKey = "outfits|" .. source .. "|" .. query,
+			position = UDim2.fromOffset(0, gridTop),
+			size = UDim2.new(1, 0, 1, -gridTop),
+			scrollKey = "outfits|" .. source .. "|" .. (if onCommunity then sort .. "|" else "") .. query,
+			onNearEnd = if onCommunity
+				then function()
+					CommunityOutfits.more(sort)
+				end
+				else nil,
 		}, cards),
 		Message = if message
 			then e("Frame", {
-				Position = UDim2.fromOffset(0, tabsHeight + skin.px(14) + (if count > 0 then skin.px(260) else 0)),
+				Position = UDim2.fromOffset(0, gridTop + (if count > 0 then skin.px(260) else 0)),
 				Size = UDim2.new(1, 0, 0, skin.px(40)),
 				BackgroundTransparency = 1,
 			}, { Text = e(GridMessage, { text = message }) })
@@ -1210,6 +1305,37 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	useRobloxOutfits(props.source == "RobloxSaved")
 	local userLook, userError = useUserLook(if props.source == "User" then props.index else nil)
 	local sharedOutfit = useSharedOutfit(if props.source == "Shared" then props.index :: any else nil)
+	-- On Community: your own copy is listed while it's in your published
+	-- list (live); anyone else's as it was when the page loaded.
+	local sharedCode = if sharedOutfit then sharedOutfit.code else nil
+	local mineShared = sharedOutfit ~= nil and sharedOutfit.mine == true
+	local listed = sharedOutfit ~= nil
+		and (if mineShared then look.isPublished(sharedOutfit.code) else sharedOutfit.community ~= nil)
+	local starred = sharedCode ~= nil and look.isCommunityFavourite(sharedCode)
+	-- The favourites count as loaded, moved by your own star since.
+	local starredAtLoad = React.useRef(nil :: { code: string, starred: boolean }?)
+	if sharedCode and (not starredAtLoad.current or starredAtLoad.current.code ~= sharedCode) then
+		starredAtLoad.current = { code = sharedCode, starred = starred }
+	end
+	local _reportedVersion, setReportedVersion = React.useState(0)
+	-- Your wear shows at once (CommunityOutfits.noteWear).
+	React.useEffect(function()
+		local connection = CommunityOutfits.changed:Connect(function()
+			setReportedVersion(function(v: number)
+				return v + 1
+			end)
+		end)
+		return function()
+			connection:Disconnect()
+		end
+	end, {})
+	-- Opening a Community outfit puts it in your Recent.
+	React.useEffect(function()
+		if sharedCode and listed then
+			look.openCommunity(sharedCode)
+		end
+		return nil
+	end, { sharedCode or "", listed } :: { any })
 	local outfit = if props.source == "User"
 		then (if userLook then userView(userLook) else nil)
 		elseif props.source == "Shared" then (if sharedOutfit then sharedView(sharedOutfit) else nil)
@@ -1452,6 +1578,19 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local saved = outfit.kind == "saved"
 	local outfitId = outfit.id
 	local kind = outfit.kind
+	local showStar = kind == "shared" and listed
+	local twoRows = saved or kind == "user" or (kind == "shared" and listed and not mineShared)
+	-- A saved / Roblox outfit with a code shows it (Share shows its QR).
+	local byText = outfit.by .. (if outfit.code then " · code " .. outfit.code else "") .. " · " .. #items .. " items"
+	if kind == "shared" and listed and sharedOutfit then
+		local counts = sharedOutfit.community or { wears = 0, favourites = 0 }
+		local atLoad = starredAtLoad.current
+		local favourites = counts.favourites
+			+ (if atLoad and atLoad.starred ~= starred then (if starred then 1 else -1) else 0)
+		byText = (if mineShared then "Yours" elseif sharedOutfit.by ~= "" then "@" .. sharedOutfit.by else "Community")
+			.. " · " .. plural(CommunityOutfits.wears(sharedOutfit.code, counts.wears), "wear")
+			.. " · " .. plural(math.max(favourites, 0), "favourite")
+	end
 	local leftWidth = skin.px(LEFT_WIDTH)
 	local buttonsHeight = skin.px(Tokens.size.ctaHeight)
 	local headerHeight = skin.px(26)
@@ -1472,18 +1611,11 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 			}),
 			Preview = e("Frame", {
 				-- Whatever height the details below leave.
-				Size = UDim2.new(1, 0, 1, -(skin.textPx(24) + skin.px(6) + skin.px(18) + buttonsHeight * (if saved or kind == "user" then 2 else 1) + skin.px(10) * (if saved or kind == "user" then 4 else 3))),
+				Size = UDim2.new(1, 0, 1, -(skin.textPx(24) + skin.px(6) + skin.px(18) + buttonsHeight * (if twoRows then 2 else 1) + skin.px(10) * (if twoRows then 4 else 3))),
 				BackgroundTransparency = 1,
 				LayoutOrder = 1,
 			}, {
-				View = if kind ~= "placeholder"
-					then e(OutfitPreview, { kind = kind, outfitId = outfitId, ring = ring })
-					else e(Parts.Thumb, {
-						colour = Parts.swatch(""),
-						radius = 20,
-						caption = if next(mosaic(items)) then nil else "outfit preview",
-						selected = ring,
-					}, mosaic(items)),
+				View = e(OutfitPreview, { kind = kind, outfitId = outfitId, ring = ring }),
 			}),
 			Name = e(NameField, {
 				name = outfit.name,
@@ -1500,7 +1632,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				LayoutOrder = 3,
 			}, {
 				Text = e(ShadowText, {
-					text = outfit.by .. " · " .. #items .. " items",
+					text = byText,
 					style = Tokens.type.meta,
 					transparency = Tokens.alpha.textSoft,
 					shadow = false,
@@ -1517,7 +1649,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					Padding = UDim.new(0, skin.px(8)),
 				}),
 				Wear = e("Frame", {
-					Size = UDim2.new(1, if saved or kind == "roblox" then -(buttonsHeight + skin.px(8)) else 0, 1, 0),
+					Size = UDim2.new(1, if saved or kind == "roblox" or showStar then -(buttonsHeight + skin.px(8)) else 0, 1, 0),
 					BackgroundTransparency = 1,
 					LayoutOrder = 1,
 				}, {
@@ -1539,6 +1671,11 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 								look.wearUserLook(outfitId)
 							elseif kind == "shared" and outfitId then
 								look.wearShared(outfitId)
+								-- Counted at once (the server counts others' wears).
+								if listed and not mineShared and sharedOutfit then
+									local counts = sharedOutfit.community or { wears = 0 }
+									CommunityOutfits.noteWear(outfitId, CommunityOutfits.wears(outfitId, counts.wears))
+								end
 							elseif kind == "saved" and outfitId then
 								look.wearOutfit(outfitId)
 							else
@@ -1566,7 +1703,40 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 						end,
 					})
 					else nil,
+				-- Star a Community outfit (Favourited), your own too.
+				Star = if showStar and sharedCode
+					then e(PillButton, {
+						variant = "round",
+						size = Tokens.size.ctaHeight,
+						icon = "star",
+						iconSize = 20,
+						iconColor = if starred then Tokens.color.accentText else nil,
+						glowRadius = 0,
+						sound = if starred then "back" else "confirm",
+						layoutOrder = 2,
+						onActivated = function()
+							look.toggleCommunityFavourite(sharedCode)
+						end,
+					})
+					else nil,
 			}),
+			-- Anyone else's on Community: Report (twice; once each).
+			Community = if kind ~= "shared" or not sharedCode or not listed or mineShared then nil
+				else e(ConfirmButton, {
+					label = if reported[sharedCode] then "Reported" else "Report",
+					icon = "flag",
+					armedLabel = "Tap again to report",
+					disabled = reported[sharedCode] == true,
+					layoutOrder = 5,
+					onConfirm = function()
+						Sounds.play("confirm")
+						reported[sharedCode] = true
+						look.reportCommunity(sharedCode)
+						setReportedVersion(function(v: number)
+							return v + 1
+						end)
+					end,
+				}),
 			-- Follow at once; unfollow takes a second press.
 			Follow = if kind == "user" and outfitId and look.isFollowing(outfitId)
 				then e(ConfirmButton, {

@@ -15,6 +15,10 @@
 		                                like one, so callers show both)
 		resolve(code) -> (Shared?, error?)   yields; cached briefly;
 		                                error "notfound" | "busy" | "failed"
+		remember(shared)                cache one known already (a Community
+		                                card), so its page opens at once
+		forget(code)                    drop it from the cache (its Community
+		                                state changed)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -35,6 +39,8 @@ export type Shared = {
 	items: { number }, -- CatalogueClient item ids
 	skin: { [string]: string },
 	scale: { [string]: number },
+	mine: boolean?, -- the viewer's own copy
+	community: { wears: number, favourites: number }?, -- on Community (nil when not listed)
 }
 
 local ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -93,9 +99,21 @@ function SharedCodes.resolve(code: string): (Shared?, string?)
 		items = items,
 		skin = SkinColours.normalise(raw.skin),
 		scale = BodyScale.normalise(raw.scale),
+		mine = raw.mine == true,
+		community = if type(raw.community) == "table"
+			then { wears = tonumber(raw.community.wears) or 0, favourites = tonumber(raw.community.favourites) or 0 }
+			else nil,
 	}
 	cache[code] = { shared = shared, at = os.clock() }
 	return shared, nil
+end
+
+function SharedCodes.remember(shared: Shared)
+	cache[shared.code] = { shared = shared, at = os.clock() }
+end
+
+function SharedCodes.forget(code: string)
+	cache[code] = nil
 end
 
 return SharedCodes

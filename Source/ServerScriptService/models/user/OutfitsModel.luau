@@ -12,6 +12,15 @@
 	`creationCodes` maps the player's Roblox-saved outfits (Creations) that
 	they've shared to their codes; those outfits aren't saved here.
 
+	A share code opens a frozen copy (SharedContentService), so editing an
+	outfit (rename, save over) detaches its code: the code keeps opening the
+	old copy, and sharing again makes a new one.
+
+	Community (CommunityService), the player's own lists of codes, newest
+	first: `published` (Mine: what they've published, kept after the
+	outfit is edited or deleted), `communityFavourites` (starred) and
+	`communityRecent` (opened lately).
+
 	One record for all of a player's outfits: at AvatarConfig.outfits limits
 	(50 outfits × 40 items, ~80 bytes an item) it stays a few hundred KB at
 	worst, far under the DataStore's per-key cap.
@@ -42,7 +51,7 @@ export type Outfit = {
 	items: { OutfitItem },
 	skin: any?, -- skin colours worn with it, by body part (SkinColours.normalise)
 	scale: any?, -- body scale worn with it (BodyScale.normalise)
-	code: string?, -- its share code ("7KQ2XM"), once shared
+	code: string?, -- its share code ("7KQ2XM") while unedited since sharing
 }
 
 export type OutfitsModel = typeof(setmetatable({} :: {
@@ -50,9 +59,15 @@ export type OutfitsModel = typeof(setmetatable({} :: {
 	nextId: number,
 	following: { number }, -- user ids followed here (Outfits › Following), newest first
 	creationCodes: { [string]: string }, -- share codes for outfits saved on Roblox, by their outfit id
+	published: { string }, -- codes published to Community (Mine), newest first
+	communityFavourites: { string }, -- Community codes starred, newest first
+	communityRecent: { string }, -- Community codes opened lately, newest first
 }, OutfitsModel)) & AbstractModel.AbstractModel
 
 local MAX_FOLLOWING = 200
+local MAX_PUBLISHED = 200
+local MAX_FAVOURITES = 200
+local MAX_RECENT = 48
 
 function OutfitsModel.new(ownerId: string): OutfitsModel
 	local self = AbstractModel.new("OutfitsModel", ownerId, "User") :: any
@@ -61,6 +76,9 @@ function OutfitsModel.new(ownerId: string): OutfitsModel
 	self.nextId = 1
 	self.following = {}
 	self.creationCodes = {}
+	self.published = {}
+	self.communityFavourites = {}
+	self.communityRecent = {}
 	return self :: OutfitsModel
 end
 
@@ -126,6 +144,7 @@ function OutfitsModel:overwrite(id: number, items: { OutfitItem }, skin: any?, s
 	outfit.items = keep(items)
 	outfit.skin = SkinColours.normalise(skin)
 	outfit.scale = BodyScale.normalise(scale)
+	outfit.code = nil -- edited: the shared copy no longer matches
 	self:syncState()
 	return outfit
 end
@@ -146,14 +165,62 @@ function OutfitsModel:toggleFollow(userId: number): boolean
 	return index == nil
 end
 
+-- Put a code first in one of the Community lists (moving it if there).
+local function pushFront(list: { string }, code: string, cap: number)
+	local index = table.find(list, code)
+	if index then
+		table.remove(list, index)
+	end
+	table.insert(list, 1, code)
+	while #list > cap do
+		table.remove(list)
+	end
+end
+
+function OutfitsModel:addPublished(code: string): ()
+	self.published = self.published or {}
+	pushFront(self.published, code, MAX_PUBLISHED)
+	self:syncState()
+end
+
+function OutfitsModel:removePublished(code: string): ()
+	local index = table.find(self.published or {}, code)
+	if index then
+		table.remove(self.published, index)
+		self:syncState()
+	end
+end
+
+-- Star a Community outfit, or unstar it. Returns whether it's starred now.
+function OutfitsModel:toggleCommunityFavourite(code: string): boolean
+	self.communityFavourites = self.communityFavourites or {}
+	local index = table.find(self.communityFavourites, code)
+	if index then
+		table.remove(self.communityFavourites, index)
+	else
+		pushFront(self.communityFavourites, code, MAX_FAVOURITES)
+	end
+	self:syncState()
+	return index == nil
+end
+
+function OutfitsModel:noteRecent(code: string): ()
+	self.communityRecent = self.communityRecent or {}
+	if self.communityRecent[1] == code then
+		return
+	end
+	pushFront(self.communityRecent, code, MAX_RECENT)
+	self:syncState()
+end
+
 -- A Roblox-saved outfit's share code (they aren't in `outfits`).
-function OutfitsModel:setCreationCode(robloxOutfitId: number, code: string): ()
+function OutfitsModel:setCreationCode(robloxOutfitId: number, code: string?): ()
 	self.creationCodes = self.creationCodes or {}
 	self.creationCodes[tostring(robloxOutfitId)] = code
 	self:syncState()
 end
 
-function OutfitsModel:setCode(id: number, code: string): ()
+function OutfitsModel:setCode(id: number, code: string?): ()
 	local outfit = self:find(id)
 	if outfit then
 		outfit.code = code
@@ -167,6 +234,7 @@ function OutfitsModel:rename(id: number, name: string): boolean
 		return false
 	end
 	outfit.name = name
+	outfit.code = nil -- edited: the shared copy no longer matches
 	self:syncState()
 	return true
 end
