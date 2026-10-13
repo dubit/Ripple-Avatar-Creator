@@ -9,9 +9,9 @@
 	a spinner shows while it's made). The code sits in a box you can select
 	and copy yourself: Roblox experiences can't write to the clipboard (a
 	divergence from the design's Copy button). It works in the Outfits
-	search on any server. Beside it, a QR of the share link (LaunchData):
+	search on any server. Left of it, a QR of the share link (LaunchData):
 	scanned with a phone, it joins the experience on this outfit's page
-	(DeepLinkService). Until revealed the QR is a dimmed stand-in.
+	(DeepLinkService). Until revealed the QR's place is an empty well.
 
 	Tapping outside, Close or Back (handled by Hud, which owns the dialog)
 	shuts it. It rises in and drops out.
@@ -36,6 +36,7 @@ local GlassPanel = require(views:WaitForChild("components"):WaitForChild("GlassP
 local ShadowText = require(views:WaitForChild("components"):WaitForChild("ShadowText"))
 local Spinner = require(views:WaitForChild("components"):WaitForChild("Spinner"))
 local QrTile = require(views:WaitForChild("components"):WaitForChild("QrTile"))
+local Icon = require(views:WaitForChild("components"):WaitForChild("Icon"))
 local SharedCodes = require(views:WaitForChild("catalogue"):WaitForChild("SharedCodes"))
 local LaunchData = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("LaunchData"))
 
@@ -111,14 +112,33 @@ local function Card(props: { outfit: Outfit, t: any, onReveal: (id: number) -> (
 						maxWidth = skin.px(WIDTH - 40),
 					}),
 				}),
-				Qr = e(QrTile, {
-					text = if revealed and code then LaunchData.shareLink(code) else nil,
-					size = qr,
-					anchorPoint = Vector2.new(1, 0),
-					position = UDim2.new(1, 0, 0, skin.px(62)),
-				}),
+				-- The QR only once there's a code to show; until then an empty
+				-- well (a dimmed QR looked ready to scan).
+				Qr = if revealed and code
+					then e(QrTile, {
+						text = LaunchData.shareLink(code),
+						size = qr,
+						position = UDim2.fromOffset(0, skin.px(62)),
+					})
+					else e("Frame", {
+						Position = UDim2.fromOffset(0, skin.px(62)),
+						Size = UDim2.fromOffset(qr, qr),
+						BackgroundColor3 = Tokens.color.inputWell,
+						BorderSizePixel = 0,
+					}, {
+						Corner = e("UICorner", { CornerRadius = UDim.new(0, skin.px(14)) }),
+						Lock = if waiting
+							then nil
+							else e(Icon, {
+								name = "lock",
+								size = 30,
+								transparency = 0.6,
+								anchorPoint = Vector2.new(0.5, 0.5),
+								position = UDim2.fromScale(0.5, 0.5),
+							}),
+					}),
 				Code = e("Frame", {
-					Position = UDim2.fromOffset(0, skin.px(62)),
+					Position = UDim2.fromOffset(qr + skin.px(16), skin.px(62)),
 					Size = UDim2.new(1, -(qr + skin.px(16)), 0, skin.px(52)),
 					BackgroundColor3 = Tokens.color.inputWell,
 					BorderSizePixel = 0,
@@ -152,7 +172,7 @@ local function Card(props: { outfit: Outfit, t: any, onReveal: (id: number) -> (
 						else nil,
 				}),
 				Hint = e("TextLabel", {
-					Position = UDim2.fromOffset(0, skin.px(122)),
+					Position = UDim2.fromOffset(qr + skin.px(16), skin.px(122)),
 					Size = UDim2.new(1, -(qr + skin.px(16)), 0, skin.px(90)),
 					BackgroundTransparency = 1,
 					Text = if revealed and code

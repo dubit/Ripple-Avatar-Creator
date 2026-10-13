@@ -7,11 +7,8 @@
 	margin), for a phone camera to scan off the screen. Modules are whole
 	pixels so they stay sharp; each row's dark runs are one Frame apiece.
 
-	Without `text` (nothing to share yet, or not revealed) it shows a
-	scrambled stand-in that looks like a QR code but doesn't scan, dimmed.
-
 	Props:
-		text: string?          what to encode (a link); nil = the stand-in
+		text: string           what to encode (a link)
 		size: number           the tile's side in pixels (already scaled)
 		position, anchorPoint
 ]]
@@ -26,33 +23,11 @@ local e = React.createElement
 local QUIET = 3 -- light modules round the code (scanners want some margin)
 local DARK = Color3.fromHex("#111111")
 
-local function standIn(): { { boolean } }
-	local grid = QRCode.encode("https://www.roblox.com/games/start?placeId=0&launchData=s:XXXXXX", "L") :: { { boolean } }
-	local random = Random.new(7)
-	local size = #grid
-	for r = 1, size do
-		for c = 1, size do
-			local finder = (r <= 8 and c <= 8) or (r <= 8 and c > size - 8) or (r > size - 8 and c <= 8)
-			if not finder and random:NextNumber() < 0.45 then
-				grid[r][c] = not grid[r][c]
-			end
-		end
-	end
-	return grid
-end
-
-local function QrTile(props: { text: string?, size: number, position: UDim2?, anchorPoint: Vector2? })
+local function QrTile(props: { text: string, size: number, position: UDim2?, anchorPoint: Vector2? })
+	-- Level L keeps a link at 33 modules, so each is as big as can be.
 	local grid = React.useMemo(function()
-		if props.text then
-			-- Level L keeps a link at 33 modules, so each is as big as can be.
-			local encoded = QRCode.encode(props.text, "L")
-			if encoded then
-				return encoded
-			end
-		end
-		return standIn()
+		return QRCode.encode(props.text, "L") or {}
 	end, { props.text })
-	local real = props.text ~= nil
 	local count = #grid
 	local module = math.max(1, math.floor(props.size / (count + QUIET * 2)))
 	local inset = math.floor((props.size - module * count) / 2)
@@ -83,7 +58,6 @@ local function QrTile(props: { text: string?, size: number, position: UDim2?, an
 		Position = props.position,
 		Size = UDim2.fromOffset(props.size, props.size),
 		BackgroundColor3 = Color3.new(1, 1, 1),
-		GroupTransparency = if real then 0 else 0.8,
 		BorderSizePixel = 0,
 	}, {
 		Corner = e("UICorner", { CornerRadius = UDim.new(0, module * 2) }),
