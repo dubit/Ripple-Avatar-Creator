@@ -549,6 +549,7 @@
   - [TODO] 21.4 Feel pass: audit every interactive element for hover/press states, motion and sounds; remove anything cluttering; tune springs and volumes.
   - [TODO] 21.5 Device pass on desktop, iPad and phone: sizing issues captured in earlier tasks, touch targets, safe areas, performance (frame rate with previews and carousels).
   - [TODO] 21.6 Triage and fix, or log for phase 2, anything found. Confirm with the user that phase 1 is acceptable.
+  - [TODO] 21.7 Netflix-style home rows for Catalogue and Outfits, like the Stores home (user liked it in Task 18): a titled carousel per list (`Parts.CardRow`) with See all opening the full grid, and the tabs toggling between rows and grid.
 
 ### Task 22: Other avatars in the world
 - **Status:** [TODO]

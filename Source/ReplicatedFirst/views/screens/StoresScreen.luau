@@ -419,6 +419,8 @@ local function StoresScreen(props: { nav: any, look: any })
 				SortOrder = Enum.SortOrder.LayoutOrder,
 				Padding = UDim.new(0, skin.px(20)),
 			}),
+			-- Keep See all clear of the scroll bar, as the other lists do.
+			Inset = e("UIPadding", { PaddingRight = UDim.new(0, skin.px(8)) }),
 		}
 		local rowHeight = skin.px(24) + skin.px(10) + Parts.cardRowHeight(skin, STORE_CARD)
 		local shown = 0
@@ -853,6 +855,8 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, skin.px(SECTION_GAP)),
 		}),
+		-- Keep See all clear of the scroll bar, as the other lists do.
+		Inset = e("UIPadding", { PaddingRight = UDim.new(0, skin.px(8)) }),
 	}
 	local height = 0
 	local shown = 0
