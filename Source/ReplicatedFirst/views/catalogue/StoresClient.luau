@@ -25,6 +25,11 @@
 		find(text) -> (Page?, error?)   yields; a code or an exact name;
 		                             error "notfound" | "busy" | "failed"
 		cached(code) -> Page?        a page already loaded
+		act(action, ...) -> (ok, code?, error?)   yields; a StoresController
+		                             action over "StoreAction" (Create,
+		                             AddItem, Publish, …). On success the
+		                             store's page and the lists are dropped
+		                             so they load again as they are now
 		changed                      signal: a list or page changed
 ]]
 
@@ -92,6 +97,7 @@ type State = List & { page: number, at: number, failedAt: number, key: string, g
 
 local browseRemote = Bolt.RemoteFunction("BrowseStores")
 local storeRemote = Bolt.RemoteFunction("GetStore")
+local actionRemote = Bolt.RemoteFunction("StoreAction")
 local changedEvent = Instance.new("BindableEvent")
 StoresClient.changed = changedEvent.Event
 
@@ -269,6 +275,29 @@ function StoresClient.find(text: string): (Page?, string?)
 	local page = toPage(result.store)
 	pages[page.code] = { page = page, at = os.clock() }
 	return page, nil
+end
+
+function StoresClient.act(action: string, ...: any): (boolean, string?, string?)
+	local args = table.pack(...)
+	local ok, result = pcall(function()
+		return actionRemote:InvokeServer(action, table.unpack(args, 1, args.n))
+	end)
+	if not ok or type(result) ~= "table" then
+		return false, nil, "busy"
+	end
+	if not result.ok then
+		return false, nil, if type(result.error) == "string" then result.error else "busy"
+	end
+	local code = if type(result.code) == "string" then result.code else nil
+	if code then
+		pages[code] = nil
+	end
+	for sort, state in lists do
+		state.generation += 1
+		lists[sort] = nil
+	end
+	changedEvent:Fire()
+	return true, code, nil
 end
 
 function StoresClient.reset()

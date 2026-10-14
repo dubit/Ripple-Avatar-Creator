@@ -47,6 +47,7 @@ local WorldHud = require(views:WaitForChild("WorldHud"))
 local FullPanel = require(views:WaitForChild("panel"):WaitForChild("FullPanel"))
 local WorldRenderer = require(views:WaitForChild("WorldRenderer"))
 local ShareDialog = require(views:WaitForChild("screens"):WaitForChild("ShareDialog"))
+local StoreDialogs = require(views:WaitForChild("screens"):WaitForChild("StoreDialogs"))
 
 local e = React.createElement
 
@@ -176,6 +177,8 @@ local function Hud()
 	-- What the share dialog is open for, if anything: a saved outfit, one
 	-- saved on Roblox (a creation), or a store (id = its code).
 	local shareTarget, setShareTarget = React.useState(nil :: { kind: string, id: any, name: string }?)
+	-- The store picker or the Create store dialog, if one is open.
+	local storeDialog, setStoreDialog = React.useState(nil :: StoreDialogs.Dialog?)
 	-- The latest purchase we sent (its request id), to sound its outcome,
 	-- and the button that sent it (spinning until the outcome arrives).
 	local buyRequest, setBuyRequest = React.useState(nil :: number?)
@@ -216,6 +219,9 @@ local function Hud()
 		if shareTarget then
 			Sounds.play("back")
 			setShareTarget(nil)
+		elseif storeDialog then
+			Sounds.play("back")
+			setStoreDialog(nil)
 		elseif #nav.stack > 0 then
 			Sounds.play("back")
 			nav.back()
@@ -301,6 +307,14 @@ local function Hud()
 			buying = function(key: string): boolean
 				return buyingKey == key
 			end,
+			addToStore = function(target: any)
+				Sounds.play("open")
+				setStoreDialog({ kind = "pick", target = target })
+			end,
+			createStore = function()
+				Sounds.play("open")
+				setStoreDialog({ kind = "create" })
+			end,
 			share = function(id: any, kind: string?, name: string?)
 				Sounds.play("open")
 				setShareTarget({ kind = kind or "saved", id = id, name = name or "" })
@@ -376,6 +390,17 @@ local function Hud()
 				end,
 				onClose = function()
 					setShareTarget(nil)
+				end,
+			}),
+			Stores = e(StoreDialogs.Dialog, {
+				dialog = storeDialog,
+				myStores = rawLook.myStores,
+				onCreated = function(code: string, name: string)
+					setStoreDialog(nil)
+					nav.push({ kind = "store", id = code, label = name })
+				end,
+				onClose = function()
+					setStoreDialog(nil)
 				end,
 			}),
 		}),

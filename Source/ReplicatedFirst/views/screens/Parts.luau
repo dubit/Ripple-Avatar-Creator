@@ -11,7 +11,8 @@
 	  ItemCard   catalogue card: thumb with wearing / in-basket / favourite
 	             markers, name, price;
 	             with `menu`, a tap opens the design's card menu over the thumb
-	             (Try · basket · Buy · View) instead of calling onActivated
+	             (Try · basket · Buy · View, and a store button beside View
+	             when `onStore` is given) instead of calling onActivated
 	  ListRow    Basket/Wearing/Outfit row: thumb, name, sub-line, price, actions
 	  LoadingCard  a grid cell holding a spinner: "more results are on the way"
 	  CardGrid   scrolling grid with an explicit column count — cells and scroll
@@ -207,7 +208,8 @@ function Parts.PriceTag(props: PriceProps)
 	})
 end
 
--- The card menu (design 5b): Try / Take off, basket toggle, Buy, View.
+-- The card menu (design 5b): Try / Take off, basket toggle, Buy, View;
+-- with onStore (the player has a store), a store button beside View.
 export type CardMenu = {
 	open: boolean,
 	onToggle: () -> (), -- a tap on the card opens/closes its menu
@@ -215,6 +217,7 @@ export type CardMenu = {
 	onBasket: () -> (),
 	onBuy: () -> (),
 	onView: () -> (),
+	onStore: (() -> ())?,
 }
 
 export type ItemCardProps = {
@@ -313,17 +316,44 @@ local function CardMenuOverlay(props: { item: PlaceholderData.Item, wearing: boo
 				}),
 			}),
 		}),
-		View = e(PillButton, {
-			variant = "pill",
-			size = MENU_BUTTON,
-			icon = "visibility",
-			iconSize = 16,
-			label = "View",
-			textStyle = MENU_TEXT,
-			glowRadius = 0,
-			layoutOrder = 3,
-			zIndex = 3,
-			onActivated = menu.onView,
+		Last = e("Frame", {
+			Size = UDim2.new(1, 0, 0, skin.px(MENU_BUTTON)),
+			BackgroundTransparency = 1,
+			LayoutOrder = 3,
+			ZIndex = 3,
+		}, {
+			View = e("Frame", {
+				Size = UDim2.new(1, if menu.onStore then -(skin.px(MENU_BUTTON) + gap) else 0, 1, 0),
+				BackgroundTransparency = 1,
+				ZIndex = 3,
+			}, {
+				Button = e(PillButton, {
+					variant = "pill",
+					size = MENU_BUTTON,
+					icon = "visibility",
+					iconSize = 16,
+					label = "View",
+					textStyle = MENU_TEXT,
+					glowRadius = 0,
+					zIndex = 3,
+					onActivated = menu.onView,
+				}),
+			}),
+			-- Add to (or take out of) one of your stores.
+			Store = if menu.onStore
+				then e(PillButton, {
+					variant = "round",
+					size = MENU_BUTTON,
+					icon = "add_business",
+					iconSize = 17,
+					glowRadius = 0,
+					sound = false, -- the picker plays its own sound
+					anchorPoint = Vector2.new(1, 0),
+					position = UDim2.fromScale(1, 0),
+					zIndex = 3,
+					onActivated = menu.onStore,
+				})
+				else nil,
 		}),
 	})
 end

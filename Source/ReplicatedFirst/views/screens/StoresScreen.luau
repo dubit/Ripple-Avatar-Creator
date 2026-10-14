@@ -16,6 +16,8 @@
 	A store card: a mosaic of its first items, its name, and its
 	favourites and visits (rating is favourites: PLAN 17.1). A star marks
 	your favourites. Your drafts read "Draft"; your hidden ones "Hidden".
+	My stores (row and tab) starts with a Create store card while you have
+	room for another (the Create store dialog: StoreDialogs).
 
 	Store page (5c), one scrolling column:
 	  · header: the mosaic, name, "by @owner · N favourites · N visits",
@@ -26,9 +28,15 @@
 	  · Bestsellers and New arrivals carousels with See all
 	  · Outfits: the store's Community outfits (their own pages)
 	  · Collections: tiles that open their own grid
-	Item cards have the card menu (Try · basket · Buy · View); buying from a
-	store counts towards its Bestsellers. Opening someone's published store
-	is a visit (once a day).
+	Item cards have the card menu (Try · basket · Buy · View, and the store
+	button once you have a store); buying from a store counts towards its
+	Bestsellers. Opening someone's published store is a visit (once a day).
+
+	Your own store is edited in place (PLAN 19.1): its name is editable (the
+	pencil saves it), and a bar under the header says where it stands and
+	has Publish / Unpublish and Delete (twice). Items go in and out through
+	the store button on any item card, outfits from your shared outfit's
+	page (the store picker: StoreDialogs).
 
 	StoresScreen.Root props: nav, look
 	StoresScreen.Store props: nav, look, code
@@ -62,6 +70,8 @@ local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
 local OutfitsScreen = require(script.Parent:WaitForChild("OutfitsScreen"))
 local StoresClient = require(views:WaitForChild("catalogue"):WaitForChild("StoresClient"))
 local HudContext = require(views:WaitForChild("HudContext"))
+local StoreDialogs = require(script.Parent:WaitForChild("StoreDialogs"))
+local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
 local StoresConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("StoresConfig"))
 
@@ -83,6 +93,8 @@ local EMPTY = {
 	favourites = "Star stores to keep them here",
 	mine = "Stores you make show here",
 }
+local DRAFT_HINT = "Add items with the store button on any item card's menu"
+
 local PERSONAL = { favourites = "storeFavourites", mine = "myStores" }
 
 -- Codes reported this session (Report shows as done).
@@ -180,6 +192,72 @@ local function StoreCard(props: { card: StoresClient.Card, favourite: boolean, o
 				Size = UDim2.new(1, 0, 0, skin.textPx(12) + skin.px(2)),
 				BackgroundTransparency = 1,
 				Text = storeSub(card),
+				TextColor3 = Tokens.color.white,
+				TextTransparency = Tokens.alpha.textDim,
+				TextSize = skin.textPx(12),
+				FontFace = Tokens.font(800),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				LayoutOrder = 2,
+			}),
+		}),
+	})
+end
+
+-- My stores' first card: make a new store (the Create store dialog).
+local function CreateCard(props: { layoutOrder: number })
+	local skin = useSkin()
+	local hud = React.useContext(HudContext)
+	local interaction = useInteraction()
+	local function create()
+		hud.createStore()
+	end
+	return e("TextButton", {
+		Name = "CreateStoreCard",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		AutoButtonColor = false,
+		Text = "",
+		LayoutOrder = props.layoutOrder,
+		[React.Event.InputBegan] = Press.began(create),
+		[React.Event.Activated] = Press.activated(create),
+		[React.Event.MouseEnter] = interaction.onEnter,
+		[React.Event.MouseLeave] = interaction.onLeave,
+	}, {
+		Thumb = e(Parts.Thumb, {
+			colour = Tokens.color.accent,
+			radius = 14,
+			hovered = interaction.hovered,
+		}, {
+			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
+			Icon = e(Icon, {
+				name = "add_business",
+				size = 44,
+				anchorPoint = Vector2.new(0.5, 0.5),
+				position = UDim2.fromScale(0.5, 0.5),
+			}),
+		}),
+		Meta = e("Frame", {
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.fromScale(0, 1),
+			Size = UDim2.new(1, 0, 0, skin.px(36)),
+			BackgroundTransparency = 1,
+		}, {
+			Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(2)) }),
+			Name = e("TextLabel", {
+				Size = UDim2.new(1, 0, 0, skin.textPx(13) + skin.px(2)),
+				BackgroundTransparency = 1,
+				Text = "Create store",
+				TextColor3 = Tokens.color.white,
+				TextSize = skin.textPx(13),
+				FontFace = Tokens.font(800),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				LayoutOrder = 1,
+			}),
+			Sub = e("TextLabel", {
+				Size = UDim2.new(1, 0, 0, skin.textPx(12) + skin.px(2)),
+				BackgroundTransparency = 1,
+				Text = "Pick items for others to shop",
 				TextColor3 = Tokens.color.white,
 				TextTransparency = Tokens.alpha.textDim,
 				TextSize = skin.textPx(12),
@@ -389,6 +467,10 @@ local function StoresScreen(props: { nav: any, look: any })
 		local list = StoresClient.get(sort)
 		local cards: { [string]: any } = {}
 		local count = 0
+		if sort == "mine" and #look.myStores < StoresConfig.maxStores then
+			count += 1
+			cards.Create = e(CreateCard, { layoutOrder = count })
+		end
 		for _, card in list.cards do
 			count += 1
 			cards["Store" .. card.code] = storeCard(card, count)
@@ -429,6 +511,10 @@ local function StoresScreen(props: { nav: any, look: any })
 			local list = StoresClient.get(entry.id)
 			local cells: { [string]: any } = {}
 			local count = 0
+			if entry.id == "mine" and #look.myStores < StoresConfig.maxStores then
+				count += 1
+				cells.Create = e(CreateCard, { layoutOrder = count })
+			end
 			for _, card in list.cards do
 				if count >= ROW_CARDS then
 					break
@@ -598,6 +684,12 @@ local function useItemCards(look: any, nav: any, store: string)
 					setMenuId(nil)
 					nav.push({ kind = "item", id = id, label = item.name })
 				end,
+				onStore = if #look.myStores > 0
+					then function()
+						setMenuId(nil)
+						hud.addToStore({ kind = "item", id = id })
+					end
+					else nil,
 			},
 		})
 	end
@@ -818,6 +910,40 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 	local page, problem = useStorePage(code)
 	local itemCard = useItemCards(look, props.nav, code)
 	local _reportedVersion, setReportedVersion = React.useState(0)
+	-- Your own store: the action under way (its button spins) and why the
+	-- last one failed.
+	local working, setWorking = React.useState(nil :: string?)
+	local ownerProblem, setOwnerProblem = React.useState(nil :: string?)
+
+	-- Keep the breadcrumb in step with a rename.
+	React.useEffect(function()
+		local top = props.nav.top
+		if page and top and top.kind == "store" and top.id == code and top.label ~= page.name then
+			props.nav.replaceTop({ kind = top.kind, id = top.id, label = page.name })
+		end
+		return nil
+	end, { page and page.name })
+
+	local function act(action: string, payload: { [string]: any }, after: (() -> ())?)
+		if working then
+			return
+		end
+		setWorking(action)
+		setOwnerProblem(nil)
+		task.spawn(function()
+			local ok, _, err = StoresClient.act(action, payload)
+			setWorking(nil)
+			if ok then
+				Sounds.play("confirm")
+				if after then
+					after()
+				end
+			else
+				Sounds.play("error")
+				setOwnerProblem(StoreDialogs.message(err, "store"))
+			end
+		end)
+	end
 
 	-- Someone else's published store: opening it is a visit.
 	local visited = React.useRef(nil :: string?)
@@ -937,7 +1063,7 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 	add("Header", e("Frame", {
 		Size = UDim2.new(1, 0, 0, headerHeight),
 		BackgroundTransparency = 1,
-		LayoutOrder = 1,
+		LayoutOrder = -2,
 	}, {
 		Logo = e(Parts.Thumb, {
 			colour = Tokens.color.white,
@@ -954,17 +1080,29 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 				VerticalAlignment = Enum.VerticalAlignment.Center,
 				Padding = UDim.new(0, skin.px(3)),
 			}),
-			Name = e("TextLabel", {
-				Size = UDim2.new(1, 0, 0, skin.textPx(26) + skin.px(4)),
-				BackgroundTransparency = 1,
-				Text = page.name,
-				TextColor3 = Tokens.color.white,
-				TextSize = skin.textPx(26),
-				FontFace = Tokens.font(900),
-				TextXAlignment = Enum.TextXAlignment.Left,
-				TextTruncate = Enum.TextTruncate.AtEnd,
-				LayoutOrder = 1,
-			}),
+			-- Your own: edit the name in place (the pencil saves it).
+			Name = if page.mine
+				then e(OutfitsScreen.NameField, {
+					name = page.name,
+					editable = true,
+					maxLength = StoresConfig.nameLength.max,
+					size = 26,
+					layoutOrder = 1,
+					onRename = function(name: string)
+						act(Network.Actions.Stores.Rename, { code = code, name = name })
+					end,
+				})
+				else e("TextLabel", {
+					Size = UDim2.new(1, 0, 0, skin.textPx(26) + skin.px(4)),
+					BackgroundTransparency = 1,
+					Text = page.name,
+					TextColor3 = Tokens.color.white,
+					TextSize = skin.textPx(26),
+					FontFace = Tokens.font(900),
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					LayoutOrder = 1,
+				}),
 			By = e("TextLabel", {
 				Size = UDim2.new(1, 0, 0, skin.textPx(13.5) + skin.px(4)),
 				BackgroundTransparency = 1,
@@ -985,6 +1123,82 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 			BackgroundTransparency = 1,
 		}, actions),
 	}), headerHeight)
+
+	-- Your own store: where it stands, Publish / Unpublish and Delete.
+	if page.mine then
+		local count = #page.items
+		local status = if ownerProblem then ownerProblem
+			elseif page.hidden then "Hidden after reports: only you can see it"
+			elseif page.published then "Published: anyone can find it"
+			elseif count < StoresConfig.minItems then `Draft · {count} of {StoresConfig.minItems} items to publish. {DRAFT_HINT}`
+			else "Draft: ready to publish"
+		local barHeight = skin.px(Tokens.size.ctaHeight)
+		local publishWidth = 160
+		local deleteWidth = 170
+		add("Owner", e("Frame", {
+			Size = UDim2.new(1, 0, 0, barHeight),
+			BackgroundTransparency = 1,
+			LayoutOrder = -1,
+		}, {
+			Status = e("TextLabel", {
+				Size = UDim2.new(1, -skin.px(publishWidth + deleteWidth + 24), 1, 0),
+				BackgroundTransparency = 1,
+				Text = status,
+				TextColor3 = if ownerProblem then Tokens.color.accentText else Tokens.color.white,
+				TextTransparency = if ownerProblem then 0 else Tokens.alpha.textSoft,
+				TextSize = skin.textPx(13.5),
+				FontFace = Tokens.font(800),
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+			}),
+			Buttons = e("Frame", {
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.fromScale(1, 0),
+				Size = UDim2.new(0, skin.px(publishWidth + deleteWidth + 8), 1, 0),
+				BackgroundTransparency = 1,
+			}, {
+				Layout = e("UIListLayout", {
+					FillDirection = Enum.FillDirection.Horizontal,
+					HorizontalAlignment = Enum.HorizontalAlignment.Right,
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					Padding = UDim.new(0, skin.px(8)),
+				}),
+				Publish = e(PillButton, {
+					variant = "pill",
+					size = Tokens.size.ctaHeight,
+					width = publishWidth,
+					icon = if page.published then "lock" else "storefront",
+					iconSize = 19,
+					label = if page.published then "Unpublish" else "Publish",
+					active = not page.published,
+					disabled = not page.published and (page.hidden or count < StoresConfig.minItems),
+					loading = working == Network.Actions.Stores.Publish or working == Network.Actions.Stores.Unpublish,
+					sound = false, -- the outcome plays its own sound
+					layoutOrder = 1,
+					onActivated = function()
+						act(if page.published then Network.Actions.Stores.Unpublish else Network.Actions.Stores.Publish, { code = code })
+					end,
+				}),
+				Delete = e("Frame", {
+					Size = UDim2.fromOffset(skin.px(deleteWidth), barHeight),
+					BackgroundTransparency = 1,
+					LayoutOrder = 2,
+				}, {
+					Button = e(ConfirmButton, {
+						label = "Delete",
+						icon = "delete",
+						armedLabel = "Tap again",
+						disabled = working ~= nil,
+						onConfirm = function()
+							act(Network.Actions.Stores.Delete, { code = code }, function()
+								props.nav.back()
+							end)
+						end,
+					}),
+				}),
+			}),
+		}), barHeight)
+	end
 
 	if #page.featured > 0 then
 		add("Featured", e(Featured, { look = look, nav = props.nav, items = page.featured, layoutOrder = 2 }), skin.px(HERO_HEIGHT))
@@ -1092,8 +1306,9 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 		}), blockHeight)
 	end
 
-	if #page.items == 0 then
-		add("Empty", e(Message, { text = if page.mine then "Add items to your store and they show here" else "Nothing here yet" }), skin.px(40))
+	-- (Your own empty store's bar already says how to fill it.)
+	if #page.items == 0 and not page.mine then
+		add("Empty", e(Message, { text = "Nothing here yet" }), skin.px(40))
 	end
 
 	return e("ScrollingFrame", {

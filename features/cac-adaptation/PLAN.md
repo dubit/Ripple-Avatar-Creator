@@ -494,7 +494,7 @@
 - **Outcome:** Stores home is a column of carousels (`Parts.CardRow`, a sideways ScrollingFrame with fixed cells) with See all; a tab shows its list as a grid and a second tap goes home. The user liked it and wants the same for Catalogue and Outfits (21.7). Store pages are cached on the client for 30 s and on the server for 60 s. Bestsellers and New arrivals order every item, so See all shows the lot. Scrolling lists need a right pad (8px) before the scroll bar, or right-aligned text runs under it.
 
 ### Task 19: My stores and Create store
-- **Status:** [TODO]
+- **Status:** [PARTIAL]
 - **Why here:** Last feature of layer 8. It has the most open design and business questions, so it is last, built on a fully working store browsing experience.
 - **Depends on:** 17, 18
 - **Refs:** Scope > Stores (My stores: Create store; own stores published/unpublished); Risks (What a store is)
@@ -505,10 +505,10 @@
 - **Associated UI:** 5h "My stores" row and tab ("Create store - Sell your own items"; "My Store - Unpublished"). The create/edit flow is not in the design (gap).
 - **Replication:** logical persisted/shared data (**cosmetic**).
 - **Sub-tasks:**
-  - [TODO] 19.1 Design gap (open question): the store creation/edit/publish screens are not designed. Request a design round or agree a minimal flow before building.
+  - [DONE] 19.1 Decided (user, 2026-10-14): edit in place, no separate editor. My stores starts with a Create store card (a name dialog; the new draft's page opens). Your own store page has an editable name (the outfit name field) and an owner bar: status (draft count towards the 4 to publish, Published, Hidden), Publish / Unpublish and Delete (twice). Items go in and out through a store button beside View in any item card's menu (shown once you have a store), which opens a picker of your stores with ticks; outfits likewise from your shared outfit's page (it must be on Community first). Revenue share re-asked on closing Task 17: still none for phase 1.
   - [PARTIAL] 19.2 Controller actions: built in Task 17 (StoresController: Create, Rename, AddItem, RemoveItem, AddOutfit, RemoveOutfit, Publish, Unpublish, Delete, with name filtering and item validation). Left for 19: reordering items (the featured viewer shows the first ones) and anything the editor design needs.
-  - [TODO] 19.3 Store editor UI (`/html-to-react-luau` once designed), reusing catalogue cards and the item picker.
-  - [TODO] 19.4 My stores wiring on Stores home.
+  - [PARTIAL] 19.3 Store editing UI: `StoreDialogs` (store picker, Create store; Hud-owned like the share dialog), the card menu's store button (`Parts`), the owner bar and in-place rename (StoresScreen), the outfit page's store button; `StoresClient.act` calls `StoreAction` and drops cached pages and lists on success. Reordering items (which ones are Featured) is not built.
+  - [PARTIAL] 19.4 My stores wiring on Stores home: the Create store card in the My stores row and tab while under the limit.
   - [TODO] 19.5 Analytics: `store_create`, `store_publish`.
   - [TODO] 19.6 Playtest: create, publish from one server, see it from another.
 

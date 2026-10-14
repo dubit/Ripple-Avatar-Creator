@@ -16,6 +16,11 @@
 	  share(id, kind?, name?)  open the share dialog for a saved outfit, or
 	                           (kind "creation") one saved on Roblox, with its
 	                           name, or (kind "store", id its code) a store
+	  addToStore(target)       open the store picker for an item
+	                           ({ kind = "item", id }) or one of your shared
+	                           outfits ({ kind = "outfit", code, name })
+	  createStore()            open the Create store dialog (the new store's
+	                           page opens once it's made)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -26,6 +31,8 @@ export type HudActions = {
 	buy: (itemIds: { number }, key: string?, store: string?) -> (),
 	buying: (key: string) -> boolean,
 	share: (id: any, kind: string?, name: string?) -> (),
+	addToStore: (target: any) -> (),
+	createStore: () -> (),
 }
 
 local HudContext = React.createContext({
@@ -34,6 +41,8 @@ local HudContext = React.createContext({
 		return false
 	end,
 	share = function(_id: any, _kind: string?, _name: string?) end,
+	addToStore = function(_target: any) end,
+	createStore = function() end,
 } :: HudActions)
 
 return HudContext

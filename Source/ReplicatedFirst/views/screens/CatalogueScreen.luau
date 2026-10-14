@@ -264,6 +264,12 @@ local function CatalogueScreen(props: { nav: any, look: any })
 					setMenuId(nil)
 					openItem(item)
 				end,
+				onStore = if #props.look.myStores > 0
+					then function()
+						setMenuId(nil)
+						hud.addToStore({ kind = "item", id = item.id })
+					end
+					else nil,
 			},
 		})
 	end
