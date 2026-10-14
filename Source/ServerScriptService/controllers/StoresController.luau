@@ -26,12 +26,18 @@
 		AddOutfit(code, row, outfitCode)   one of the player's own Community
 		                                   outfits, into an outfits row
 		RemoveOutfit(code, row, outfitCode)
-		AddRow(code, kind, name?)          "items" | "outfits" (named) or
-		                                   "bestsellers" | "newArrivals" |
-		                                   "collections"; answers its id
-		                                   as `row` ("full", "dupe")
+		AddRow(code, content, source, style, name)   content "items" |
+		                                   "outfits", source "manual" |
+		                                   "search", a style (StoresService);
+		                                   as a table also limit, order.
+		                                   Answers its id as `row` ("full")
+		EditRow { code, row, content, source, style, limit, order, name? }
+		                                   a row's settings (content and
+		                                   source stay as made)
+		SetRowSearch { code, row, content, search }   a search row's
+		                                   search (StoresService.cleanSearch)
 		RenameRow(code, row, name)
-		RemoveRow(code, row)               not Featured
+		RemoveRow(code, row)
 		MoveRow(code, row, by)             by -1 (up) or 1 (down)
 		Publish(code)                      needs StoresConfig.minItems items
 		                                   ("items", "hidden")
@@ -306,29 +312,76 @@ end
 
 -- Rows ---------------------------------------------------------------------------
 
+-- A row's name from a request (or, for a slash command, its words).
+local function rowName(player: Player, a: { [string]: any }, from: number): (string?, string?)
+	local text = a.name or (a.rest and #a.rest >= from and joined(table.move(a.rest, from, #a.rest, 1, {})))
+	return StoresService.cleanRowName(player, text)
+end
+
 local function addRow(player: Player, model: any, raw: any, ...: any): Result
+	-- Table: { code, content, source, style, limit?, order?, name }.
+	-- Slash: AddRow CODE content source style name...
 	local a = args(raw, ...)
 	local code = ownCode(player, model, a.code)
-	local kind = a.kind or (a.rest and a.rest[1])
-	if not code or type(kind) ~= "string" then
+	local rest = a.rest or {}
+	local spec = StoresService.cleanSpec({
+		content = a.content or rest[1],
+		source = a.source or rest[2],
+		style = a.style or rest[3],
+		limit = a.limit,
+		order = a.order,
+	})
+	if not code or not spec then
 		return fail("bad")
 	end
-	local name: string? = nil
-	if kind == "items" or kind == "outfits" then
-		local cleaned, problem = StoresService.cleanRowName(player, a.name or (a.rest and joined(table.move(a.rest, 2, #a.rest, 1, {}))))
-		if not cleaned then
-			return fail(problem or "bad")
-		end
-		name = cleaned
+	local name, problem = rowName(player, a, 4)
+	if not name then
+		return fail(problem or "bad")
 	end
+	spec.name = name
 	local made: string? = nil
 	local result = change(player, code, function(record: any): string?
-		local id, problem = StoresService.addRow(record, kind, name)
+		local id, why = StoresService.addRow(record, spec :: any)
 		made = id
-		return problem
+		return why
 	end)
 	result.row = made
 	return result
+end
+
+local function editRow(player: Player, model: any, raw: any): Result
+	-- { code, row, content, source, style, limit, order, name? }
+	local a = args(raw)
+	local code = ownCode(player, model, a.code)
+	local row = rowOf(a)
+	local spec = StoresService.cleanSpec(a)
+	if not code or not row or not spec then
+		return fail("bad")
+	end
+	if a.name ~= nil then
+		local name, problem = rowName(player, a, 1)
+		if not name then
+			return fail(problem or "bad")
+		end
+		spec.name = name
+	end
+	return change(player, code, function(record: any): string?
+		return StoresService.editRow(record, row, spec :: any)
+	end)
+end
+
+local function setRowSearch(player: Player, model: any, raw: any): Result
+	-- { code, row, content, search }
+	local a = args(raw)
+	local code = ownCode(player, model, a.code)
+	local row = rowOf(a)
+	local search = StoresService.cleanSearch(a.content, a.search)
+	if not code or not row or not search then
+		return fail("bad")
+	end
+	return change(player, code, function(record: any): string?
+		return StoresService.setSearch(record, row, search :: any)
+	end)
 end
 
 local function renameRow(player: Player, model: any, raw: any, ...: any): Result
@@ -338,7 +391,7 @@ local function renameRow(player: Player, model: any, raw: any, ...: any): Result
 	if not code or not row then
 		return fail("bad")
 	end
-	local cleaned, problem = StoresService.cleanRowName(player, a.name or (a.rest and joined(table.move(a.rest, 2, #a.rest, 1, {}))))
+	local cleaned, problem = rowName(player, a, 2)
 	if not cleaned then
 		return fail(problem or "bad")
 	end
@@ -500,6 +553,8 @@ local ACTIONS: { [string]: (Player, any, any, ...any) -> Result } = {
 	[Network.Actions.Stores.AddOutfit] = budgeted(addOutfit),
 	[Network.Actions.Stores.RemoveOutfit] = budgeted(removeOutfit),
 	[Network.Actions.Stores.AddRow] = budgeted(addRow),
+	[Network.Actions.Stores.EditRow] = budgeted(editRow),
+	[Network.Actions.Stores.SetRowSearch] = budgeted(setRowSearch),
 	[Network.Actions.Stores.RenameRow] = budgeted(renameRow),
 	[Network.Actions.Stores.RemoveRow] = budgeted(removeRow),
 	[Network.Actions.Stores.MoveRow] = budgeted(moveRow),

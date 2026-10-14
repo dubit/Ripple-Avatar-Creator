@@ -225,6 +225,7 @@ export type ItemCardProps = {
 	wearing: boolean,
 	inBasket: boolean,
 	favourite: boolean?, -- a star badge
+	fill: boolean?, -- the thumb fills the cell above the labels (wide / tall cells), not square
 	picked: boolean?, -- pick mode: in the store row being filled (a tick, an orange ring)
 	pickBusy: boolean?, -- pick mode: being added / taken out (a spinner)
 	onActivated: (() -> ())?, -- plain tap (cards without a menu)
@@ -392,10 +393,11 @@ function Parts.ItemCard(props: ItemCardProps)
 			image = Parts.image(item),
 			caption = string.lower(item.sub),
 			hovered = interaction.hovered,
-			-- Square: the thumb is as tall as the card is wide.
-			size = UDim2.fromScale(1, 1),
+			-- Square: the thumb is as tall as the card is wide (or, with
+			-- `fill`, whatever the cell leaves above the labels).
+			size = if props.fill then UDim2.new(1, 0, 1, -skin.px(40)) else UDim2.fromScale(1, 1),
 		}, {
-			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
+			Aspect = if props.fill then nil else e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
 			Markers = e("Frame", {
 				Position = UDim2.fromOffset(skin.px(6), skin.px(6)),
 				Size = UDim2.fromOffset(skin.px(80), skin.px(24)),
@@ -695,6 +697,7 @@ end
 
 export type CardRowProps = {
 	cardWidth: number, -- design px
+	thumbHeight: number?, -- design px of each cell above its labels (default cardWidth: square)
 	extraHeight: number?, -- design px below each square cell (labels; default 40)
 	gap: number?, -- design px
 	count: number,
@@ -703,8 +706,8 @@ export type CardRowProps = {
 }
 
 -- The row's height in pixels for these props (to lay out what's around it).
-function Parts.cardRowHeight(skin: any, cardWidth: number, extraHeight: number?): number
-	return skin.px(cardWidth) + skin.px(extraHeight or 40) + skin.px(3) * 2 + skin.px(12)
+function Parts.cardRowHeight(skin: any, cardWidth: number, extraHeight: number?, thumbHeight: number?): number
+	return skin.px(thumbHeight or cardWidth) + skin.px(extraHeight or 40) + skin.px(3) * 2 + skin.px(12)
 end
 
 -- A carousel: one row of fixed-width cells that scrolls sideways (drag on
@@ -712,13 +715,13 @@ end
 function Parts.CardRow(props: CardRowProps)
 	local skin = useSkin()
 	local width = skin.px(props.cardWidth)
-	local height = width + skin.px(props.extraHeight or 40)
+	local height = skin.px(props.thumbHeight or props.cardWidth) + skin.px(props.extraHeight or 40)
 	local gap = skin.px(props.gap or 12)
 	local inset = skin.px(3) -- room for strokes and glows, as in CardGrid
 	local count = props.count
 	return e("ScrollingFrame", {
 		Name = "CardRow",
-		Size = UDim2.new(1, 0, 0, Parts.cardRowHeight(skin, props.cardWidth, props.extraHeight)),
+		Size = UDim2.new(1, 0, 0, Parts.cardRowHeight(skin, props.cardWidth, props.extraHeight, props.thumbHeight)),
 		LayoutOrder = props.layoutOrder or 0,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,

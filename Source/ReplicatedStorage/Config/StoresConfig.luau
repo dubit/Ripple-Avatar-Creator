@@ -14,20 +14,9 @@ local config: StoresConfig = {
 	maxItems = 100,
 	maxOutfits = 20,
 	nameLength = { min = 3, max = 30 },
-	featured = 4,
 	maxRows = 12,
 	rowNameLength = { min = 1, max = 24 },
-	sectionSize = 10,
-	collections = {
-		{ name = "Free", maxPrice = 0 },
-		{ name = "Under 50", minPrice = 1, maxPrice = 49 },
-		{ name = "Accessories", category = "Accessories" },
-		{ name = "Clothing", category = "Clothing" },
-		{ name = "Hair", assetTypes = { "HairAccessory" } },
-		{ name = "Animations", category = "Animations" },
-	},
-	maxCollections = 3,
-	collectionMinItems = 2,
+	rowLimit = { default = 20, max = 60 },
 }
 
 return config

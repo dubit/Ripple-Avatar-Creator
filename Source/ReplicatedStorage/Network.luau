@@ -51,7 +51,7 @@ local NetworkConfig = {
 		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected", "Follow", "Share", "ShareCreation", "WearShared" },
 		Purchase = { "Buy", "Finished", "Check" },
 		Shrine = { "Donate" },
-		Stores = { "Create", "Rename", "AddItem", "RemoveItem", "AddOutfit", "RemoveOutfit", "AddRow", "RenameRow", "RemoveRow", "MoveRow", "Publish", "Unpublish", "Delete", "Favourite", "Report", "Open", "Share", "Moderate" },
+		Stores = { "Create", "Rename", "AddItem", "RemoveItem", "AddOutfit", "RemoveOutfit", "AddRow", "EditRow", "SetRowSearch", "RenameRow", "RemoveRow", "MoveRow", "Publish", "Unpublish", "Delete", "Favourite", "Report", "Open", "Share", "Moderate" },
 		SlashCommand = {},  -- No actions, just the intent
 		WorldOptions = { "Set", "Reset" },
 	},
@@ -177,7 +177,7 @@ export type FavouritesAction = "Toggle"
 export type PurchaseAction = "Buy" | "Finished" | "Check"
 export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected" | "Follow" | "Share" | "ShareCreation" | "WearShared"
 export type ShrineAction = "Donate"
-export type StoresAction = "Create" | "Rename" | "AddItem" | "RemoveItem" | "AddOutfit" | "RemoveOutfit" | "AddRow" | "RenameRow" | "RemoveRow" | "MoveRow" | "Publish" | "Unpublish" | "Delete" | "Favourite" | "Report" | "Open" | "Share" | "Moderate"
+export type StoresAction = "Create" | "Rename" | "AddItem" | "RemoveItem" | "AddOutfit" | "RemoveOutfit" | "AddRow" | "EditRow" | "SetRowSearch" | "RenameRow" | "RemoveRow" | "MoveRow" | "Publish" | "Unpublish" | "Delete" | "Favourite" | "Report" | "Open" | "Share" | "Moderate"
 export type WorldOptionsAction = "Set" | "Reset"
 
 -- State Type Exports (manually defined for type safety)

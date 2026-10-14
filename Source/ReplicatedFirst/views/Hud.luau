@@ -49,6 +49,7 @@ local WorldRenderer = require(views:WaitForChild("WorldRenderer"))
 local ShareDialog = require(views:WaitForChild("screens"):WaitForChild("ShareDialog"))
 local StoreDialogs = require(views:WaitForChild("screens"):WaitForChild("StoreDialogs"))
 local StoresClient = require(views:WaitForChild("catalogue"):WaitForChild("StoresClient"))
+local CatalogueFilters = require(views:WaitForChild("screens"):WaitForChild("CatalogueFilters"))
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
 local e = React.createElement
@@ -198,6 +199,21 @@ local function Hud()
 	latestPicking.current = picking
 	local latestNav = React.useRef(nav)
 	latestNav.current = nav
+	-- Choosing an items search row's search in the Catalogue (setup mode):
+	-- the row, the store page's crumbs, and the Catalogue's own browse
+	-- from before (put back after).
+	local searching, setSearching = React.useState(nil :: {
+		code: string,
+		row: string,
+		storeName: string,
+		rowName: string,
+		stack: { any },
+		saved: { [string]: any },
+		waiting: boolean,
+		problem: string?,
+	}?)
+	local latestSearching = React.useRef(searching)
+	latestSearching.current = searching
 	-- The latest purchase we sent (its request id), to sound its outcome,
 	-- and the button that sent it (spinning until the outcome arrives).
 	local buyRequest, setBuyRequest = React.useState(nil :: number?)
@@ -245,6 +261,13 @@ local function Hud()
 			Sounds.play("back")
 			setPicking(nil)
 			nav.restore("Stores", picking.stack)
+		elseif searching and #nav.stack == 0 then
+			Sounds.play("back")
+			for key, value in searching.saved do
+				SessionStore[key] = value
+			end
+			setSearching(nil)
+			nav.restore("Stores", searching.stack)
 		elseif #nav.stack > 0 then
 			Sounds.play("back")
 			nav.back()
@@ -256,13 +279,28 @@ local function Hud()
 		return true
 	end)
 
-	-- Pick mode is only for the Catalogue: leaving it (or closing) ends it.
+	-- Pick mode and search setup are only for the Catalogue: moving off it
+	-- (or closing) ends them (setup mode puts the Catalogue's browse back).
+	-- Only a move off it: they start just before the Catalogue opens, and
+	-- (started from a task) needn't land in the same render.
+	local lastRoot = React.useRef(nav.root)
 	React.useEffect(function()
-		if picking and nav.root ~= "Catalogue" then
+		local left = lastRoot.current == "Catalogue" and nav.root ~= "Catalogue"
+		lastRoot.current = nav.root
+		if not left then
+			return nil
+		end
+		if picking then
 			setPicking(nil)
 		end
+		if searching then
+			for key, value in searching.saved do
+				SessionStore[key] = value
+			end
+			setSearching(nil)
+		end
 		return nil
-	end, { picking ~= nil, nav.root } :: { any })
+	end, { nav.root } :: { any })
 
 	-- Joined through a share link (DeepLinkService): open what it shares,
 	-- an outfit under Outfits › Community, a store under Stores. Kinds we
@@ -338,9 +376,101 @@ local function Hud()
 			buying = function(key: string): boolean
 				return buyingKey == key
 			end,
-			addStoreRow = function(code: string, present: { string })
+			setupSearch = function(target: any)
+				-- The Catalogue opens fresh from the session store, so set the
+				-- row's search there (keeping what was there to put back).
+				local keys = { "catalogue.category", "catalogue.sub", "catalogue.query", "catalogue.filters" }
+				local saved = {}
+				for _, key in keys do
+					saved[key] = SessionStore[key]
+				end
+				local search = target.search
+				if type(search) == "table" and type(search.category) == "string" then
+					local filters = CatalogueFilters.defaults()
+					filters.minPrice = search.minPrice
+					filters.maxPrice = search.maxPrice
+					filters.sort = search.sort or filters.sort
+					filters.sortWindow = search.sortWindow or filters.sortWindow
+					filters.creator = search.creator or ""
+					filters.salesType = search.salesType or filters.salesType
+					if search.includeOffSale ~= nil then
+						filters.includeOffSale = search.includeOffSale
+					end
+					filters.colour = search.colour or ""
+					SessionStore["catalogue.category"] = search.category
+					SessionStore["catalogue.sub"] = search.chip or "All"
+					SessionStore["catalogue.query"] = search.keyword or ""
+					SessionStore["catalogue.filters"] = filters
+				end
 				Sounds.play("open")
-				setStoreDialog({ kind = "row", code = code, present = present })
+				setPicking(nil)
+				setSearching({
+					code = target.code,
+					row = target.row,
+					storeName = target.storeName,
+					rowName = target.rowName,
+					stack = table.clone(latestNav.current.stack),
+					saved = saved,
+					waiting = false,
+					problem = nil,
+				})
+				latestNav.current.openRoot("Catalogue")
+			end,
+			searching = if searching
+				then { storeName = searching.storeName, rowName = searching.rowName, waiting = searching.waiting, problem = searching.problem }
+				else nil,
+			useSearch = function(browse: any)
+				local current = latestSearching.current
+				if not current or current.waiting then
+					return
+				end
+				setSearching(function(old: any)
+					if not old then
+						return old
+					end
+					local new = table.clone(old)
+					new.waiting = true
+					new.problem = nil
+					return new
+				end)
+				task.spawn(function()
+					local ok, _, err = StoresClient.act(Network.Actions.Stores.SetRowSearch, {
+						code = current.code,
+						row = current.row,
+						content = "items",
+						search = browse,
+					})
+					if ok then
+						Sounds.play("confirm")
+						for key, value in current.saved do
+							SessionStore[key] = value
+						end
+						setSearching(nil)
+						latestNav.current.restore("Stores", current.stack)
+					else
+						Sounds.play("error")
+						setSearching(function(old: any)
+							if not old then
+								return old
+							end
+							local new = table.clone(old)
+							new.waiting = false
+							new.problem = if err == "bad" then "That can't be a search (try a category tab)" else StoreDialogs.message(err, "row")
+							return new
+						end)
+					end
+				end)
+			end,
+			endSearch = function()
+				local current = latestSearching.current
+				if current then
+					Sounds.play("back")
+					for key, value in current.saved do
+						SessionStore[key] = value
+					end
+					setSearching(nil)
+					latestNav.current.restore("Stores", current.stack)
+				end
 			end,
 			pickForRow = function(target: any)
 				if target.kind == "outfits" then
@@ -460,7 +590,7 @@ local function Hud()
 				end
 			end,
 		}
-	end, { buyingKey, picking } :: { any })
+	end, { buyingKey, picking, searching } :: { any })
 
 	local panels: { [string]: any } = {}
 	for _, transition in panelTransitions do

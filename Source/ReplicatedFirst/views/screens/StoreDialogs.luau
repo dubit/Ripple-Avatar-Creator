@@ -7,17 +7,14 @@
 	(tap outside, Done or Back shuts them; they rise in and drop out):
 
 	  Picker   "Add to store": each of the player's own stores and its rows
-	           that take the thing (Featured and items rows for an item,
-	           outfits rows for an outfit), each row with a tick when it's
+	           that take the thing (hand-filled items rows for an item,
+	           hand-filled outfits rows for an outfit), each with a tick when it's
 	           in it. Ticking adds it to that row, unticking takes it out
 	           (StoresController AddItem / RemoveItem / AddOutfit /
 	           RemoveOutfit). Opened from the store button in an item card's
 	           menu, or on your own shared outfit.
 	  Outfits  "Add outfits" for one outfits row: your Community outfits
 	           (Mine), ticked when they're in the row.
-	  Row      "Add row": an items or outfits row (named), or one of the
-	           automatic rows (greyed out when the store already has it:
-	           the page says which rows it has when it opens the dialog).
 	  Create   "Create store": a name, then the new draft store's page opens.
 
 	Why something failed shows in the dialog itself (no toasts).
@@ -46,7 +43,6 @@ local PillButton = require(views:WaitForChild("components"):WaitForChild("PillBu
 local GlassPanel = require(views:WaitForChild("components"):WaitForChild("GlassPanel"))
 local ShadowText = require(views:WaitForChild("components"):WaitForChild("ShadowText"))
 local Spinner = require(views:WaitForChild("components"):WaitForChild("Spinner"))
-local Chip = require(views:WaitForChild("components"):WaitForChild("Chip"))
 local StoresClient = require(views:WaitForChild("catalogue"):WaitForChild("StoresClient"))
 local CommunityOutfits = require(views:WaitForChild("catalogue"):WaitForChild("CommunityOutfits"))
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
@@ -67,14 +63,7 @@ export type Target = { kind: "item", id: number } | { kind: "outfit", code: stri
 export type Dialog =
 	{ kind: "pick", target: Target }
 	| { kind: "outfits", code: string, row: string, storeName: string, rowName: string }
-	| { kind: "row", code: string, present: { string } }
 	| { kind: "create" }
-
-local AUTO_ROWS = {
-	{ kind = "newArrivals", label = "New arrivals" },
-	{ kind = "bestsellers", label = "Bestsellers" },
-	{ kind = "collections", label = "Collections" },
-}
 
 local function message(err: string?, what: string?): string
 	if err == "full" then
@@ -395,10 +384,7 @@ local function useStorePages(codes: { string })
 end
 
 local function rowTakes(row: StoresClient.Row, target: Target): boolean
-	if target.kind == "item" then
-		return row.kind == "featured" or row.kind == "items"
-	end
-	return row.kind == "outfits"
+	return row.source == "manual" and row.content == (if target.kind == "item" then "items" else "outfits")
 end
 
 local function rowHas(row: StoresClient.Row, target: Target): boolean
@@ -409,7 +395,7 @@ local function rowHas(row: StoresClient.Row, target: Target): boolean
 end
 
 local function rowName(row: StoresClient.Row): string
-	return row.name or (if row.kind == "featured" then "Featured" else "Row")
+	return if row.name ~= "" then row.name else "Row"
 end
 
 local function storeLine(page: StoresClient.Page): string
@@ -466,7 +452,7 @@ local function Picker(props: { target: Target, myStores: { string }, t: any, onC
 			table.insert(lines, {
 				key = "None" .. code,
 				kind = "note",
-				label = if target.kind == "outfit" then "No outfits row yet: add one on the store's page" else "No items rows yet",
+				label = if target.kind == "outfit" then "No hand-filled outfits row yet: add one on the store's page" else "No hand-filled items rows yet",
 			})
 		end
 	end
@@ -680,110 +666,6 @@ local function useSubmit(): (boolean, string?, (action: string, payload: any, wh
 	return waiting, problem, submit
 end
 
-local function AddRow(props: { code: string, present: { string }, t: any, onClose: () -> () })
-	local skin = useSkin()
-	local kind, setKind = React.useState("items")
-	local name, setName = React.useState("")
-	local waiting, problem, submit = useSubmit()
-
-	-- Every kind, always; the automatic rows the store has are greyed out.
-	local present: { [string]: boolean } = {}
-	for _, existing in props.present do
-		present[existing] = true
-	end
-	local choices: { { kind: string, label: string } } = {
-		{ kind = "items", label = "Items" },
-		{ kind = "outfits", label = "Outfits" },
-	}
-	for _, auto in AUTO_ROWS do
-		table.insert(choices, auto)
-	end
-	local named = kind == "items" or kind == "outfits"
-	local trimmed = string.match(name, "^%s*(.-)%s*$") or ""
-	local ready = not waiting and (not named or (utf8.len(trimmed) or 0) >= StoresConfig.rowNameLength.min)
-	local function create()
-		if ready then
-			submit(Network.Actions.Stores.AddRow, { code = props.code, kind = kind, name = if named then trimmed else nil }, "row", function()
-				props.onClose()
-			end)
-		end
-	end
-
-	local chips: { [string]: any } = {
-		Layout = e("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, skin.px(6)),
-			Wraps = true,
-		}),
-	}
-	for index, choice in choices do
-		chips["Chip" .. choice.kind] = e(Chip, {
-			label = choice.label,
-			active = kind == choice.kind,
-			disabled = present[choice.kind] == true and choice.kind ~= "items" and choice.kind ~= "outfits",
-			layoutOrder = index,
-			onActivated = function()
-				setKind(choice.kind)
-			end,
-		})
-	end
-	local chipsTop = skin.px(62)
-	local chipsHeight = skin.px(76) -- two lines of chips at most
-	local fieldTop = chipsTop + chipsHeight + skin.px(10)
-	local fieldHeight = if named then skin.px(52) else 0
-	return e(Shell, {
-		t = props.t,
-		height = skin.px(18) + fieldTop + fieldHeight + skin.px(34) + skin.px(Tokens.size.ctaHeight) + skin.px(18),
-		title = "Add row",
-		sub = if named then "A row you name and fill"
-			else "Fills itself from the store's items. Greyed out: the store has it already",
-		onClose = props.onClose,
-	}, {
-		Chips = e("Frame", {
-			Position = UDim2.fromOffset(0, chipsTop),
-			Size = UDim2.new(1, 0, 0, chipsHeight),
-			BackgroundTransparency = 1,
-		}, chips),
-		Field = if named
-			then e(NameBox, {
-				text = name,
-				placeholder = if kind == "outfits" then "Row name, e.g. Full looks" else "Row name, e.g. Hats",
-				maxLength = StoresConfig.rowNameLength.max,
-				position = UDim2.fromOffset(0, fieldTop),
-				onChange = setName,
-				onSubmit = create,
-			})
-			else nil,
-		Error = e(ErrorLine, { text = problem, position = UDim2.fromOffset(0, fieldTop + fieldHeight + skin.px(8)) }),
-		Buttons = e(Buttons, nil, {
-			Cancel = e(PillButton, {
-				variant = "pill",
-				size = Tokens.size.ctaHeight,
-				width = 130,
-				label = "Cancel",
-				sound = "back",
-				layoutOrder = 1,
-				onActivated = props.onClose,
-			}),
-			Add = e(PillButton, {
-				variant = "pill",
-				size = Tokens.size.ctaHeight,
-				width = 150,
-				icon = "add_circle",
-				iconSize = 19,
-				label = "Add",
-				active = true,
-				disabled = not ready and not waiting,
-				loading = waiting,
-				sound = false, -- the outcome plays its own sound
-				layoutOrder = 2,
-				onActivated = create,
-			}),
-		}),
-	})
-end
-
 local function Create(props: { t: any, onCreated: (code: string, name: string) -> (), onClose: () -> () })
 	local skin = useSkin()
 	local name, setName = React.useState("")
@@ -875,8 +757,6 @@ local function Dialog(props: {
 				element = e(Picker, { target = dialog.target, myStores = props.myStores, t = t, onClose = props.onClose })
 			elseif dialog.kind == "outfits" then
 				element = e(Outfits, { dialog = dialog, published = props.published, t = t, onClose = props.onClose })
-			elseif dialog.kind == "row" then
-				element = e(AddRow, { code = dialog.code, present = dialog.present, t = t, onClose = props.onClose })
 			else
 				element = e(Create, { t = t, onCreated = props.onCreated, onClose = props.onClose })
 			end

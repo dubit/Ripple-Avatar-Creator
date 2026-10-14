@@ -16,9 +16,9 @@
 	(their prices and thumbnails fill in from the catalogue). A page's
 	sections arrive as positions in its item list and become item ids here.
 	Its outfits are Community outfit cards (CommunityOutfits.toCard).
-	Its rows (the owner's layout, StoresService) come in order: Featured,
-	named items / outfits rows, and the automatic Bestsellers, New arrivals
-	and Collections.
+	Its rows (the owner's layout, StoresService) come in order, each items
+	or outfits, filled by hand (its items in its order) or by a search
+	(found by the page, from `search`), with a style and a limit.
 
 	API:
 		SORTS                        the tabs, in order: { id, label }
@@ -61,11 +61,16 @@ export type Section = { name: string, items: { number } }
 
 export type Row = {
 	id: string,
-	kind: string, -- "featured" | "items" | "outfits" | "bestsellers" | "newArrivals" | "collections"
-	name: string?,
-	items: { number }?, -- item ids (featured, items rows)
-	outfits: { CommunityOutfits.Card }?, -- an outfits row's (listed) outfits
-	outfitCodes: { string }?, -- all of an outfits row's codes
+	content: string, -- "items" | "outfits"
+	source: string, -- "manual" | "search"
+	style: string, -- "square" | "wide" | "tall" | "single" | "grid" | "tile"
+	name: string,
+	limit: number,
+	order: string?, -- manual: "added" | "newest" | "bestselling"
+	items: { number }?, -- manual items rows: item ids, in order
+	outfits: { CommunityOutfits.Card }?, -- manual outfits rows: their (listed) outfits
+	outfitCodes: { string }?, -- manual outfits rows: all their codes
+	search: { [string]: any }?, -- search rows: a catalogue browse, or { sort }
 }
 
 export type Page = {
@@ -81,10 +86,6 @@ export type Page = {
 	items: { number }, -- in the order the owner added them
 	outfits: { CommunityOutfits.Card },
 	rows: { Row },
-	featured: { number },
-	bestsellers: { number },
-	newArrivals: { number },
-	collections: { Section },
 }
 
 export type List = {
@@ -158,10 +159,6 @@ local function toPage(raw: any): Page
 		end
 		return ids
 	end
-	local collections = {}
-	for _, section in if type(raw.collections) == "table" then raw.collections else {} do
-		table.insert(collections, { name = tostring(section.name), items = pick(section.items) })
-	end
 	local outfits = {}
 	for _, card in if type(raw.outfits) == "table" then raw.outfits else {} do
 		local outfit = CommunityOutfits.toCard(card)
@@ -175,8 +172,17 @@ local function toPage(raw: any): Page
 	end
 	local rows: { Row } = {}
 	for _, row in if type(raw.rows) == "table" then raw.rows else {} do
-		if type(row) == "table" and type(row.id) == "string" and type(row.kind) == "string" then
-			local entry: Row = { id = row.id, kind = row.kind, name = if type(row.name) == "string" then row.name else nil }
+		if type(row) == "table" and type(row.id) == "string" and type(row.content) == "string" then
+			local entry: Row = {
+				id = row.id,
+				content = row.content,
+				source = tostring(row.source or "manual"),
+				style = tostring(row.style or "square"),
+				name = tostring(row.name or ""),
+				limit = tonumber(row.limit) or 20,
+				order = if type(row.order) == "string" then row.order else nil,
+				search = if type(row.search) == "table" then row.search else nil,
+			}
 			if type(row.items) == "table" then
 				entry.items = pick(row.items)
 			end
@@ -209,10 +215,6 @@ local function toPage(raw: any): Page
 		items = items,
 		outfits = outfits,
 		rows = rows,
-		featured = pick(raw.featured),
-		bestsellers = pick(raw.bestsellers),
-		newArrivals = pick(raw.newArrivals),
-		collections = collections,
 	}
 end
 

@@ -312,8 +312,9 @@ local function CatalogueScreen(props: { nav: any, look: any })
 		then tabsHeight + skin.px(Tokens.size.chipHeight) + skin.px(22)
 		else tabsHeight + skin.px(12)
 	local barSpace = skin.px(BAR_HEIGHT + 10)
+	local searching = hud.searching
 	local pickTop = gridTop
-	if picking then
+	if picking or searching then
 		gridTop += skin.px(PICK_HEIGHT + 10)
 	end
 
@@ -377,6 +378,82 @@ local function CatalogueScreen(props: { nav: any, look: any })
 				nav = props.nav,
 				position = UDim2.fromOffset(0, gridTop + skin.px(6)),
 				size = UDim2.new(1, 0, 1, -(gridTop + skin.px(6))),
+			})
+			else nil,
+		-- Search setup: this browse becomes a store row's search.
+		Searching = if searching
+			then e(GlassPanel, {
+				variant = "bar",
+				cornerRadius = 16,
+				position = UDim2.fromOffset(0, pickTop),
+				size = UDim2.new(1, 0, 0, skin.px(PICK_HEIGHT)),
+			}, {
+				Padding = e("UIPadding", {
+					PaddingLeft = UDim.new(0, skin.px(16)),
+					PaddingRight = UDim.new(0, skin.px(7)),
+				}),
+				Text = e("TextLabel", {
+					Size = UDim2.new(1, -skin.px(330), 1, 0),
+					BackgroundTransparency = 1,
+					Text = searching.problem
+						or (if special then "Pick a category tab to search" else `Search for {searching.storeName} › {searching.rowName}: browse, then use what you see`),
+					TextColor3 = if searching.problem then Tokens.color.accentText else Tokens.color.white,
+					TextSize = skin.textPx(14),
+					FontFace = Tokens.font(800),
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+				}),
+				Buttons = e("Frame", {
+					AnchorPoint = Vector2.new(1, 0.5),
+					Position = UDim2.fromScale(1, 0.5),
+					Size = UDim2.fromOffset(skin.px(320), skin.px(PICK_HEIGHT - 12)),
+					BackgroundTransparency = 1,
+				}, {
+					Layout = e("UIListLayout", {
+						FillDirection = Enum.FillDirection.Horizontal,
+						HorizontalAlignment = Enum.HorizontalAlignment.Right,
+						VerticalAlignment = Enum.VerticalAlignment.Center,
+						SortOrder = Enum.SortOrder.LayoutOrder,
+						Padding = UDim.new(0, skin.px(8)),
+					}),
+					Cancel = e(PillButton, {
+						variant = "pill",
+						size = PICK_HEIGHT - 12,
+						width = 110,
+						label = "Cancel",
+						sound = false, -- endSearch plays it
+						layoutOrder = 1,
+						onActivated = hud.endSearch,
+					}),
+					Use = e(PillButton, {
+						variant = "pill",
+						size = PICK_HEIGHT - 12,
+						width = 190,
+						icon = "check",
+						iconSize = 18,
+						label = "Use this search",
+						active = true,
+						disabled = special ~= nil and not searching.waiting,
+						loading = searching.waiting,
+						sound = false, -- the outcome plays its own sound
+						layoutOrder = 2,
+						onActivated = function()
+							hud.useSearch({
+								category = category,
+								chip = if sub == "All" then nil else sub,
+								keyword = query,
+								minPrice = filters.minPrice,
+								maxPrice = filters.maxPrice,
+								sort = filters.sort,
+								sortWindow = filters.sortWindow,
+								creator = filters.creator,
+								salesType = filters.salesType,
+								includeOffSale = filters.includeOffSale,
+								colour = if filters.colour ~= "" then filters.colour else nil,
+							})
+						end,
+					}),
+				}),
 			})
 			else nil,
 		Picking = if picking and not special

@@ -21,8 +21,6 @@
 	                           outfits ({ kind = "outfit", code, name })
 	  createStore()            open the Create store dialog (the new store's
 	                           page opens once it's made)
-	  addStoreRow(code, present)   open the Add row dialog for your store
-	                           (`present`: the kinds of row it has)
 	  pickForRow(target)       fill one of your store's rows: an items row
 	                           opens the Catalogue in pick mode, an outfits
 	                           row the Add outfits dialog. target: { code,
@@ -33,6 +31,15 @@
 	  isPicked(id) / pickBusy(id) -> boolean   in the row / being changed
 	  pickToggle(id)           add the item to the row, or take it out
 	  endPicking()             back to the store page
+	  setupSearch(target)      choose an items search row's search: the
+	                           Catalogue opens in search setup mode (on the
+	                           row's search, if it has one). target: { code,
+	                           row, storeName, rowName, search? }
+	  searching                setup mode under way, or nil: { storeName,
+	                           rowName, waiting, problem? }
+	  useSearch(browse)        save what the Catalogue shows as the row's
+	                           search, and go back to the store page
+	  endSearch()              leave setup mode without saving
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -45,13 +52,16 @@ export type HudActions = {
 	share: (id: any, kind: string?, name: string?) -> (),
 	addToStore: (target: any) -> (),
 	createStore: () -> (),
-	addStoreRow: (code: string, present: { string }) -> (),
 	pickForRow: (target: any) -> (),
 	picking: any?,
 	isPicked: (id: number) -> boolean,
 	pickBusy: (id: number) -> boolean,
 	pickToggle: (id: number) -> (),
 	endPicking: () -> (),
+	setupSearch: (target: any) -> (),
+	searching: any?,
+	useSearch: (browse: any) -> (),
+	endSearch: () -> (),
 }
 
 local HudContext = React.createContext({
@@ -62,7 +72,6 @@ local HudContext = React.createContext({
 	share = function(_id: any, _kind: string?, _name: string?) end,
 	addToStore = function(_target: any) end,
 	createStore = function() end,
-	addStoreRow = function(_code: string, _present: { string }) end,
 	pickForRow = function(_target: any) end,
 	picking = nil,
 	isPicked = function(_id: number): boolean
@@ -73,6 +82,10 @@ local HudContext = React.createContext({
 	end,
 	pickToggle = function(_id: number) end,
 	endPicking = function() end,
+	setupSearch = function(_target: any) end,
+	searching = nil,
+	useSearch = function(_browse: any) end,
+	endSearch = function() end,
 } :: HudActions)
 
 return HudContext
