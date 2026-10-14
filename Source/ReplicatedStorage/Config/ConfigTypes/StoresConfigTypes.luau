@@ -23,7 +23,9 @@ export type StoresConfig = {
     maxItems: number, -- catalogue items in one store
     maxOutfits: number, -- outfits in one store
     nameLength: { min: number, max: number }, -- characters, after trimming
-    featured: number, -- items in the featured viewer (the store's first ones)
+    featured: number, -- items a store from before rows gets in Featured
+    maxRows: number, -- rows on a store page (Featured and the automatic ones count)
+    rowNameLength: { min: number, max: number }, -- an owner's row name, characters
     sectionSize: number, -- items in a Bestsellers / New arrivals carousel
     collections: { Collection }, -- tried in order
     maxCollections: number, -- collection tiles on a store page

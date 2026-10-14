@@ -16,6 +16,9 @@
 	(their prices and thumbnails fill in from the catalogue). A page's
 	sections arrive as positions in its item list and become item ids here.
 	Its outfits are Community outfit cards (CommunityOutfits.toCard).
+	Its rows (the owner's layout, StoresService) come in order: Featured,
+	named items / outfits rows, and the automatic Bestsellers, New arrivals
+	and Collections.
 
 	API:
 		SORTS                        the tabs, in order: { id, label }
@@ -25,7 +28,7 @@
 		find(text) -> (Page?, error?)   yields; a code or an exact name;
 		                             error "notfound" | "busy" | "failed"
 		cached(code) -> Page?        a page already loaded
-		act(action, ...) -> (ok, code?, error?)   yields; a StoresController
+		act(action, ...) -> (ok, code?, error?, row?)   yields; a StoresController
 		                             action over "StoreAction" (Create,
 		                             AddItem, Publish, …). On success the
 		                             store's page and the lists are dropped
@@ -56,6 +59,15 @@ export type Card = {
 
 export type Section = { name: string, items: { number } }
 
+export type Row = {
+	id: string,
+	kind: string, -- "featured" | "items" | "outfits" | "bestsellers" | "newArrivals" | "collections"
+	name: string?,
+	items: { number }?, -- item ids (featured, items rows)
+	outfits: { CommunityOutfits.Card }?, -- an outfits row's (listed) outfits
+	outfitCodes: { string }?, -- all of an outfits row's codes
+}
+
 export type Page = {
 	code: string,
 	name: string,
@@ -68,6 +80,7 @@ export type Page = {
 	favourited: boolean, -- starred by this player when it loaded
 	items: { number }, -- in the order the owner added them
 	outfits: { CommunityOutfits.Card },
+	rows: { Row },
 	featured: { number },
 	bestsellers: { number },
 	newArrivals: { number },
@@ -156,6 +169,33 @@ local function toPage(raw: any): Page
 			table.insert(outfits, outfit)
 		end
 	end
+	local byCode: { [string]: CommunityOutfits.Card } = {}
+	for _, outfit in outfits do
+		byCode[outfit.code] = outfit
+	end
+	local rows: { Row } = {}
+	for _, row in if type(raw.rows) == "table" then raw.rows else {} do
+		if type(row) == "table" and type(row.id) == "string" and type(row.kind) == "string" then
+			local entry: Row = { id = row.id, kind = row.kind, name = if type(row.name) == "string" then row.name else nil }
+			if type(row.items) == "table" then
+				entry.items = pick(row.items)
+			end
+			if type(row.outfits) == "table" then
+				local codes, cards = {}, {}
+				for _, code in row.outfits do
+					if type(code) == "string" then
+						table.insert(codes, code)
+						if byCode[code] then
+							table.insert(cards, byCode[code])
+						end
+					end
+				end
+				entry.outfitCodes = codes
+				entry.outfits = cards
+			end
+			table.insert(rows, entry)
+		end
+	end
 	return {
 		code = tostring(raw.code),
 		name = tostring(raw.name or "Store"),
@@ -168,6 +208,7 @@ local function toPage(raw: any): Page
 		favourited = raw.favourited == true,
 		items = items,
 		outfits = outfits,
+		rows = rows,
 		featured = pick(raw.featured),
 		bestsellers = pick(raw.bestsellers),
 		newArrivals = pick(raw.newArrivals),
@@ -277,7 +318,7 @@ function StoresClient.find(text: string): (Page?, string?)
 	return page, nil
 end
 
-function StoresClient.act(action: string, ...: any): (boolean, string?, string?)
+function StoresClient.act(action: string, ...: any): (boolean, string?, string?, string?)
 	local args = table.pack(...)
 	local ok, result = pcall(function()
 		return actionRemote:InvokeServer(action, table.unpack(args, 1, args.n))
@@ -297,7 +338,7 @@ function StoresClient.act(action: string, ...: any): (boolean, string?, string?)
 		lists[sort] = nil
 	end
 	changedEvent:Fire()
-	return true, code, nil
+	return true, code, nil, if type(result.row) == "string" then result.row else nil
 end
 
 function StoresClient.reset()

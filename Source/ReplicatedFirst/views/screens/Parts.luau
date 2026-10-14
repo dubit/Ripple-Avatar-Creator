@@ -225,6 +225,8 @@ export type ItemCardProps = {
 	wearing: boolean,
 	inBasket: boolean,
 	favourite: boolean?, -- a star badge
+	picked: boolean?, -- pick mode: in the store row being filled (a tick, an orange ring)
+	pickBusy: boolean?, -- pick mode: being added / taken out (a spinner)
 	onActivated: (() -> ())?, -- plain tap (cards without a menu)
 	menu: CardMenu?,
 	layoutOrder: number?,
@@ -405,6 +407,9 @@ function Parts.ItemCard(props: ItemCardProps)
 					SortOrder = Enum.SortOrder.LayoutOrder,
 					Padding = UDim.new(0, skin.px(4)),
 				}),
+				Picked = if props.picked
+					then e(Badge, { kind = "marker", tone = "orange", icon = "check", layoutOrder = 0, zIndex = 2 })
+					else nil,
 				Wearing = if props.wearing
 					then e(Badge, { kind = "marker", tone = "orange", icon = "checkroom", layoutOrder = 1, zIndex = 2 })
 					else nil,
@@ -415,6 +420,16 @@ function Parts.ItemCard(props: ItemCardProps)
 					then e(Badge, { kind = "marker", tone = "white", icon = "star", layoutOrder = 3, zIndex = 2 })
 					else nil,
 			}),
+			Ring = if props.picked
+				then e("UIStroke", {
+					Color = Tokens.color.accent,
+					Thickness = skin.stroke(3),
+					ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+				})
+				else nil,
+			Busy = if props.pickBusy
+				then e(Spinner, { size = 32, anchorPoint = Vector2.new(0.5, 0.5), position = UDim2.fromScale(0.5, 0.5), zIndex = 3 })
+				else nil,
 			Menu = if props.menu and props.menu.open
 				then e(CardMenuOverlay, {
 					item = item,

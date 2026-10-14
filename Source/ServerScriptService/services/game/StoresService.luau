@@ -10,11 +10,27 @@
 	in place: its code, visits and favourites stay with it for good.
 
 		{ kind = "store", ownerId, ownerName, created, updated, name,
-		  items = { { targetId, kind, typeName, name } },   in the order added
-		  outfits = { code },          Community outfits (their own codes)
+		  items = { { targetId, kind, typeName, name } },   every item in
+		                               the store once, in the order added
+		  outfits = { code },          every Community outfit (their own
+		                               codes) once
+		  rows = { Row },              the page, in the owner's order
+		  nextRow,                     for row ids
 		  published, publishedAt?, visits, favourites,
 		  sales = { ["Asset:123"] = n },   bought through this store
 		  hidden?, hiddenReason? }
+
+	The owner lays out the page as rows (PLAN 19.1):
+		{ id = "r1", kind = "featured", items = { "Asset:123", ... } }
+		                               always first, filled by the owner
+		{ id, kind = "items", name, items = { key } }
+		{ id, kind = "outfits", name, outfits = { code } }
+		{ id, kind = "bestsellers" | "newArrivals" | "collections" }   made
+		                               from every item; at most one of each
+	An item (or outfit) can be in several rows; it leaves the store when
+	it's in none. A store from before rows gets them on its next read
+	(rowsOf): Featured (its first items), "Items" (all of them), the
+	automatic rows, and "Outfits" if it has any.
 
 	An unpublished store is a draft: only its owner can open it. Publishing
 	needs StoresConfig.minItems items.
@@ -32,12 +48,12 @@
 	FLUSH_SECONDS (and on shutdown). StoresController decides what counts (a
 	visit once a day per player, never the owner's).
 
-	A store page (view) puts the store's items into sections, from
-	StoresConfig: Featured (the first items), New arrivals (latest added
-	first), Bestsellers (most bought through the store, then most
-	favourited on Roblox) and rule-based Collections (price, category,
-	types). New arrivals and Bestsellers order every item: the page's
-	carousels show the first StoresConfig.sectionSize, See all the rest. Item details come from Roblox (AvatarEditorService, batched and
+	A store page (view) has the rows, and fills the automatic ones: New
+	arrivals (latest added first), Bestsellers (most bought through the
+	store, then most favourited on Roblox) and rule-based Collections from
+	StoresConfig (price, category, types). New arrivals and Bestsellers
+	order every item: the page's carousels show the first
+	StoresConfig.sectionSize, See all the rest. Item details come from Roblox (AvatarEditorService, batched and
 	cached for DETAIL_SECONDS); pages are cached per server for
 	VIEW_SECONDS, and dropped when this server edits the store.
 
@@ -68,6 +84,21 @@
 		findByName(text) -> string?             a published store's code
 		report(player, code) -> boolean
 		isStore(record) / isListed(record) -> boolean
+	  Inside edit's fn (the record as it's being changed):
+		rowsOf(record) -> { Row }               (adding them to an old store)
+		addItem(record, rowId, item) -> string?          nil, or why not
+		                                        ("norow", "dupe", "full")
+		removeItem(record, rowId, key)
+		addOutfit(record, rowId, code) -> string?
+		removeOutfit(record, rowId, code)
+		addRow(record, kind, name?) -> (string?, string?)   its id, or why not
+		                                        ("full", "dupe", "bad")
+		renameRow(record, rowId, name) -> string?
+		removeRow(record, rowId) -> string?
+		moveRow(record, rowId, by) -> string?   by -1 (up) or 1 (down)
+	  And:
+		cleanRowName(player, text) -> (string?, string?)
+		keyOf(item) -> string                   "Asset:123"
 ]]
 
 local AvatarEditorService = game:GetService("AvatarEditorService")
@@ -101,6 +132,23 @@ export type Card = {
 
 export type Section = { name: string, items: { number } } -- indices into Page.items
 
+export type Row = {
+	id: string,
+	kind: "featured" | "items" | "outfits" | "bestsellers" | "newArrivals" | "collections",
+	name: string?,
+	items: { string }?, -- item keys ("Asset:123")
+	outfits: { string }?, -- outfit codes
+}
+
+-- A row as a page sends it: items as indices into Page.items.
+export type PageRow = {
+	id: string,
+	kind: string,
+	name: string?,
+	items: { number }?,
+	outfits: { string }?,
+}
+
 export type Page = {
 	code: string,
 	name: string,
@@ -113,6 +161,7 @@ export type Page = {
 	favourites: number,
 	items: { Item },
 	outfits: { CommunityService.Card },
+	rows: { PageRow },
 	featured: { number },
 	bestsellers: { number },
 	newArrivals: { number },
@@ -155,6 +204,7 @@ end
 local function keyOf(item: Item): string
 	return item.kind .. ":" .. item.targetId
 end
+StoresService.keyOf = keyOf
 
 local function nameStore(): DataStore?
 	if names == nil then
@@ -308,6 +358,224 @@ function StoresService.findByName(text: any): string?
 	return nil
 end
 
+-- Rows ------------------------------------------------------------------------
+
+local AUTO = { bestsellers = true, newArrivals = true, collections = true }
+local ROW_KINDS = { items = true, outfits = true, bestsellers = true, newArrivals = true, collections = true }
+
+local function newRow(record: any, kind: string, name: string?): Row
+	record.nextRow = (tonumber(record.nextRow) or 0) + 1
+	local row: Row = { id = "r" .. record.nextRow, kind = kind :: any, name = name }
+	if kind == "featured" or kind == "items" then
+		row.items = {}
+	elseif kind == "outfits" then
+		row.outfits = {}
+	end
+	return row
+end
+
+function StoresService.rowsOf(record: any): { Row }
+	if type(record.rows) == "table" then
+		return record.rows
+	end
+	-- Before rows: Featured (the first few), everything, the automatic
+	-- rows, and the outfits.
+	local rows = {}
+	local keys = {}
+	for _, item in record.items or {} do
+		table.insert(keys, keyOf(item))
+	end
+	local featured = newRow(record, "featured")
+	featured.items = table.move(keys, 1, math.min(#keys, PREVIEW_ITEMS), 1, {})
+	table.insert(rows, featured)
+	local all = newRow(record, "items", "Items")
+	all.items = table.clone(keys)
+	table.insert(rows, all)
+	for _, kind in { "newArrivals", "bestsellers", "collections" } do
+		table.insert(rows, newRow(record, kind))
+	end
+	if #(record.outfits or {}) > 0 then
+		local outfits = newRow(record, "outfits", "Outfits")
+		outfits.outfits = table.clone(record.outfits)
+		table.insert(rows, outfits)
+	end
+	record.rows = rows
+	return rows
+end
+
+local function findRow(record: any, rowId: any): (Row?, number?)
+	for index, row in StoresService.rowsOf(record) do
+		if row.id == rowId then
+			return row, index
+		end
+	end
+	return nil, nil
+end
+
+local function inAnyRow(record: any, field: string, value: string): boolean
+	for _, row in StoresService.rowsOf(record) do
+		local list = (row :: any)[field]
+		if list and table.find(list, value) then
+			return true
+		end
+	end
+	return false
+end
+
+function StoresService.addItem(record: any, rowId: any, item: Item): string?
+	local row = findRow(record, rowId)
+	if not row or not row.items then
+		return "norow"
+	end
+	local key = keyOf(item)
+	if table.find(row.items, key) then
+		return "dupe"
+	end
+	record.items = record.items or {}
+	local known = false
+	for _, existing in record.items do
+		if keyOf(existing) == key then
+			known = true
+			break
+		end
+	end
+	if not known then
+		if #record.items >= StoresConfig.maxItems then
+			return "full"
+		end
+		table.insert(record.items, { targetId = item.targetId, kind = item.kind, typeName = item.typeName, name = item.name })
+	end
+	table.insert(row.items, key)
+	return nil
+end
+
+-- Drop items and outfits that are in no row any more.
+local function prune(record: any)
+	for index = #(record.items or {}), 1, -1 do
+		if not inAnyRow(record, "items", keyOf(record.items[index])) then
+			table.remove(record.items, index)
+		end
+	end
+	for index = #(record.outfits or {}), 1, -1 do
+		if not inAnyRow(record, "outfits", record.outfits[index]) then
+			table.remove(record.outfits, index)
+		end
+	end
+end
+
+function StoresService.removeItem(record: any, rowId: any, key: string)
+	local row = findRow(record, rowId)
+	local index = row and row.items and table.find(row.items, key)
+	if row and row.items and index then
+		table.remove(row.items, index)
+		prune(record)
+	end
+end
+
+function StoresService.addOutfit(record: any, rowId: any, code: string): string?
+	local row = findRow(record, rowId)
+	if not row or not row.outfits then
+		return "norow"
+	end
+	if table.find(row.outfits, code) then
+		return "dupe"
+	end
+	record.outfits = record.outfits or {}
+	if not table.find(record.outfits, code) then
+		if #record.outfits >= StoresConfig.maxOutfits then
+			return "full"
+		end
+		table.insert(record.outfits, code)
+	end
+	table.insert(row.outfits, code)
+	return nil
+end
+
+function StoresService.removeOutfit(record: any, rowId: any, code: string)
+	local row = findRow(record, rowId)
+	local index = row and row.outfits and table.find(row.outfits, code)
+	if row and row.outfits and index then
+		table.remove(row.outfits, index)
+		prune(record)
+	end
+end
+
+function StoresService.addRow(record: any, kind: any, name: string?): (string?, string?)
+	if type(kind) ~= "string" or not ROW_KINDS[kind] then
+		return nil, "bad"
+	end
+	local rows = StoresService.rowsOf(record)
+	if #rows >= StoresConfig.maxRows then
+		return nil, "full"
+	end
+	if AUTO[kind] then
+		for _, row in rows do
+			if row.kind == kind then
+				return nil, "dupe"
+			end
+		end
+	elseif not name then
+		return nil, "bad"
+	end
+	local row = newRow(record, kind, if AUTO[kind] then nil else name)
+	table.insert(rows, row)
+	return row.id, nil
+end
+
+function StoresService.renameRow(record: any, rowId: any, name: string): string?
+	local row = findRow(record, rowId)
+	if not row or (row.kind ~= "items" and row.kind ~= "outfits") then
+		return "norow"
+	end
+	row.name = name
+	return nil
+end
+
+function StoresService.removeRow(record: any, rowId: any): string?
+	local row, index = findRow(record, rowId)
+	if not row or not index or row.kind == "featured" then
+		return "norow"
+	end
+	table.remove(record.rows, index)
+	prune(record)
+	return nil
+end
+
+-- Featured stays first.
+function StoresService.moveRow(record: any, rowId: any, by: any): string?
+	local row, index = findRow(record, rowId)
+	if not row or not index or row.kind == "featured" or (by ~= 1 and by ~= -1) then
+		return "norow"
+	end
+	local rows = record.rows
+	local target = index + by
+	if target < 1 or target > #rows or rows[target].kind == "featured" then
+		return nil -- already at the end
+	end
+	rows[index], rows[target] = rows[target], rows[index]
+	return nil
+end
+
+function StoresService.cleanRowName(player: Player, text: any): (string?, string?)
+	if type(text) ~= "string" then
+		return nil, "bad"
+	end
+	local name = string.gsub(string.gsub(text, "^%s+", ""), "%s+$", "")
+	name = string.gsub(name, "%s+", " ")
+	local length = utf8.len(name) or #name
+	if length < StoresConfig.rowNameLength.min or length > StoresConfig.rowNameLength.max then
+		return nil, "length"
+	end
+	local filtered = SharedContentService.filterName(player, name)
+	if filtered == nil then
+		return nil, "busy"
+	end
+	if filtered ~= name then
+		return nil, "filtered"
+	end
+	return name, nil
+end
+
 -- Making and editing ----------------------------------------------------------
 
 function StoresService.create(player: Player, name: string): (string?, string?)
@@ -321,6 +589,14 @@ function StoresService.create(player: Player, name: string): (string?, string?)
 		name = name,
 		items = {},
 		outfits = {},
+		rows = {
+			{ id = "r1", kind = "featured", items = {} },
+			{ id = "r2", kind = "items", name = "Items", items = {} },
+			{ id = "r3", kind = "newArrivals" },
+			{ id = "r4", kind = "bestsellers" },
+			{ id = "r5", kind = "collections" },
+		},
+		nextRow = 5,
 		published = false,
 		visits = 0,
 		favourites = 0,
@@ -342,6 +618,7 @@ function StoresService.edit(code: string, ownerId: number, fn: (record: any) -> 
 		if not StoresService.isStore(record) or record.ownerId ~= ownerId then
 			return false
 		end
+		StoresService.rowsOf(record)
 		if fn(record) == false then
 			return false
 		end
@@ -585,6 +862,30 @@ function StoresService.cards(codes: { string }, viewer: Player?): { Card }
 		local record = records[index]
 		if canSee(record, viewer) then
 			local items = itemsOf(record)
+			-- Its picture: the Featured items, else the first ones.
+			local rows = StoresService.rowsOf(table.clone(record))
+			if rows[1] and rows[1].kind == "featured" and rows[1].items and #rows[1].items > 0 then
+				local byKey = {}
+				for _, item in items do
+					byKey[keyOf(item)] = item
+				end
+				local preview = {}
+				for _, key in rows[1].items do
+					if byKey[key] and #preview < PREVIEW_ITEMS then
+						table.insert(preview, byKey[key])
+					end
+				end
+				for _, item in items do
+					if #preview >= PREVIEW_ITEMS then
+						break
+					end
+					if not table.find(rows[1].items, keyOf(item)) then
+						table.insert(preview, item)
+					end
+				end
+				items = preview
+			end
+			local count = #(record.items or {})
 			table.insert(cards, {
 				code = code,
 				name = tostring(record.name or "Store"),
@@ -594,7 +895,7 @@ function StoresService.cards(codes: { string }, viewer: Player?): { Card }
 				hidden = record.hidden == true,
 				visits = tonumber(record.visits) or 0,
 				favourites = tonumber(record.favourites) or 0,
-				itemCount = #items,
+				itemCount = count,
 				preview = table.move(items, 1, math.min(#items, PREVIEW_ITEMS), 1, {}),
 			})
 		end
@@ -671,9 +972,32 @@ local function build(code: string, record: any): Page
 	detailsFor(items)
 	local count = #items
 
+	-- Rows, items as positions in the item list.
+	local position: { [string]: number } = {}
+	for index, item in items do
+		position[keyOf(item)] = index
+	end
+	local rows: { PageRow } = {}
 	local featured = {}
-	for index = 1, math.min(count, StoresConfig.featured) do
-		table.insert(featured, index)
+	-- (A record that hasn't been edited since rows came in gets them here,
+	-- on a copy: reading never writes.)
+	for _, row in StoresService.rowsOf(table.clone(record)) do
+		local pageRow: PageRow = { id = row.id, kind = row.kind, name = row.name }
+		if row.items then
+			local indices = {}
+			for _, key in row.items do
+				if position[key] then
+					table.insert(indices, position[key])
+				end
+			end
+			pageRow.items = indices
+			if row.kind == "featured" then
+				featured = indices
+			end
+		elseif row.outfits then
+			pageRow.outfits = table.clone(row.outfits)
+		end
+		table.insert(rows, pageRow)
 	end
 
 	local newArrivals = {}
@@ -729,6 +1053,7 @@ local function build(code: string, record: any): Page
 		favourites = tonumber(record.favourites) or 0,
 		items = items,
 		outfits = {},
+		rows = rows,
 		featured = featured,
 		bestsellers = bestsellers,
 		newArrivals = newArrivals,

@@ -48,6 +48,8 @@ local FullPanel = require(views:WaitForChild("panel"):WaitForChild("FullPanel"))
 local WorldRenderer = require(views:WaitForChild("WorldRenderer"))
 local ShareDialog = require(views:WaitForChild("screens"):WaitForChild("ShareDialog"))
 local StoreDialogs = require(views:WaitForChild("screens"):WaitForChild("StoreDialogs"))
+local StoresClient = require(views:WaitForChild("catalogue"):WaitForChild("StoresClient"))
+local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
 local e = React.createElement
 
@@ -179,6 +181,23 @@ local function Hud()
 	local shareTarget, setShareTarget = React.useState(nil :: { kind: string, id: any, name: string }?)
 	-- The store picker or the Create store dialog, if one is open.
 	local storeDialog, setStoreDialog = React.useState(nil :: StoreDialogs.Dialog?)
+	-- Filling one of your store's rows from the Catalogue (pick mode): the
+	-- row, the store page's crumbs to go back to, what's in the row, and
+	-- the items being changed.
+	local picking, setPicking = React.useState(nil :: {
+		code: string,
+		row: string,
+		storeName: string,
+		rowName: string,
+		stack: { any },
+		ids: { [number]: boolean },
+		pending: { [number]: boolean },
+		problem: string?,
+	}?)
+	local latestPicking = React.useRef(picking)
+	latestPicking.current = picking
+	local latestNav = React.useRef(nav)
+	latestNav.current = nav
 	-- The latest purchase we sent (its request id), to sound its outcome,
 	-- and the button that sent it (spinning until the outcome arrives).
 	local buyRequest, setBuyRequest = React.useState(nil :: number?)
@@ -222,6 +241,10 @@ local function Hud()
 		elseif storeDialog then
 			Sounds.play("back")
 			setStoreDialog(nil)
+		elseif picking and #nav.stack == 0 then
+			Sounds.play("back")
+			setPicking(nil)
+			nav.restore("Stores", picking.stack)
 		elseif #nav.stack > 0 then
 			Sounds.play("back")
 			nav.back()
@@ -232,6 +255,14 @@ local function Hud()
 		end
 		return true
 	end)
+
+	-- Pick mode is only for the Catalogue: leaving it (or closing) ends it.
+	React.useEffect(function()
+		if picking and nav.root ~= "Catalogue" then
+			setPicking(nil)
+		end
+		return nil
+	end, { picking ~= nil, nav.root } :: { any })
 
 	-- Joined through a share link (DeepLinkService): open what it shares,
 	-- an outfit under Outfits › Community, a store under Stores. Kinds we
@@ -307,6 +338,96 @@ local function Hud()
 			buying = function(key: string): boolean
 				return buyingKey == key
 			end,
+			addStoreRow = function(code: string)
+				Sounds.play("open")
+				setStoreDialog({ kind = "row", code = code })
+			end,
+			pickForRow = function(target: any)
+				if target.kind == "outfits" then
+					Sounds.play("open")
+					setStoreDialog({ kind = "outfits", code = target.code, row = target.row, storeName = target.storeName, rowName = target.rowName })
+					return
+				end
+				local ids: { [number]: boolean } = {}
+				for _, id in target.ids or {} do
+					ids[id] = true
+				end
+				Sounds.play("open")
+				setPicking({
+					code = target.code,
+					row = target.row,
+					storeName = target.storeName,
+					rowName = target.rowName,
+					stack = table.clone(latestNav.current.stack),
+					ids = ids,
+					pending = {},
+					problem = nil,
+				})
+				latestNav.current.openRoot("Catalogue")
+			end,
+			picking = if picking
+				then (function()
+					local count = 0
+					for _ in picking.ids do
+						count += 1
+					end
+					return { code = picking.code, row = picking.row, storeName = picking.storeName, rowName = picking.rowName, count = count, problem = picking.problem }
+				end)()
+				else nil,
+			isPicked = function(id: number): boolean
+				return picking ~= nil and picking.ids[id] == true
+			end,
+			pickBusy = function(id: number): boolean
+				return picking ~= nil and picking.pending[id] == true
+			end,
+			pickToggle = function(id: number)
+				local current = latestPicking.current
+				local item = PlaceholderData.item(id)
+				if not current or current.pending[id] or not item or not item.targetId then
+					return
+				end
+				local inside = current.ids[id] == true
+				local function update(change: (any) -> ())
+					setPicking(function(old: any)
+						if not old or old.code ~= current.code or old.row ~= current.row then
+							return old
+						end
+						local new = table.clone(old)
+						new.ids = table.clone(old.ids)
+						new.pending = table.clone(old.pending)
+						change(new)
+						return new
+					end)
+				end
+				Sounds.play("press")
+				update(function(new: any)
+					new.pending[id] = true
+					new.problem = nil
+				end)
+				task.spawn(function()
+					local ok, _, err = StoresClient.act(
+						if inside then Network.Actions.Stores.RemoveItem else Network.Actions.Stores.AddItem,
+						{ code = current.code, row = current.row, targetId = item.targetId, kind = item.kind }
+					)
+					Sounds.play(if ok then "confirm" else "error")
+					update(function(new: any)
+						new.pending[id] = nil
+						if ok then
+							new.ids[id] = if inside then nil else true
+						else
+							new.problem = StoreDialogs.message(err, "item")
+						end
+					end)
+				end)
+			end,
+			endPicking = function()
+				local current = latestPicking.current
+				if current then
+					Sounds.play("back")
+					setPicking(nil)
+					latestNav.current.restore("Stores", current.stack)
+				end
+			end,
 			addToStore = function(target: any)
 				Sounds.play("open")
 				setStoreDialog({ kind = "pick", target = target })
@@ -339,7 +460,7 @@ local function Hud()
 				end
 			end,
 		}
-	end, { buyingKey })
+	end, { buyingKey, picking } :: { any })
 
 	local panels: { [string]: any } = {}
 	for _, transition in panelTransitions do
@@ -395,6 +516,7 @@ local function Hud()
 			Stores = e(StoreDialogs.Dialog, {
 				dialog = storeDialog,
 				myStores = rawLook.myStores,
+				published = rawLook.published,
 				onCreated = function(code: string, name: string)
 					setStoreDialog(nil)
 					nav.push({ kind = "store", id = code, label = name })

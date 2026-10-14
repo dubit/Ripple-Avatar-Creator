@@ -23,20 +23,25 @@
 	  · header: the mosaic, name, "by @owner · N favourites · N visits",
 	    Favourite (the star; your own too) and Share (its code and QR: the
 	    share dialog), and Report (twice) on someone else's store
-	  · Featured: the store's first items, one at a time with arrows: Try
-	    on, Basket, and its picture or name opens the item page
-	  · Bestsellers and New arrivals carousels with See all
-	  · Outfits: the store's Community outfits (their own pages)
-	  · Collections: tiles that open their own grid
+	  · then the owner's rows, in their order (StoresClient.Row):
+	    Featured (one at a time with arrows: Try on, Basket, and its
+	    picture or name opens the item page), named items rows (carousels
+	    with See all), named outfits rows (Community outfits, their own
+	    pages), and the automatic Bestsellers, New arrivals (carousels) and
+	    Collections (tiles that open their own grid)
 	Item cards have the card menu (Try · basket · Buy · View, and the store
 	button once you have a store); buying from a store counts towards its
 	Bestsellers. Opening someone's published store is a visit (once a day).
 
 	Your own store is edited in place (PLAN 19.1): its name is editable (the
 	pencil saves it), and a bar under the header says where it stands and
-	has Publish / Unpublish and Delete (twice). Items go in and out through
-	the store button on any item card, outfits from your shared outfit's
-	page (the store picker: StoreDialogs).
+	has Publish / Unpublish and Delete (twice). Every row shows, even empty:
+	named rows' names edit in place, rows move up / down and come off
+	(twice; not Featured), and Add row at the bottom adds one (StoreDialogs).
+	A row's Add tile fills it: items through the Catalogue in pick mode
+	(Hud), outfits through the Add outfits dialog. Items also go in and out
+	through the store button on any item card, outfits from your shared
+	outfit's page (the store picker: StoreDialogs).
 
 	StoresScreen.Root props: nav, look
 	StoresScreen.Store props: nav, look, code
@@ -93,7 +98,10 @@ local EMPTY = {
 	favourites = "Star stores to keep them here",
 	mine = "Stores you make show here",
 }
-local DRAFT_HINT = "Add items with the store button on any item card's menu"
+local DRAFT_HINT = "Add items with a row's Add items, or the store button on any item card"
+local AUTO_LABELS = { bestsellers = "Bestsellers", newArrivals = "New arrivals", collections = "Collections", featured = "Featured" }
+local CONTROL = 30 -- design px: a row control's diameter
+local OWNER_HEADING = 36 -- design px: a row heading on your own store (the name field's pencil)
 
 local PERSONAL = { favourites = "storeFavourites", mine = "myStores" }
 
@@ -266,6 +274,213 @@ local function CreateCard(props: { layoutOrder: number })
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				LayoutOrder = 2,
 			}),
+		}),
+	})
+end
+
+-- A row's heading on a store page: its name, See all, and on your own
+-- store its controls: the name edits in place (named rows), up / down,
+-- and remove (twice).
+type RowOwner = {
+	renamable: boolean,
+	movable: boolean,
+	first: boolean,
+	last: boolean,
+	busy: boolean,
+	onRename: (name: string) -> (),
+	onMove: (by: number) -> (),
+	onRemove: () -> (),
+}
+
+local function RemoveControl(props: { disabled: boolean, onConfirm: () -> (), layoutOrder: number })
+	local armed, setArmed = React.useState(false)
+	React.useEffect(function()
+		if not armed then
+			return nil
+		end
+		local thread = task.delay(3, function()
+			setArmed(false)
+		end)
+		return function()
+			task.cancel(thread)
+		end
+	end, { armed })
+	return e(PillButton, {
+		variant = "round",
+		size = CONTROL,
+		icon = "delete",
+		iconSize = 17,
+		active = armed,
+		disabled = props.disabled,
+		glowRadius = 0,
+		sound = if armed then "confirm" else "press",
+		layoutOrder = props.layoutOrder,
+		onActivated = function()
+			if armed then
+				setArmed(false)
+				props.onConfirm()
+			else
+				setArmed(true)
+			end
+		end,
+	})
+end
+
+local function TextLink(props: { text: string, width: number, layoutOrder: number, onActivated: () -> () })
+	local skin = useSkin()
+	local function press()
+		Sounds.play("press")
+		props.onActivated()
+	end
+	return e("TextButton", {
+		Size = UDim2.fromOffset(skin.px(props.width), skin.px(24)),
+		BackgroundTransparency = 1,
+		Text = props.text,
+		TextColor3 = Tokens.color.accentText,
+		TextSize = skin.textPx(13.5),
+		FontFace = Tokens.font(800),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		LayoutOrder = props.layoutOrder,
+		[React.Event.InputBegan] = Press.began(press),
+		[React.Event.Activated] = Press.activated(press),
+	})
+end
+
+local function RowHeading(props: {
+	text: string,
+	layoutOrder: number?,
+	onSeeAll: (() -> ())?,
+	onAdd: (() -> ())?,
+	owner: RowOwner?,
+})
+	local skin = useSkin()
+	local owner = props.owner
+	local controls: { [string]: any } = {
+		Layout = e("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Right,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, skin.px(6)),
+		}),
+	}
+	local width = 0
+	if props.onSeeAll then
+		controls.SeeAll = e(TextLink, { text = "See all", width = 70, layoutOrder = 1, onActivated = props.onSeeAll })
+		width += 76
+	end
+	if props.onAdd then
+		controls.Add = e(TextLink, { text = "Add items", width = 80, layoutOrder = 2, onActivated = props.onAdd })
+		width += 86
+	end
+	if owner and owner.movable then
+		controls.Up = e(PillButton, {
+			variant = "round",
+			size = CONTROL,
+			icon = "expand_less",
+			iconSize = 19,
+			disabled = owner.first or owner.busy,
+			glowRadius = 0,
+			layoutOrder = 3,
+			onActivated = function()
+				owner.onMove(-1)
+			end,
+		})
+		controls.Down = e(PillButton, {
+			variant = "round",
+			size = CONTROL,
+			icon = "expand_less",
+			iconRotation = 180,
+			iconSize = 19,
+			disabled = owner.last or owner.busy,
+			glowRadius = 0,
+			layoutOrder = 4,
+			onActivated = function()
+				owner.onMove(1)
+			end,
+		})
+		controls.Remove = e(RemoveControl, { disabled = owner.busy, layoutOrder = 5, onConfirm = owner.onRemove })
+		width += 3 * (CONTROL + 6)
+	end
+	local height = if owner then OWNER_HEADING else 24
+	return e("Frame", {
+		Size = UDim2.new(1, 0, 0, skin.px(height)),
+		BackgroundTransparency = 1,
+		LayoutOrder = props.layoutOrder or 0,
+	}, {
+		Title = e("Frame", {
+			Size = UDim2.new(1, -skin.px(width + 8), 1, 0),
+			BackgroundTransparency = 1,
+		}, {
+			Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }),
+			Text = if owner and owner.renamable
+				then e(OutfitsScreen.NameField, {
+					name = props.text,
+					editable = true,
+					maxLength = StoresConfig.rowNameLength.max,
+					size = 18,
+					layoutOrder = 1,
+					onRename = owner.onRename,
+				})
+				else e(ShadowText, {
+					text = props.text,
+					style = { size = 18, weight = 900 },
+					shadow = false,
+					layoutOrder = 1,
+				}),
+		}),
+		Controls = e("Frame", {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.fromScale(1, 0),
+			Size = UDim2.new(0, skin.px(width), 1, 0),
+			BackgroundTransparency = 1,
+		}, controls),
+	})
+end
+
+-- A row's first cell on your own store: add to this row.
+local function AddTile(props: { label: string, layoutOrder: number, onActivated: () -> () })
+	local skin = useSkin()
+	local interaction = useInteraction()
+	local function press()
+		Sounds.play("press")
+		props.onActivated()
+	end
+	return e("TextButton", {
+		Name = "AddTile",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		AutoButtonColor = false,
+		Text = "",
+		LayoutOrder = props.layoutOrder,
+		[React.Event.InputBegan] = Press.began(press),
+		[React.Event.Activated] = Press.activated(press),
+		[React.Event.MouseEnter] = interaction.onEnter,
+		[React.Event.MouseLeave] = interaction.onLeave,
+	}, {
+		Thumb = e(Parts.Thumb, {
+			colour = Tokens.color.accent,
+			hovered = interaction.hovered,
+		}, {
+			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
+			Icon = e(Icon, {
+				name = "add_circle",
+				size = 40,
+				anchorPoint = Vector2.new(0.5, 0.5),
+				position = UDim2.fromScale(0.5, 0.5),
+			}),
+		}),
+		Label = e("TextLabel", {
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.fromScale(0, 1),
+			Size = UDim2.new(1, 0, 0, skin.px(36)),
+			BackgroundTransparency = 1,
+			Text = props.label,
+			TextColor3 = Tokens.color.white,
+			TextSize = skin.textPx(13),
+			FontFace = Tokens.font(800),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
 		}),
 	})
 end
@@ -1200,114 +1415,229 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 		}), barHeight)
 	end
 
-	if #page.featured > 0 then
-		add("Featured", e(Featured, { look = look, nav = props.nav, items = page.featured, layoutOrder = 2 }), skin.px(HERO_HEIGHT))
+	-- The rows, in the owner's order (PLAN 19.1). On your own store each
+	-- shows even when empty, with its controls and an Add tile.
+	local mine = page.mine
+	local rowCount = #page.rows
+	local titleHeight = skin.px(if mine then OWNER_HEADING else 24)
+	local headingHeight = titleHeight + skin.px(10)
+	local itemRowHeight = headingHeight + Parts.cardRowHeight(skin, ITEM_CARD)
+	local outfitRowHeight = headingHeight + Parts.cardRowHeight(skin, STORE_CARD)
+	local function rowLabel(row: StoresClient.Row): string
+		return row.name or AUTO_LABELS[row.kind] or "Row"
 	end
-
-	local rowHeight = skin.px(24) + skin.px(10) + Parts.cardRowHeight(skin, ITEM_CARD)
-	local function itemRow(key: string, title: string, ids: { number }, section: string, order: number)
-		if #ids == 0 then
-			return
-		end
+	local function heading(row: StoresClient.Row, position: number, extra: { [string]: any }?)
+		return e(RowHeading, {
+			text = rowLabel(row),
+			layoutOrder = 1,
+			onSeeAll = extra and extra.onSeeAll,
+			onAdd = extra and extra.onAdd,
+			owner = if mine
+				then {
+					renamable = row.kind == "items" or row.kind == "outfits",
+					movable = row.kind ~= "featured",
+					first = position <= 2, -- (Featured is always first)
+					last = position >= rowCount,
+					busy = working ~= nil,
+					onRename = function(name: string)
+						act(Network.Actions.Stores.RenameRow, { code = code, row = row.id, name = name })
+					end,
+					onMove = function(by: number)
+						act(Network.Actions.Stores.MoveRow, { code = code, row = row.id, by = by })
+					end,
+					onRemove = function()
+						act(Network.Actions.Stores.RemoveRow, { code = code, row = row.id })
+					end,
+				}
+				else nil,
+		})
+	end
+	local function addTile(row: StoresClient.Row, order: number)
+		return e(AddTile, {
+			label = if row.kind == "outfits" then "Add outfits" else "Add items",
+			layoutOrder = order,
+			onActivated = function()
+				hud.pickForRow({ code = code, row = row.id, kind = row.kind, storeName = page.name, rowName = rowLabel(row), ids = row.items })
+			end,
+		})
+	end
+	local function block(key: string, order: number, blockHeight: number, children: { [string]: any })
+		children.Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(10)) })
+		add(key, e("Frame", {
+			Size = UDim2.new(1, 0, 0, blockHeight),
+			BackgroundTransparency = 1,
+			LayoutOrder = order,
+		}, children), blockHeight)
+	end
+	-- A carousel of items, with See all past StoresConfig.sectionSize.
+	local function itemCarousel(row: StoresClient.Row, position: number, ids: { number }, section: string, withAdd: boolean)
 		local cells: { [string]: any } = {}
 		local count = 0
+		if withAdd then
+			count += 1
+			cells.Add = addTile(row, 0)
+		end
+		local shownItems = 0
 		for _, id in ids do
-			if count >= StoresConfig.sectionSize then
+			if shownItems >= StoresConfig.sectionSize then
 				break
 			end
 			local card = itemCard(id, count + 1)
 			if card then
 				count += 1
+				shownItems += 1
 				cells["Item" .. id] = card
 			end
 		end
-		add(key, e("Frame", {
-			Size = UDim2.new(1, 0, 0, rowHeight),
-			BackgroundTransparency = 1,
-			LayoutOrder = order,
-		}, {
-			Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(10)) }),
-			Heading = e(SectionHeading, {
-				text = title,
-				layoutOrder = 1,
-				onSeeAll = if #ids > count
+		if count == 0 then
+			return false
+		end
+		local label = rowLabel(row)
+		block("Row" .. row.id, position, itemRowHeight, {
+			Heading = heading(row, position, {
+				onSeeAll = if #ids > shownItems
 					then function()
-						props.nav.push({ kind = "storeSection", id = { code = code, section = section }, label = title })
+						props.nav.push({ kind = "storeSection", id = { code = code, section = section }, label = label })
 					end
 					else nil,
 			}),
 			Cards = e(Parts.CardRow, { cardWidth = ITEM_CARD, count = count, layoutOrder = 2 }, cells),
-		}), rowHeight)
+		})
+		return true
 	end
-	itemRow("Bestsellers", "Bestsellers", page.bestsellers, "bestsellers", 3)
-	itemRow("NewArrivals", "New arrivals", page.newArrivals, "newArrivals", 4)
-
-	-- The store's outfits: Community outfits with their own pages.
-	if #page.outfits > 0 then
-		local outfitRow = skin.px(24) + skin.px(10) + Parts.cardRowHeight(skin, STORE_CARD)
-		local cells: { [string]: any } = {}
-		for index, card in page.outfits do
-			local view = OutfitsScreen.sharedView(card)
-			cells["Outfit" .. card.code] = e(OutfitsScreen.OutfitCard, {
-				outfit = view,
-				sub = OutfitsScreen.communitySub(card),
-				ring = OutfitsScreen.wearingExactly(look, view.items),
-				layoutOrder = index,
-				onActivated = function()
-					Sounds.play("press")
-					props.nav.push({ kind = "outfit", id = { source = "Shared", index = card.code }, label = card.name })
-				end,
-			})
+	-- An automatic row with nothing in it yet: only its owner sees it.
+	local function emptyNote(row: StoresClient.Row, position: number, text: string)
+		if not mine then
+			return
 		end
-		add("Outfits", e("Frame", {
-			Size = UDim2.new(1, 0, 0, outfitRow),
-			BackgroundTransparency = 1,
-			LayoutOrder = 5,
-		}, {
-			Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(10)) }),
-			Heading = e(SectionHeading, { text = "Outfits", layoutOrder = 1 }),
-			Cards = e(Parts.CardRow, { cardWidth = STORE_CARD, count = #page.outfits, layoutOrder = 2 }, cells),
-		}), outfitRow)
-	end
-
-	if #page.collections > 0 then
-		local tiles: { [string]: any } = {
-			Grid = e("UIGridLayout", {
-				CellSize = UDim2.new(1 / 3, -skin.px(8), 0, skin.px(TILE_HEIGHT)),
-				CellPadding = UDim2.fromOffset(skin.px(12), skin.px(12)),
-				SortOrder = Enum.SortOrder.LayoutOrder,
-			}),
-		}
-		for index, section in page.collections do
-			tiles["Tile" .. index] = e(CollectionTile, {
-				section = section,
-				colour = TILE_COLOURS[(index - 1) % #TILE_COLOURS + 1],
-				layoutOrder = index,
-				onActivated = function()
-					props.nav.push({ kind = "storeSection", id = { code = code, section = section.name }, label = section.name })
-				end,
-			})
-		end
-		local rows = math.ceil(#page.collections / 3)
-		local tilesHeight = rows * skin.px(TILE_HEIGHT) + (rows - 1) * skin.px(12)
-		local blockHeight = skin.px(24) + skin.px(10) + tilesHeight
-		add("Collections", e("Frame", {
-			Size = UDim2.new(1, 0, 0, blockHeight),
-			BackgroundTransparency = 1,
-			LayoutOrder = 6,
-		}, {
-			Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(10)) }),
-			Heading = e(SectionHeading, { text = "Collections", layoutOrder = 1 }),
-			Tiles = e("Frame", {
-				Size = UDim2.new(1, 0, 0, tilesHeight),
+		block("Row" .. row.id, position, headingHeight + skin.px(24), {
+			Heading = heading(row, position),
+			Note = e("TextLabel", {
+				Size = UDim2.new(1, 0, 0, skin.px(24)),
 				BackgroundTransparency = 1,
+				Text = text,
+				TextColor3 = Tokens.color.white,
+				TextTransparency = Tokens.alpha.textDim,
+				TextSize = skin.textPx(13.5),
+				FontFace = Tokens.font(800),
+				TextXAlignment = Enum.TextXAlignment.Left,
 				LayoutOrder = 2,
-			}, tiles),
-		}), blockHeight)
+			}),
+		})
+	end
+
+	for position, row in page.rows do
+		if row.kind == "featured" then
+			local ids = row.items or {}
+			if #ids > 0 then
+				if mine then
+					-- Its heading (to add more) above the viewer.
+					block("FeaturedHeading", position * 2 - 1, titleHeight, {
+						Heading = heading(row, position, {
+							onAdd = function()
+								hud.pickForRow({ code = code, row = row.id, kind = row.kind, storeName = page.name, rowName = rowLabel(row), ids = row.items })
+							end,
+						}),
+					})
+				end
+				add("Featured", e(Featured, { look = look, nav = props.nav, items = ids, layoutOrder = position * 2 }), skin.px(HERO_HEIGHT))
+			elseif mine then
+				itemCarousel(row, position * 2, {}, row.id, true)
+			end
+		elseif row.kind == "items" then
+			itemCarousel(row, position * 2, row.items or {}, row.id, mine)
+		elseif row.kind == "bestsellers" or row.kind == "newArrivals" then
+			local ids = if row.kind == "bestsellers" then page.bestsellers else page.newArrivals
+			if not itemCarousel(row, position * 2, ids, row.kind, false) then
+				emptyNote(row, position * 2, "Fills in as you add items")
+			end
+		elseif row.kind == "outfits" then
+			local cells: { [string]: any } = {}
+			local count = 0
+			if mine then
+				count += 1
+				cells.Add = addTile(row, 0)
+			end
+			for _, card in row.outfits or {} do
+				count += 1
+				local view = OutfitsScreen.sharedView(card)
+				cells["Outfit" .. card.code] = e(OutfitsScreen.OutfitCard, {
+					outfit = view,
+					sub = OutfitsScreen.communitySub(card),
+					ring = OutfitsScreen.wearingExactly(look, view.items),
+					layoutOrder = count,
+					onActivated = function()
+						Sounds.play("press")
+						props.nav.push({ kind = "outfit", id = { source = "Shared", index = card.code }, label = card.name })
+					end,
+				})
+			end
+			if count > 0 then
+				block("Row" .. row.id, position * 2, outfitRowHeight, {
+					Heading = heading(row, position),
+					Cards = e(Parts.CardRow, { cardWidth = STORE_CARD, count = count, layoutOrder = 2 }, cells),
+				})
+			end
+		elseif row.kind == "collections" then
+			if #page.collections > 0 then
+				local tiles: { [string]: any } = {
+					Grid = e("UIGridLayout", {
+						CellSize = UDim2.new(1 / 3, -skin.px(8), 0, skin.px(TILE_HEIGHT)),
+						CellPadding = UDim2.fromOffset(skin.px(12), skin.px(12)),
+						SortOrder = Enum.SortOrder.LayoutOrder,
+					}),
+				}
+				for index, section in page.collections do
+					tiles["Tile" .. index] = e(CollectionTile, {
+						section = section,
+						colour = TILE_COLOURS[(index - 1) % #TILE_COLOURS + 1],
+						layoutOrder = index,
+						onActivated = function()
+							props.nav.push({ kind = "storeSection", id = { code = code, section = section.name }, label = section.name })
+						end,
+					})
+				end
+				local tileRows = math.ceil(#page.collections / 3)
+				local tilesHeight = tileRows * skin.px(TILE_HEIGHT) + (tileRows - 1) * skin.px(12)
+				block("Row" .. row.id, position * 2, headingHeight + tilesHeight, {
+					Heading = heading(row, position),
+					Tiles = e("Frame", {
+						Size = UDim2.new(1, 0, 0, tilesHeight),
+						BackgroundTransparency = 1,
+						LayoutOrder = 2,
+					}, tiles),
+				})
+			else
+				emptyNote(row, position * 2, "Shows when items match: free, under 50, accessories, clothing, hair")
+			end
+		end
+	end
+
+	-- Your own: a new row at the bottom.
+	if mine then
+		add("AddRow", e("Frame", {
+			Size = UDim2.new(1, 0, 0, skin.px(Tokens.size.ctaHeight)),
+			BackgroundTransparency = 1,
+			LayoutOrder = (rowCount + 1) * 2,
+		}, {
+			Button = e(PillButton, {
+				variant = "pill",
+				size = Tokens.size.ctaHeight,
+				width = 170,
+				icon = "add_circle",
+				iconSize = 19,
+				label = "Add row",
+				disabled = rowCount >= StoresConfig.maxRows or working ~= nil,
+				sound = false, -- the dialog plays its own sound
+				onActivated = function()
+					hud.addStoreRow(code)
+				end,
+			}),
+		}), skin.px(Tokens.size.ctaHeight))
 	end
 
 	-- (Your own empty store's bar already says how to fill it.)
-	if #page.items == 0 and not page.mine then
+	if #page.items == 0 and #page.outfits == 0 and not mine then
 		add("Empty", e(Message, { text = "Nothing here yet" }), skin.px(40))
 	end
 
@@ -1334,6 +1664,11 @@ local function SectionScreen(props: { nav: any, look: any, code: string, section
 		return e(Spinner, { size = 40, anchorPoint = Vector2.new(0.5, 0.5), position = UDim2.fromScale(0.5, 0.4) })
 	end
 	local ids: { number } = {}
+	for _, row in page.rows do
+		if row.id == props.section and row.items then
+			ids = row.items
+		end
+	end
 	if props.section == "bestsellers" then
 		ids = page.bestsellers
 	elseif props.section == "newArrivals" then

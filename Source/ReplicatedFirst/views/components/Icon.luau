@@ -15,6 +15,7 @@
 		name: string            Material Symbols name, e.g. "shopping_basket"
 		size: number            design px
 		color: Color3?          default white
+		rotation: number?       degrees (expand_less turned over for "down")
 		transparency: number?
 		zIndex: number?
 		layoutOrder, position, anchorPoint
@@ -35,6 +36,7 @@ export type Props = {
 	name: string,
 	size: number,
 	color: Color3?,
+	rotation: number?,
 	transparency: any?,
 	zIndex: number?,
 	layoutOrder: number?,
@@ -71,6 +73,7 @@ local function Icon(props: Props)
 			Image = image,
 			ImageColor3 = color,
 			ImageTransparency = props.transparency or 0,
+			Rotation = props.rotation or 0,
 			ScaleType = Enum.ScaleType.Fit,
 		})
 	end

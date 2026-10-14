@@ -14,16 +14,25 @@
 	Actions (as intents, so also slash commands with positional args:
 	/storescontroller AddItem 7KQ2XM 1234 Asset), or through the
 	"StoreAction"(action, ...) Bolt remote function, which answers
-	{ ok, code?, error? } so the UI can say why not:
+	{ ok, code?, row?, error? } so the UI can say why not:
 		Create(name)                       a new draft store ("full",
 		                                   "length", "filtered", "taken")
 		Rename(code, name)
-		AddItem(code, targetId, kind)      a catalogue item ("full", "dupe",
-		                                   "notfound")
-		RemoveItem(code, targetId, kind)
-		AddOutfit(code, outfitCode)        one of the player's own Community
-		                                   outfits
-		RemoveOutfit(code, outfitCode)
+		AddItem(code, row, targetId, kind) a catalogue item, into a row
+		                                   ("full", "dupe", "notfound",
+		                                   "norow")
+		RemoveItem(code, row, targetId, kind)   out of a row (and out of
+		                                   the store once it's in none)
+		AddOutfit(code, row, outfitCode)   one of the player's own Community
+		                                   outfits, into an outfits row
+		RemoveOutfit(code, row, outfitCode)
+		AddRow(code, kind, name?)          "items" | "outfits" (named) or
+		                                   "bestsellers" | "newArrivals" |
+		                                   "collections"; answers its id
+		                                   as `row` ("full", "dupe")
+		RenameRow(code, row, name)
+		RemoveRow(code, row)               not Featured
+		MoveRow(code, row, by)             by -1 (up) or 1 (down)
 		Publish(code)                      needs StoresConfig.minItems items
 		                                   ("items", "hidden")
 		Unpublish(code)
@@ -144,7 +153,7 @@ local function ownCode(player: Player, model: any, value: any): string?
 	return nil
 end
 
-type Result = { ok: boolean, code: string?, error: string? }
+type Result = { ok: boolean, code: string?, row: string?, error: string? }
 
 local function fail(why: string): Result
 	return { ok = false, error = why }
@@ -200,8 +209,8 @@ local function rename(player: Player, model: any, raw: any, ...: any): Result
 end
 
 local function itemOf(a: { [string]: any }): (number?, string?)
-	local targetId = tonumber(a.targetId or (a.rest and a.rest[1]))
-	local kind = a.kind or (a.rest and a.rest[2]) or "Asset"
+	local targetId = tonumber(a.targetId or (a.rest and a.rest[2]))
+	local kind = a.kind or (a.rest and a.rest[3]) or "Asset"
 	if not targetId or targetId ~= targetId or targetId <= 0 or targetId % 1 ~= 0 then
 		return nil, nil
 	end
@@ -211,32 +220,18 @@ local function itemOf(a: { [string]: any }): (number?, string?)
 	return targetId, kind
 end
 
-local function addItem(player: Player, model: any, raw: any, ...: any): Result
-	local a = args(raw, ...)
-	local code = ownCode(player, model, a.code)
-	local targetId, kind = itemOf(a)
-	if not code or not targetId or not kind then
-		return fail("bad")
-	end
-	local item = AvatarService.resolve(targetId, kind :: any)
-	if not item then
-		return fail("notfound")
-	end
+local function rowOf(a: { [string]: any }): string?
+	local row = a.row or (a.rest and a.rest[1])
+	return if type(row) == "string" and #row <= 8 then row else nil
+end
+
+-- Run fn on the player's own store; a problem it reports (or a failed
+-- write) is the answer.
+local function change(player: Player, code: string, fn: (record: any) -> string?): Result
 	local problem: string? = nil
 	local record = StoresService.edit(code, player.UserId, function(record: any)
-		record.items = record.items or {}
-		for _, existing in record.items do
-			if existing.targetId == targetId and existing.kind == kind then
-				problem = "dupe"
-				return false
-			end
-		end
-		if #record.items >= StoresConfig.maxItems then
-			problem = "full"
-			return false
-		end
-		table.insert(record.items, { targetId = item.targetId, kind = item.kind, typeName = item.typeName, name = item.name })
-		return true
+		problem = fn(record)
+		return problem == nil
 	end)
 	if problem then
 		return fail(problem)
@@ -244,30 +239,43 @@ local function addItem(player: Player, model: any, raw: any, ...: any): Result
 	return if record then done(code) else fail("busy")
 end
 
+local function addItem(player: Player, model: any, raw: any, ...: any): Result
+	local a = args(raw, ...)
+	local code = ownCode(player, model, a.code)
+	local row = rowOf(a)
+	local targetId, kind = itemOf(a)
+	if not code or not row or not targetId or not kind then
+		return fail("bad")
+	end
+	local item = AvatarService.resolve(targetId, kind :: any)
+	if not item then
+		return fail("notfound")
+	end
+	return change(player, code, function(record: any): string?
+		return StoresService.addItem(record, row, item :: any)
+	end)
+end
+
 local function removeItem(player: Player, model: any, raw: any, ...: any): Result
 	local a = args(raw, ...)
 	local code = ownCode(player, model, a.code)
+	local row = rowOf(a)
 	local targetId, kind = itemOf(a)
-	if not code or not targetId or not kind then
+	if not code or not row or not targetId or not kind then
 		return fail("bad")
 	end
-	StoresService.edit(code, player.UserId, function(record: any)
-		for index, existing in record.items or {} do
-			if existing.targetId == targetId and existing.kind == kind then
-				table.remove(record.items, index)
-				return true
-			end
-		end
-		return false
+	return change(player, code, function(record: any): string?
+		StoresService.removeItem(record, row, kind .. ":" .. targetId)
+		return nil
 	end)
-	return done(code)
 end
 
 local function addOutfit(player: Player, model: any, raw: any, ...: any): Result
 	local a = args(raw, ...)
 	local code = ownCode(player, model, a.code)
-	local outfit = codeOf(a.outfit or (a.rest and a.rest[1]))
-	if not code or not outfit then
+	local row = rowOf(a)
+	local outfit = codeOf(a.outfit or (a.rest and a.rest[2]))
+	if not code or not row or not outfit then
 		return fail("bad")
 	end
 	local outfits = OutfitsModel.get(tostring(player.UserId))
@@ -277,42 +285,91 @@ local function addOutfit(player: Player, model: any, raw: any, ...: any): Result
 	if not CommunityService.isListed(SharedContentService.lookup(outfit)) then
 		return fail("notfound")
 	end
-	local problem: string? = nil
-	local record = StoresService.edit(code, player.UserId, function(record: any)
-		record.outfits = record.outfits or {}
-		if table.find(record.outfits, outfit) then
-			problem = "dupe"
-			return false
-		end
-		if #record.outfits >= StoresConfig.maxOutfits then
-			problem = "full"
-			return false
-		end
-		table.insert(record.outfits, outfit)
-		return true
+	return change(player, code, function(record: any): string?
+		return StoresService.addOutfit(record, row, outfit :: string)
 	end)
-	if problem then
-		return fail(problem)
-	end
-	return if record then done(code) else fail("busy")
 end
 
 local function removeOutfit(player: Player, model: any, raw: any, ...: any): Result
 	local a = args(raw, ...)
 	local code = ownCode(player, model, a.code)
-	local outfit = codeOf(a.outfit or (a.rest and a.rest[1]))
-	if not code or not outfit then
+	local row = rowOf(a)
+	local outfit = codeOf(a.outfit or (a.rest and a.rest[2]))
+	if not code or not row or not outfit then
 		return fail("bad")
 	end
-	StoresService.edit(code, player.UserId, function(record: any)
-		local index = table.find(record.outfits or {}, outfit)
-		if not index then
-			return false
-		end
-		table.remove(record.outfits, index)
-		return true
+	return change(player, code, function(record: any): string?
+		StoresService.removeOutfit(record, row, outfit :: string)
+		return nil
 	end)
-	return done(code)
+end
+
+-- Rows ---------------------------------------------------------------------------
+
+local function addRow(player: Player, model: any, raw: any, ...: any): Result
+	local a = args(raw, ...)
+	local code = ownCode(player, model, a.code)
+	local kind = a.kind or (a.rest and a.rest[1])
+	if not code or type(kind) ~= "string" then
+		return fail("bad")
+	end
+	local name: string? = nil
+	if kind == "items" or kind == "outfits" then
+		local cleaned, problem = StoresService.cleanRowName(player, a.name or (a.rest and joined(table.move(a.rest, 2, #a.rest, 1, {}))))
+		if not cleaned then
+			return fail(problem or "bad")
+		end
+		name = cleaned
+	end
+	local made: string? = nil
+	local result = change(player, code, function(record: any): string?
+		local id, problem = StoresService.addRow(record, kind, name)
+		made = id
+		return problem
+	end)
+	result.row = made
+	return result
+end
+
+local function renameRow(player: Player, model: any, raw: any, ...: any): Result
+	local a = args(raw, ...)
+	local code = ownCode(player, model, a.code)
+	local row = rowOf(a)
+	if not code or not row then
+		return fail("bad")
+	end
+	local cleaned, problem = StoresService.cleanRowName(player, a.name or (a.rest and joined(table.move(a.rest, 2, #a.rest, 1, {}))))
+	if not cleaned then
+		return fail(problem or "bad")
+	end
+	return change(player, code, function(record: any): string?
+		return StoresService.renameRow(record, row, cleaned :: string)
+	end)
+end
+
+local function removeRow(player: Player, model: any, raw: any, ...: any): Result
+	local a = args(raw, ...)
+	local code = ownCode(player, model, a.code)
+	local row = rowOf(a)
+	if not code or not row then
+		return fail("bad")
+	end
+	return change(player, code, function(record: any): string?
+		return StoresService.removeRow(record, row)
+	end)
+end
+
+local function moveRow(player: Player, model: any, raw: any, ...: any): Result
+	local a = args(raw, ...)
+	local code = ownCode(player, model, a.code)
+	local row = rowOf(a)
+	local by = tonumber(a.by or (a.rest and a.rest[2]))
+	if not code or not row or (by ~= 1 and by ~= -1) then
+		return fail("bad")
+	end
+	return change(player, code, function(record: any): string?
+		return StoresService.moveRow(record, row, by)
+	end)
 end
 
 local function publish(player: Player, model: any, raw: any): Result
@@ -442,6 +499,10 @@ local ACTIONS: { [string]: (Player, any, any, ...any) -> Result } = {
 	[Network.Actions.Stores.RemoveItem] = budgeted(removeItem),
 	[Network.Actions.Stores.AddOutfit] = budgeted(addOutfit),
 	[Network.Actions.Stores.RemoveOutfit] = budgeted(removeOutfit),
+	[Network.Actions.Stores.AddRow] = budgeted(addRow),
+	[Network.Actions.Stores.RenameRow] = budgeted(renameRow),
+	[Network.Actions.Stores.RemoveRow] = budgeted(removeRow),
+	[Network.Actions.Stores.MoveRow] = budgeted(moveRow),
 	[Network.Actions.Stores.Publish] = budgeted(publish),
 	[Network.Actions.Stores.Unpublish] = budgeted(unpublish),
 	[Network.Actions.Stores.Delete] = budgeted(delete),

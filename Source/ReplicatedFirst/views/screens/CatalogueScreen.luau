@@ -65,6 +65,7 @@ local PASTE_MESSAGES = {
 }
 
 local BAR_HEIGHT = 52
+local PICK_HEIGHT = 52 -- design px: the pick-mode banner (filling a store row)
 
 local function CatalogueScreen(props: { nav: any, look: any })
 	local skin = useSkin()
@@ -235,6 +236,8 @@ local function CatalogueScreen(props: { nav: any, look: any })
 
 	local cards: { [string]: any } = {}
 	local count = 0
+	-- Pick mode (filling a store row): a tap adds or takes out, no menu.
+	local picking = hud.picking
 	for _, item in catalogue.items do
 		count += 1
 		cards["Item" .. item.id] = e(Parts.ItemCard, {
@@ -242,8 +245,15 @@ local function CatalogueScreen(props: { nav: any, look: any })
 			wearing = props.look.isWorn(item.id),
 			inBasket = props.look.inBasket(item.id),
 			favourite = props.look.isFavourite(item.id),
+			picked = picking ~= nil and hud.isPicked(item.id),
+			pickBusy = picking ~= nil and hud.pickBusy(item.id),
 			layoutOrder = count,
-			menu = {
+			onActivated = if picking
+				then function()
+					hud.pickToggle(item.id)
+				end
+				else nil,
+			menu = if picking then nil else {
 				open = menuId == item.id,
 				onToggle = function()
 					setPopover(nil)
@@ -302,6 +312,10 @@ local function CatalogueScreen(props: { nav: any, look: any })
 		then tabsHeight + skin.px(Tokens.size.chipHeight) + skin.px(22)
 		else tabsHeight + skin.px(12)
 	local barSpace = skin.px(BAR_HEIGHT + 10)
+	local pickTop = gridTop
+	if picking then
+		gridTop += skin.px(PICK_HEIGHT + 10)
+	end
 
 	return e("Frame", {
 		Name = "CatalogueScreen",
@@ -363,6 +377,42 @@ local function CatalogueScreen(props: { nav: any, look: any })
 				nav = props.nav,
 				position = UDim2.fromOffset(0, gridTop + skin.px(6)),
 				size = UDim2.new(1, 0, 1, -(gridTop + skin.px(6))),
+			})
+			else nil,
+		Picking = if picking and not special
+			then e(GlassPanel, {
+				variant = "bar",
+				cornerRadius = 16,
+				position = UDim2.fromOffset(0, pickTop),
+				size = UDim2.new(1, 0, 0, skin.px(PICK_HEIGHT)),
+			}, {
+				Padding = e("UIPadding", {
+					PaddingLeft = UDim.new(0, skin.px(16)),
+					PaddingRight = UDim.new(0, skin.px(7)),
+				}),
+				Text = e("TextLabel", {
+					Size = UDim2.new(1, -skin.px(140), 1, 0),
+					BackgroundTransparency = 1,
+					Text = picking.problem or `Adding to {picking.storeName} › {picking.rowName} · {picking.count} in this row. Tap items to add or take out`,
+					TextColor3 = if picking.problem then Tokens.color.accentText else Tokens.color.white,
+					TextSize = skin.textPx(14),
+					FontFace = Tokens.font(800),
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+				}),
+				Done = e(PillButton, {
+					variant = "pill",
+					size = PICK_HEIGHT - 12,
+					width = 120,
+					icon = "check",
+					iconSize = 18,
+					label = "Done",
+					active = true,
+					sound = false, -- endPicking plays it
+					anchorPoint = Vector2.new(1, 0.5),
+					position = UDim2.fromScale(1, 0.5),
+					onActivated = hud.endPicking,
+				}),
 			})
 			else nil,
 		Grid = if special then nil else e(Parts.CardGrid, {

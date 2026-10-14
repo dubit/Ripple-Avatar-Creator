@@ -15,6 +15,8 @@ local config: StoresConfig = {
 	maxOutfits = 20,
 	nameLength = { min = 3, max = 30 },
 	featured = 4,
+	maxRows = 12,
+	rowNameLength = { min = 1, max = 24 },
 	sectionSize = 10,
 	collections = {
 		{ name = "Free", maxPrice = 0 },
