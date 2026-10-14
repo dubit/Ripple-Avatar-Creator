@@ -17,7 +17,7 @@
 	sections arrive as positions in its item list and become item ids here.
 	Its outfits are Community outfit cards (CommunityOutfits.toCard).
 	Its rows (the owner's layout, StoresService) come in order, each items
-	or outfits, filled by hand (its items in its order) or by a search
+	or outfits, filled by hand (its items as the owner put them in) or by a search
 	(found by the page, from `search`), with a style and a limit.
 
 	API:
@@ -63,10 +63,9 @@ export type Row = {
 	id: string,
 	content: string, -- "items" | "outfits"
 	source: string, -- "manual" | "search"
-	style: string, -- "square" | "wide" | "tall" | "single" | "grid" | "tile"
+	style: string, -- "square" | "wide" | "hero" | "single" | "grid" | "tile"
 	name: string,
 	limit: number,
-	order: string?, -- manual: "added" | "newest" | "bestselling"
 	items: { number }?, -- manual items rows: item ids, in order
 	outfits: { CommunityOutfits.Card }?, -- manual outfits rows: their (listed) outfits
 	outfitCodes: { string }?, -- manual outfits rows: all their codes
@@ -180,7 +179,6 @@ local function toPage(raw: any): Page
 				style = tostring(row.style or "square"),
 				name = tostring(row.name or ""),
 				limit = tonumber(row.limit) or 20,
-				order = if type(row.order) == "string" then row.order else nil,
 				search = if type(row.search) == "table" then row.search else nil,
 			}
 			if type(row.items) == "table" then

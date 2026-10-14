@@ -6,10 +6,13 @@
 	A row's settings on your own store page, opening from the button that
 	asked for it (Add row, or a row's menu button), like a context menu
 	that's modal: the page behind dims and ignores taps, a tap outside or
-	Back closes it.
+	Back closes it. It stays where it opened while you change things.
+
+	As you change them the page shows the row that way (`onPreview`: a
+	draft row, or nil when it closes); Cancel puts it back.
 
 	  Add row: Items or Outfits; filled By hand or By search; a style; how
-	  many it shows; for a hand-filled row its order, for an outfits search
+	  many it shows (Hero: 2 to 6, it doesn't scroll); for an outfits search
 	  its Community sort; its name. An items search row then opens the
 	  Catalogue in search setup mode (Hud) to choose its search.
 	  A row's menu: the same, without content and fill (they stay as made),
@@ -22,7 +25,8 @@
 		storeName: string
 		anchor: GuiObject           the button it opens from
 		root: GuiObject             the screen it's drawn over
-		onClose: () -> ()
+		onPreview: (row: StoresClient.Row?) -> ()   the row as it would be
+		onClose: (saved: boolean) -> ()
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -61,7 +65,7 @@ local SOURCES: { Choice } = { { id = "manual", label = "By hand" }, { id = "sear
 local ITEM_STYLES: { Choice } = {
 	{ id = "square", label = "Square" },
 	{ id = "wide", label = "Wide" },
-	{ id = "tall", label = "Tall" },
+	{ id = "hero", label = "Hero" },
 	{ id = "single", label = "Single" },
 	{ id = "grid", label = "Grid" },
 	{ id = "tile", label = "Tile" },
@@ -71,17 +75,14 @@ local OUTFIT_STYLES: { Choice } = {
 	{ id = "grid", label = "Grid" },
 	{ id = "tile", label = "Tile" },
 }
-local ORDERS: { Choice } = {
-	{ id = "added", label = "As added" },
-	{ id = "newest", label = "Newest first" },
-	{ id = "bestselling", label = "Bestselling" },
-}
 local OUTFIT_SORTS: { Choice } = {
 	{ id = "popular", label = "Popular" },
 	{ id = "trending", label = "Trending" },
 	{ id = "newest", label = "Newest" },
 }
 local LIMITS = { 1, 4, 10, 20, 30, 60 }
+local HERO_LIMITS = { 2, 3, 4, 5, 6 } -- (2: two wide, 3–4: one wide and the rest narrow, 5–6: all narrow)
+local HERO_DEFAULT = 4
 
 -- A labelled line of chips (`lines` chip rows tall).
 local function ChipLine(props: { label: string, choices: { Choice }, value: string, lines: number, onPick: (id: string) -> (), layoutOrder: number })
@@ -130,7 +131,8 @@ local function RowMenu(props: {
 	storeName: string,
 	anchor: GuiObject,
 	root: GuiObject,
-	onClose: () -> (),
+	onPreview: (row: StoresClient.Row?) -> (),
+	onClose: (saved: boolean) -> (),
 })
 	local skin = useSkin()
 	local hud = React.useContext(HudContext)
@@ -140,7 +142,6 @@ local function RowMenu(props: {
 	local source, setSource = React.useState(if row then row.source else "manual")
 	local style, setStyle = React.useState(if row then row.style else "square")
 	local limit, setLimit = React.useState(if row then row.limit else StoresConfig.rowLimit.default)
-	local order, setOrder = React.useState(if row and row.order then row.order else "added")
 	local sort, setSort = React.useState(if row and row.search and row.search.sort then row.search.sort else "popular")
 	local name, setName = React.useState(if row then row.name else "")
 	local waiting, setWaiting = React.useState(false)
@@ -153,9 +154,12 @@ local function RowMenu(props: {
 		end
 	end, {})
 
+	local function cancel()
+		props.onClose(false)
+	end
 	useBackInput(function()
 		Sounds.play("back")
-		props.onClose()
+		cancel()
 		return true
 	end)
 
@@ -171,6 +175,43 @@ local function RowMenu(props: {
 	end
 	local outfitSearch = content == "outfits" and source == "search"
 	local itemSearch = content == "items" and source == "search"
+	-- Hero doesn't scroll: 2 to 6 (and back from it, a usual amount).
+	local hero = style == "hero"
+	if hero and (limit < 2 or limit > 6) then
+		limit = HERO_DEFAULT
+	elseif not hero and not table.find(LIMITS, limit) then
+		limit = StoresConfig.rowLimit.default
+	end
+
+	-- The row as these settings would make it, for the page to show.
+	local draft: StoresClient.Row = if row
+		then table.clone(row)
+		else {
+			id = "preview",
+			content = content,
+			source = source,
+			style = style,
+			name = "",
+			limit = limit,
+			items = if content == "items" and source == "manual" then {} else nil,
+			outfits = if content == "outfits" and source == "manual" then {} else nil,
+			outfitCodes = if content == "outfits" and source == "manual" then {} else nil,
+			search = nil,
+		}
+	draft.content = content
+	draft.source = source
+	draft.style = style
+	draft.limit = limit
+	local typed = string.match(name, "^%s*(.-)%s*$") or ""
+	draft.name = if typed ~= "" then typed elseif row then row.name else "New row"
+	if outfitSearch then
+		draft.search = { sort = sort }
+	end
+	local signature = table.concat({ content, source, style, tostring(limit), draft.name, sort }, "|")
+	React.useEffect(function()
+		props.onPreview(draft)
+		return nil
+	end, { signature })
 
 	local trimmed = string.match(name, "^%s*(.-)%s*$") or ""
 	local ready = not waiting and (utf8.len(trimmed) or 0) >= StoresConfig.rowNameLength.min
@@ -185,7 +226,7 @@ local function RowMenu(props: {
 			setProblem(StoreDialogs.message(err, "row"))
 		else
 			Sounds.play("confirm")
-			props.onClose()
+			props.onClose(true)
 		end
 	end
 
@@ -195,7 +236,7 @@ local function RowMenu(props: {
 		end
 		setWaiting(true)
 		setProblem(nil)
-		local spec = { code = props.code, content = content, source = source, style = style, limit = limit, order = order, name = trimmed }
+		local spec = { code = props.code, content = content, source = source, style = style, limit = limit, name = trimmed }
 		task.spawn(function()
 			if editing and row then
 				spec.row = row.id
@@ -243,11 +284,11 @@ local function RowMenu(props: {
 	local styleLines = if #styles > 3 then 2 else 1
 	line("Style", e(ChipLine, { label = "Style", choices = styles, value = style, lines = styleLines, onPick = setStyle, layoutOrder = 4 }), chipLineHeight(skin, styleLines))
 	local limitChoices: { Choice } = {}
-	for _, n in LIMITS do
+	for _, n in if hero then HERO_LIMITS else LIMITS do
 		table.insert(limitChoices, { id = tostring(n), label = tostring(n) })
 	end
 	line("Limit", e(ChipLine, {
-		label = if style == "tall" then "How many (Tall shows up to 5)" else "How many it shows",
+		label = if hero then "How many (a hero row doesn't scroll)" else "How many it shows",
 		choices = limitChoices,
 		value = tostring(limit),
 		lines = 1,
@@ -256,9 +297,7 @@ local function RowMenu(props: {
 		end,
 		layoutOrder = 5,
 	}), chipLineHeight(skin, 1))
-	if source == "manual" then
-		line("Order", e(ChipLine, { label = "Order", choices = ORDERS, value = order, lines = 1, onPick = setOrder, layoutOrder = 6 }), chipLineHeight(skin, 1))
-	elseif outfitSearch then
+	if outfitSearch then
 		line("Sort", e(ChipLine, { label = "Community outfits", choices = OUTFIT_SORTS, value = sort, lines = 1, onPick = setSort, layoutOrder = 6 }), chipLineHeight(skin, 1))
 	end
 	line("Name", e("Frame", {
@@ -324,7 +363,7 @@ local function RowMenu(props: {
 			label = "Cancel",
 			sound = "back",
 			layoutOrder = 2,
-			onActivated = props.onClose,
+			onActivated = cancel,
 		}),
 		Save = e(PillButton, {
 			variant = "pill",
@@ -350,7 +389,7 @@ local function RowMenu(props: {
 			sound = false,
 			layoutOrder = 1,
 			onActivated = function()
-				props.onClose()
+				cancel()
 				hud.setupSearch({ code = props.code, row = row.id, storeName = props.storeName, rowName = row.name, search = row.search })
 			end,
 		})
@@ -369,6 +408,7 @@ local function RowMenu(props: {
 	-- it (right, else left), as level with the button as the screen allows.
 	local rootRef = React.useRef(props.root)
 	local rootSize = useLocalSize(rootRef)
+	local placed = React.useRef(nil :: Vector2?)
 	local scale = if rootSize.X > 0 then props.root.AbsoluteSize.X / rootSize.X else 1
 	local anchorPos = (props.anchor.AbsolutePosition - props.root.AbsolutePosition) / scale
 	local anchorSize = props.anchor.AbsoluteSize / scale
@@ -386,19 +426,28 @@ local function RowMenu(props: {
 		x = if right + panelWidth <= rootSize.X then right else math.clamp(anchorPos.X - gap - panelWidth, 0, maxX)
 		y = math.clamp(anchorPos.Y + anchorSize.Y / 2 - panelHeight / 2, 0, maxY)
 	end
+	-- Where it first lands it stays (the page moves under it as the preview
+	-- changes); only kept on the screen as the menu grows or shrinks.
+	if not placed.current and rootSize.X > 0 then
+		placed.current = Vector2.new(x, y)
+	end
+	if placed.current then
+		x = math.clamp(placed.current.X, 0, maxX)
+		y = math.clamp(placed.current.Y, 0, maxY)
+	end
 
 	return e("TextButton", {
 		Name = "RowMenu",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = Tokens.color.black,
-		BackgroundTransparency = 0.55,
+		BackgroundTransparency = 0.75, -- light: the row's preview shows through
 		AutoButtonColor = false,
 		Text = "",
 		ZIndex = 20,
 		-- A tap outside closes it (it's modal: nothing behind takes the tap).
 		[React.Event.InputBegan] = Press.began(function()
 			Sounds.play("back")
-			props.onClose()
+			cancel()
 		end),
 	}, {
 		Panel = e("Frame", {

@@ -31,9 +31,8 @@
 	Check(items): look up ownership of up to MAX_CHECK items (the worn list,
 	the basket, an item page); each is looked up once a session.
 
-	A Buy made from a store page carries the store's code (`store`): what's
-	bought through it counts towards its Bestsellers (StoresService; not
-	when its owner buys) and the purchase analytics say which store it was,
+	A Buy made from a store page carries the store's code (`store`): the
+	purchase analytics say which store it was (not when its owner buys),
 	so store owners could be rewarded later.
 
 	Analytics: purchase_prompted, purchase_completed (item ids, Robux spent as
@@ -286,9 +285,6 @@ local function finished(player: Player, model: any, raw: any)
 	end
 
 	if #bought > 0 then
-		if pending.store then
-			StoresService.countSales(pending.store, bought)
-		end
 		track(player, "purchase_completed", {
 			item_ids = idList(bought),
 			item_count = #bought,

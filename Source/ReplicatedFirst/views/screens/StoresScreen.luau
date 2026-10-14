@@ -26,8 +26,9 @@
 	  · then the owner's rows, in their order (StoresClient.Row): items or
 	    outfits, hand-filled or found by a search (StoreRow runs a search
 	    row's catalogue query, or loads its Community sort), up to the
-	    row's limit, in its style: Square / Wide carousels, Tall (a few
-	    tall cards across, no scrolling), Single (one at a time with arrows:
+	    row's limit, in its style: Square / Wide carousels, Hero (2 to 6
+	    portrait cards across, no scrolling: with 2 both are wide, with 3
+	    or 4 the first is), Single (one at a time with arrows:
 	    Try on, Basket, and its picture or name opens the item page), Grid
 	    (no scrolling) or Tile (opens the row as its own grid). A
 	    hand-filled row longer than its limit has See all
@@ -107,11 +108,11 @@ local EMPTY = {
 	mine = "Stores you make show here",
 }
 local DRAFT_HINT = "Add items with a row's Add items, or the store button on any item card"
-local STYLE_LABELS = { square = "Square", wide = "Wide", tall = "Tall", single = "Single", grid = "Grid", tile = "Tile" }
+local STYLE_LABELS = { square = "Square", wide = "Wide", hero = "Hero", single = "Single", grid = "Grid", tile = "Tile" }
 local WIDE_CARD = 264 -- design px: a Wide row's card
 local WIDE_THUMB = 132
-local TALL_THUMB = 260 -- design px: a Tall row's cards, above their labels
-local TALL_MAX = 5 -- cards across a Tall row
+local HERO_THUMB = 300 -- design px: a Hero row's cards, above their labels
+local HERO_MAX = 6 -- cards across a Hero row
 local GRID_COLUMNS = 6
 local CONTROL = 30 -- design px: a row control's diameter
 local OWNER_HEADING = 36 -- design px: a row heading on your own store (the name field's pencil)
@@ -1433,16 +1434,45 @@ local function StoreRow(props: {
 			BackgroundTransparency = 1,
 			LayoutOrder = 2,
 		}, list)
-	elseif style == "tall" and isItems then
-		-- A few tall cards across the row, no scrolling.
-		local list, count = cells(true, TALL_MAX)
-		local shown = math.max(1, count)
-		bodyHeight = skin.px(TALL_THUMB) + skin.px(40)
-		list.Grid = e("UIGridLayout", {
-			CellSize = UDim2.new(1 / shown, -math.ceil(gap * (shown - 1) / shown), 1, 0),
-			CellPadding = UDim2.fromOffset(gap, 0),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		})
+	elseif style == "hero" and isItems then
+		-- 2 to 6 portrait cards across the row, no scrolling. With few, some
+		-- are wide (two units): 1–2 all wide, 3–4 the first, 5–6 none. (One
+		-- alone is as wide as half the row.)
+		local entries: { any } = {}
+		if withAdd then
+			table.insert(entries, e(AddTile, { label = "Add items", layoutOrder = 0, onActivated = addHere }))
+		end
+		for _, id in ids do
+			if #entries >= HERO_MAX then
+				break
+			end
+			local card = props.itemCard(id, #entries + 1, true)
+			if card then
+				table.insert(entries, card)
+			end
+		end
+		local count = #entries
+		local units, wide = 0, {}
+		for index = 1, count do
+			wide[index] = count <= 2 or (count <= 4 and index == 1)
+			units += if wide[index] then 2 else 1
+		end
+		local unit = (props.width - gap * math.max(0, count - 1)) / math.max(units, 4)
+		bodyHeight = skin.px(HERO_THUMB) + skin.px(40)
+		local list: { [string]: any } = {
+			Layout = e("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, gap),
+			}),
+		}
+		for index, entry in entries do
+			list["Cell" .. index] = e("Frame", {
+				Size = UDim2.new(0, math.floor(unit * (if wide[index] then 2 else 1) + (if wide[index] then gap else 0)), 1, 0),
+				BackgroundTransparency = 1,
+				LayoutOrder = index,
+			}, { Card = entry })
+		end
 		body = e("Frame", {
 			Size = UDim2.new(1, 0, 0, bodyHeight),
 			BackgroundTransparency = 1,
@@ -1484,6 +1514,16 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 	local ownerProblem, setOwnerProblem = React.useState(nil :: string?)
 	-- The row menu, open from a button: Add row, or a row's settings.
 	local menu, setMenu = React.useState(nil :: { mode: "add" | "edit", row: StoresClient.Row?, anchor: GuiObject }?)
+	-- The row as the menu would make it (shown in its place, or at the
+	-- bottom for a new one); kept after a save until the page reloads, so
+	-- it doesn't flick back first.
+	local preview, setPreview = React.useState(nil :: { row: StoresClient.Row, keep: boolean }?)
+	React.useEffect(function()
+		if preview and preview.keep then
+			setPreview(nil)
+		end
+		return nil
+	end, { page } :: { any })
 	-- The page's size (Grid / Tall cells) and its rows' height (the scroll).
 	local rootRef = React.useRef(nil :: Frame?)
 	local rootSize = useLocalSize(rootRef)
@@ -1788,7 +1828,8 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 	local mine = page.mine
 	local rowCount = #page.rows
 	local rowWidth = math.max(0, rootSize.X - skin.px(8) - skin.px(8)) -- less the pad and the scroll bar
-	for position, row in page.rows do
+	for position, saved in page.rows do
+		local row = if preview and preview.row.id == saved.id then preview.row else saved
 		add("Row" .. row.id, e(StoreRow, {
 			row = row,
 			page = page,
@@ -1811,11 +1852,30 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 		}), 0)
 	end
 
+	-- A new row, as the menu has it so far.
+	if preview and preview.row.id == "preview" then
+		add("RowPreview", e(StoreRow, {
+			row = preview.row,
+			page = page,
+			code = code,
+			look = look,
+			nav = props.nav,
+			position = rowCount + 1,
+			rowCount = rowCount + 1,
+			busy = true,
+			width = rowWidth,
+			itemCard = itemCard,
+			onAct = function() end,
+			onMenu = function() end,
+			layoutOrder = rowCount + 1,
+		}), 0)
+	end
+
 	-- Your own: a new row at the bottom (its menu opens from the button).
 	if mine then
 		add("AddRow", e(AddRowButton, {
 			disabled = rowCount >= StoresConfig.maxRows or working ~= nil,
-			layoutOrder = rowCount + 1,
+			layoutOrder = rowCount + 2,
 			onOpen = function(anchor: GuiObject)
 				Sounds.play("open")
 				setMenu({ mode = "add", row = nil, anchor = anchor })
@@ -1858,8 +1918,14 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 				storeName = page.name,
 				anchor = menu.anchor,
 				root = rootRef.current,
-				onClose = function()
+				onPreview = function(row: StoresClient.Row?)
+					setPreview(if row then { row = row, keep = false } else nil)
+				end,
+				onClose = function(saved: boolean)
 					setMenu(nil)
+					setPreview(function(current)
+						return if saved and current then { row = current.row, keep = true } else nil
+					end)
 				end,
 			})
 			else nil,

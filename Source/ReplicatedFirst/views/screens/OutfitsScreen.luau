@@ -62,6 +62,8 @@ local Tokens = require(views:WaitForChild("Tokens"))
 local Press = require(views:WaitForChild("Press"))
 local Sounds = require(views:WaitForChild("Sounds"))
 local useSkin = require(hooks:WaitForChild("useSkin"))
+local useTextWidth = require(hooks:WaitForChild("useTextWidth"))
+local useLocalSize = require(hooks:WaitForChild("useLocalSize"))
 local useInteraction = require(hooks:WaitForChild("useInteraction"))
 local useSessionState = require(hooks:WaitForChild("useSessionState"))
 local TextTab = require(components:WaitForChild("TextTab"))
@@ -1221,8 +1223,9 @@ end
 -- The outfit's name. A saved outfit's can be edited in place: once the text
 -- differs from the saved name the pencil turns orange, and pressing it (or
 -- Enter) saves the new name, after which it goes back to black. Pressing
--- the black pencil puts the cursor in the name. (Also a store's name, with
--- its own `maxLength` and `size`.)
+-- the black pencil puts the cursor in the name. The pencil sits just after
+-- the name (as far as the space allows). (Also a store's name, with its
+-- own `maxLength` and `size`.)
 local function NameField(props: {
 	name: string,
 	editable: boolean,
@@ -1237,6 +1240,9 @@ local function NameField(props: {
 	local maxLength = props.maxLength or AvatarConfig.outfits.nameLength
 	local draft, setDraft = React.useState(props.name)
 	local boxRef = React.useRef(nil :: TextBox?)
+	local fieldRef = React.useRef(nil :: Frame?)
+	local fieldSize = useLocalSize(fieldRef)
+	local textWidth = useTextWidth(if draft ~= "" then draft else " ", Tokens.font(900), skin.textPx(style.size))
 	-- A new saved name (ours arriving, or a rename elsewhere) replaces the draft.
 	React.useEffect(function()
 		setDraft(props.name)
@@ -1252,13 +1258,19 @@ local function NameField(props: {
 		end
 	end
 	local pencil = skin.px(Tokens.size.small.size)
+	local gap = skin.px(8)
+	-- The name's own width (a little spare for the cursor), up to the room
+	-- the pencil leaves.
+	local room = math.max(0, fieldSize.X - pencil - gap)
+	local boxWidth = if fieldSize.X > 0 then math.min(textWidth + skin.px(6), room) else room
 	return e("Frame", {
 		Size = UDim2.new(1, 0, 0, math.max(skin.textPx(style.size) + skin.px(6), pencil)),
 		BackgroundTransparency = 1,
 		LayoutOrder = props.layoutOrder or 2,
+		ref = fieldRef,
 	}, {
 		Box = e("TextBox", {
-			Size = UDim2.new(1, -(pencil + skin.px(8)), 1, 0),
+			Size = UDim2.new(0, boxWidth, 1, 0),
 			BackgroundTransparency = 1,
 			ClearTextOnFocus = false,
 			Text = draft,
@@ -1291,8 +1303,8 @@ local function NameField(props: {
 			glowRadius = 0,
 			active = changed,
 			sound = if changed then "confirm" else nil,
-			anchorPoint = Vector2.new(1, 0.5),
-			position = UDim2.fromScale(1, 0.5),
+			anchorPoint = Vector2.new(0, 0.5),
+			position = UDim2.new(0, boxWidth + gap, 0.5, 0),
 			onActivated = function()
 				if changed then
 					save()

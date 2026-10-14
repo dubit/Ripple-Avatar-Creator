@@ -17,21 +17,20 @@
 		  rows = { Row },              the page, in the owner's order
 		  nextRow,                     for row ids
 		  published, publishedAt?, visits, favourites,
-		  sales = { ["Asset:123"] = n },   bought through this store
 		  hidden?, hiddenReason? }
 
 	The owner lays out the page as rows (PLAN 19.1), each one:
 		{ id = "r1", content = "items" | "outfits",
 		  source = "manual" | "search", style, name, limit,
-		  order = "added" | "newest" | "bestselling",   manual rows
-		  items = { "Asset:123", ... } | outfits = { code },   manual rows
+		  items = { "Asset:123", ... } | outfits = { code },   manual rows,
+		                               in the owner's order
 		  search = { ... } }           search rows: a catalogue query
 		                               (cleanSearch) or a Community sort
-	Styles: "square" | "wide" | "tall" | "single" | "grid" | "tile"
+	Styles: "square" | "wide" | "hero" | "single" | "grid" | "tile"
 	(outfits rows: square, grid, tile). `limit` caps what the row shows
-	(a tile opens all of it). A search row's items are found by each
+	(a tile opens all of it); a hero row shows 2 to 6 (HERO_LIMIT). A search row's items are found by each
 	viewer's client from its search, so they aren't the store's items:
-	limits, Bestsellers ordering and sales are about the manual ones.
+	the store's limits are about the manual ones.
 	An item (or outfit) can be in several manual rows; it leaves the store
 	when it's in none. Older stores get rows on their next read (rowsOf):
 	Featured (single, its first items), "Items" (all), "Outfits".
@@ -48,16 +47,14 @@
 	  · StoresPopular   total visits
 	  · StoresTopRated  favourites (the store's star, like Community outfits)
 	  · StoresNewest    first publish time
-	Visits, favourites and sales are counted per server and written every
+	Visits and favourites are counted per server and written every
 	FLUSH_SECONDS (and on shutdown). StoresController decides what counts (a
 	visit once a day per player, never the owner's).
 
-	A store page (view) has the rows, a manual row's items in its order:
-	as added, newest added first, or bestselling (most bought through the
-	store, then most favourited on Roblox: item details from
-	AvatarEditorService, batched and cached for DETAIL_SECONDS). Pages are
-	cached per server for VIEW_SECONDS, and dropped when this server edits
-	the store.
+	A store page (view) has the rows, a manual row's items as the owner put
+	them in. Pages are cached per server for VIEW_SECONDS, and dropped when
+	this server edits the store. (Purchases through a store go to analytics
+	with its code: PurchaseController.)
 
 	Moderation: as Community. Players report a store (once each,
 	SharedContentService.report); at REPORTS_TO_HIDE it's hidden (off every
@@ -76,7 +73,7 @@
 		unpublish(code, ownerId) -> boolean
 		delete(code, ownerId?) -> boolean       nil ownerId: admin takedown
 		hide(code, reason) / restore(code)
-		countVisit(code) / countFavourite(code, delta) / countSales(code, keys)
+		countVisit(code) / countFavourite(code, delta)
 		flush()
 		page(sort, index) -> ({ string }, boolean)   "popular" | "toprated"
 		                                        | "newest"
@@ -96,7 +93,7 @@
 		removeOutfit(record, rowId, code)
 		addRow(record, spec) -> (string?, string?)   its id, or why not
 		                                        ("full", "bad")
-		editRow(record, rowId, spec) -> string?   style, limit, order, name
+		editRow(record, rowId, spec) -> string?   style, limit, name
 		setSearch(record, rowId, search) -> string?
 		renameRow(record, rowId, name) -> string?
 		removeRow(record, rowId) -> string?
@@ -108,7 +105,6 @@
 		keyOf(item) -> string                   "Asset:123"
 ]]
 
-local AvatarEditorService = game:GetService("AvatarEditorService")
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -144,8 +140,7 @@ export type Row = {
 	style: string,
 	name: string,
 	limit: number,
-	order: string?, -- manual rows: "added" | "newest" | "bestselling"
-	items: { string }?, -- manual items rows: item keys ("Asset:123")
+	items: { string }?, -- manual items rows: item keys ("Asset:123"), in order
 	outfits: { string }?, -- manual outfits rows: outfit codes
 	search: { [string]: any }?, -- search rows
 }
@@ -157,11 +152,10 @@ export type RowSpec = {
 	style: string,
 	name: string?,
 	limit: number,
-	order: string,
 }
 
 -- A row as a page sends it: a manual row's items as indices into
--- Page.items, in its order.
+-- Page.items.
 export type PageRow = {
 	id: string,
 	content: string,
@@ -169,7 +163,6 @@ export type PageRow = {
 	style: string,
 	name: string,
 	limit: number,
-	order: string?,
 	items: { number }?,
 	outfits: { string }?,
 	search: { [string]: any }?,
@@ -194,8 +187,6 @@ local FLUSH_SECONDS = 60
 local REPORTS_TO_HIDE = 3
 local PREVIEW_ITEMS = 4
 local VIEW_SECONDS = 60
-local DETAIL_SECONDS = 600
-local DETAIL_BATCH = 50
 
 local RANKINGS = {
 	popular = "StoresPopular",
@@ -204,9 +195,8 @@ local RANKINGS = {
 }
 
 local names: DataStore? = nil
-local pending: { [string]: { visits: number, favourites: number, sales: { [string]: number } } } = {}
+local pending: { [string]: { visits: number, favourites: number } } = {}
 local views: { [string]: { page: Page, at: number } } = {}
-local details: { [string]: { price: number?, favourites: number, at: number } } = {}
 
 local function keyOf(item: Item): string
 	return item.kind .. ":" .. item.targetId
@@ -367,9 +357,10 @@ end
 
 -- Rows ------------------------------------------------------------------------
 
-local STYLES = { square = true, wide = true, tall = true, single = true, grid = true, tile = true }
+local STYLES = { square = true, wide = true, hero = true, single = true, grid = true, tile = true }
 local OUTFIT_STYLES = { square = true, grid = true, tile = true }
-local ORDERS = { added = true, newest = true, bestselling = true }
+local HERO_LIMIT = { min = 2, max = 6 } -- a hero row doesn't scroll
+local ROWS_VERSION = 3
 local OUTFIT_SORTS = { popular = true, trending = true, newest = true }
 
 local function newRow(record: any, spec: RowSpec): Row
@@ -381,7 +372,6 @@ local function newRow(record: any, spec: RowSpec): Row
 		style = spec.style,
 		name = spec.name or (if spec.content == "outfits" then "Outfits" else "Items"),
 		limit = spec.limit,
-		order = spec.order,
 	}
 	if spec.source == "manual" then
 		if spec.content == "items" then
@@ -402,7 +392,6 @@ local function manual(record: any, content: "items" | "outfits", style: string, 
 		style = style,
 		name = name,
 		limit = StoresConfig.rowLimit.default,
-		order = "added",
 	})
 	if content == "items" then
 		row.items = list
@@ -413,11 +402,25 @@ local function manual(record: any, content: "items" | "outfits", style: string, 
 end
 
 -- Rows as the page has them now. Older shapes come up to date: no rows
--- (Featured, Items, Outfits from the store's items), or the first rows
+-- (Featured, Items, Outfits from the store's items); the first rows
 -- (Featured / named rows kept; Bestsellers, New arrivals and Collections
--- dropped: they're orders and styles now).
+-- dropped); or version 2 (orders dropped, Tall is Hero, 2 to 6).
 function StoresService.rowsOf(record: any): { Row }
+	if type(record.rows) == "table" and record.rowsVersion == ROWS_VERSION then
+		return record.rows
+	end
+	record.sales = nil -- (counted for the Bestselling order, gone with it)
 	if type(record.rows) == "table" and record.rowsVersion == 2 then
+		for _, row in record.rows do
+			row.order = nil
+			if row.style == "tall" then
+				row.style = "hero"
+			end
+			if row.style == "hero" then
+				row.limit = math.clamp(tonumber(row.limit) or HERO_LIMIT.max, HERO_LIMIT.min, HERO_LIMIT.max)
+			end
+		end
+		record.rowsVersion = ROWS_VERSION
 		return record.rows
 	end
 	local rows: { Row } = {}
@@ -443,7 +446,7 @@ function StoresService.rowsOf(record: any): { Row }
 		end
 	end
 	record.rows = rows
-	record.rowsVersion = 2
+	record.rowsVersion = ROWS_VERSION
 	return rows
 end
 
@@ -563,9 +566,12 @@ function StoresService.cleanSpec(raw: any): RowSpec?
 		return nil
 	end
 	local limit = tonumber(raw.limit) or StoresConfig.rowLimit.default
-	limit = math.clamp(math.floor(limit), 1, StoresConfig.rowLimit.max)
-	local order = if type(raw.order) == "string" and ORDERS[raw.order] then raw.order else "added"
-	return { content = content, source = source, style = style, name = nil, limit = limit, order = order }
+	if style == "hero" then
+		limit = math.clamp(math.floor(limit), HERO_LIMIT.min, HERO_LIMIT.max)
+	else
+		limit = math.clamp(math.floor(limit), 1, StoresConfig.rowLimit.max)
+	end
+	return { content = content, source = source, style = style, name = nil, limit = limit }
 end
 
 function StoresService.addRow(record: any, spec: RowSpec): (string?, string?)
@@ -578,7 +584,7 @@ function StoresService.addRow(record: any, spec: RowSpec): (string?, string?)
 	return row.id, nil
 end
 
--- Style, limit, order and name (content and source stay as made).
+-- Style, limit and name (content and source stay as made).
 function StoresService.editRow(record: any, rowId: any, spec: RowSpec): string?
 	local row = findRow(record, rowId)
 	if not row then
@@ -589,7 +595,6 @@ function StoresService.editRow(record: any, rowId: any, spec: RowSpec): string?
 	end
 	row.style = spec.style
 	row.limit = spec.limit
-	row.order = spec.order
 	if spec.name then
 		row.name = spec.name
 	end
@@ -762,15 +767,14 @@ function StoresService.create(player: Player, name: string): (string?, string?)
 		items = {},
 		outfits = {},
 		rows = {
-			{ id = "r1", content = "items", source = "manual", style = "single", name = "Featured", limit = StoresConfig.rowLimit.default, order = "added", items = {} },
-			{ id = "r2", content = "items", source = "manual", style = "square", name = "Items", limit = StoresConfig.rowLimit.default, order = "added", items = {} },
+			{ id = "r1", content = "items", source = "manual", style = "single", name = "Featured", limit = StoresConfig.rowLimit.default, items = {} },
+			{ id = "r2", content = "items", source = "manual", style = "square", name = "Items", limit = StoresConfig.rowLimit.default, items = {} },
 		},
-		rowsVersion = 2,
+		rowsVersion = ROWS_VERSION,
 		nextRow = 2,
 		published = false,
 		visits = 0,
 		favourites = 0,
-		sales = {},
 	})
 	if not code then
 		return nil, "busy"
@@ -931,7 +935,7 @@ end
 local function pendingFor(code: string)
 	local entry = pending[code]
 	if not entry then
-		entry = { visits = 0, favourites = 0, sales = {} }
+		entry = { visits = 0, favourites = 0 }
 		pending[code] = entry
 	end
 	return entry
@@ -943,13 +947,6 @@ end
 
 function StoresService.countFavourite(code: string, delta: number)
 	pendingFor(code).favourites += delta
-end
-
-function StoresService.countSales(code: string, keys: { string })
-	local sales = pendingFor(code).sales
-	for _, key in keys do
-		sales[key] = (sales[key] or 0) + 1
-	end
 end
 
 function StoresService.flush()
@@ -965,16 +962,6 @@ function StoresService.flush()
 			end
 			current.visits = math.max(0, (tonumber(current.visits) or 0) + delta.visits)
 			current.favourites = math.max(0, (tonumber(current.favourites) or 0) + delta.favourites)
-			current.sales = if type(current.sales) == "table" then current.sales else {}
-			local inStore = {}
-			for _, item in current.items or {} do
-				inStore[keyOf(item)] = true
-			end
-			for key, n in delta.sales do
-				if inStore[key] then
-					current.sales[key] = (tonumber(current.sales[key]) or 0) + n
-				end
-			end
 			return true
 		end)
 		if updated and StoresService.isListed(updated) then
@@ -1079,63 +1066,11 @@ function StoresService.cards(codes: { string }, viewer: Player?): { Card }
 	return cards
 end
 
--- Roblox's price and favourite count for each item (cached; nil price when
--- it isn't for sale).
-local function detailsFor(items: { Item })
-	local now = os.clock()
-	local wanted: { [string]: { number } } = { Asset = {}, Bundle = {} }
-	for _, item in items do
-		local cached = details[keyOf(item)]
-		if not cached or now - cached.at > DETAIL_SECONDS then
-			table.insert(wanted[item.kind], item.targetId)
-		end
-	end
-	for kind, ids in wanted do
-		local itemType = if kind == "Bundle" then Enum.AvatarItemType.Bundle else Enum.AvatarItemType.Asset
-		for first = 1, #ids, DETAIL_BATCH do
-			local chunk = table.move(ids, first, math.min(#ids, first + DETAIL_BATCH - 1), 1, {})
-			local ok, result = pcall(function()
-				return AvatarEditorService:GetBatchItemDetails(chunk, itemType)
-			end)
-			if not ok then
-				warn("[StoresService] Item details failed:", result)
-				continue
-			end
-			for _, info in result :: any do
-				local id = tonumber(info.Id)
-				if id then
-					local price = tonumber(info.Price) or tonumber(info.LowestPrice)
-					details[kind .. ":" .. id] = {
-						price = if info.IsPurchasable == false then nil else price,
-						favourites = tonumber(info.FavoriteCount) or 0,
-						at = now,
-					}
-				end
-			end
-		end
-	end
-end
-
 local function build(code: string, record: any): Page
 	local items = itemsOf(record)
-	detailsFor(items)
 	local position: { [string]: number } = {}
 	for index, item in items do
 		position[keyOf(item)] = index
-	end
-	local sales = if type(record.sales) == "table" then record.sales else {}
-	local function bestselling(a: number, b: number): boolean
-		local ka, kb = keyOf(items[a]), keyOf(items[b])
-		local sa, sb = tonumber(sales[ka]) or 0, tonumber(sales[kb]) or 0
-		if sa ~= sb then
-			return sa > sb
-		end
-		local fa = (details[ka] and details[ka].favourites) or 0
-		local fb = (details[kb] and details[kb].favourites) or 0
-		if fa ~= fb then
-			return fa > fb
-		end
-		return a < b
 	end
 
 	-- (A record that hasn't been edited since rows changed shape gets them
@@ -1149,7 +1084,6 @@ local function build(code: string, record: any): Page
 			style = row.style,
 			name = row.name,
 			limit = row.limit,
-			order = row.order,
 			search = row.search,
 		}
 		if row.items then
@@ -1158,15 +1092,6 @@ local function build(code: string, record: any): Page
 				if position[key] then
 					table.insert(indices, position[key])
 				end
-			end
-			if row.order == "newest" then
-				local reversed = {}
-				for index = #indices, 1, -1 do
-					table.insert(reversed, indices[index])
-				end
-				indices = reversed
-			elseif row.order == "bestselling" then
-				table.sort(indices, bestselling)
 			end
 			pageRow.items = indices
 		elseif row.outfits then

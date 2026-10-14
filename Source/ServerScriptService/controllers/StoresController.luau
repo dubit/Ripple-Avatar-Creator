@@ -29,9 +29,9 @@
 		AddRow(code, content, source, style, name)   content "items" |
 		                                   "outfits", source "manual" |
 		                                   "search", a style (StoresService);
-		                                   as a table also limit, order.
+		                                   as a table also limit.
 		                                   Answers its id as `row` ("full")
-		EditRow { code, row, content, source, style, limit, order, name? }
+		EditRow { code, row, content, source, style, limit, name? }
 		                                   a row's settings (content and
 		                                   source stay as made)
 		SetRowSearch { code, row, content, search }   a search row's
@@ -319,7 +319,7 @@ local function rowName(player: Player, a: { [string]: any }, from: number): (str
 end
 
 local function addRow(player: Player, model: any, raw: any, ...: any): Result
-	-- Table: { code, content, source, style, limit?, order?, name }.
+	-- Table: { code, content, source, style, limit?, name }.
 	-- Slash: AddRow CODE content source style name...
 	local a = args(raw, ...)
 	local code = ownCode(player, model, a.code)
@@ -329,7 +329,6 @@ local function addRow(player: Player, model: any, raw: any, ...: any): Result
 		source = a.source or rest[2],
 		style = a.style or rest[3],
 		limit = a.limit,
-		order = a.order,
 	})
 	if not code or not spec then
 		return fail("bad")
@@ -350,7 +349,7 @@ local function addRow(player: Player, model: any, raw: any, ...: any): Result
 end
 
 local function editRow(player: Player, model: any, raw: any): Result
-	-- { code, row, content, source, style, limit, order, name? }
+	-- { code, row, content, source, style, limit, name? }
 	local a = args(raw)
 	local code = ownCode(player, model, a.code)
 	local row = rowOf(a)
