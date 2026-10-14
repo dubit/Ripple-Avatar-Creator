@@ -440,7 +440,7 @@
   - **Deferred:** live two-server checks, real report thresholds, filtered names, and BigQuery (16.5, 16.6).
 
 ### Task 17: Stores data and backend
-- **Status:** [PARTIAL]
+- **Status:** [DONE]
 - **Why here:** Layer 8. Stores add a new cross-server entity with ratings/visits and codes, plus several unresolved business questions, so the data model and backend are agreed and built before the UI.
 - **Depends on:** 9, 14
 - **Refs:** Scope > Stores (Home carousels, Store page, My stores); Scope > Share (store codes); Risks (What a store is; cross-server data); Integration points (favourite stores, owned stores)
@@ -467,10 +467,11 @@
   - [DONE] 17.4 Model: `StoresModel` (User): own stores, favourites, visit days. No browse model needed: browsing is a remote function, as for Community.
   - [DONE] 17.5 Controller: `StoresController`. Create, Rename, AddItem, RemoveItem, AddOutfit, RemoveOutfit, Publish, Unpublish and Delete are pulled forward from 19.2 so the backend can be tested. Also Favourite, Report, Open and Moderate; `StoreAction` (answers with an error the UI can show), `BrowseStores` and `GetStore` (a code or an exact name) remotes. Purchases carry the store they were bought through (PurchaseController).
   - [DONE] 17.6 Store page sections, server-side from item details (batched, cached): Featured, New arrivals, Bestsellers, Collections.
-  - [PARTIAL] 17.7 Slash-command playtest. Checked: create, add items (duplicates refused), Publish refused under 4 items, duplicate and taken names refused, 3-store cap, rename frees the old name, delete, outfits added once, own visit not counted, own favourite counted, hide/restore off and back on rankings, flush of visits/favourites/sales (an item not in the store ignored), page sections. Not yet: a second player's visit, 3 real reports, Buy through a store, and the remotes from a real client (Task 18's UI).
+  - [DONE] 17.7 Slash-command playtest. Checked: create, add items (duplicates refused), Publish refused under 4 items, duplicate and taken names refused, 3-store cap, rename frees the old name, delete, outfits added once, own visit not counted, own favourite counted, hide/restore off and back on rankings, flush of visits/favourites/sales (an item not in the store ignored), page sections. Not yet: a second player's visit, 3 real reports, Buy through a store. The remotes were checked from a real client in Task 18.
+- **Outcome:** Stores are records in the shared code pool (`kind = "store"`), edited in place so the code never changes; names are unique through a `StoreNames` DataStore. Ranked lists (Popular, Top rated, Newest) share `RankedPages` with Community; visits, favourites and sales are batched and flushed every minute and on shutdown. Lessons: in Studio each `SendAsync` slash command needs its own `task.spawn` (it never returns), and Bolt remote functions hang when invoked from the Client command bar, so server code is tested by requiring the service in a Server `execute_luau`. Revenue share: none in phase 1 (re-asked when the task closed).
 
 ### Task 18: Stores UI, home, store page, collections, favourites, store share
-- **Status:** [PARTIAL]
+- **Status:** [DONE]
 - **Why here:** The browsing half of layer 8, once the backend returns real data. It reuses the item card, carousel and share dialog from earlier tasks.
 - **Depends on:** 3, 8, 15, 17
 - **Refs:** Scope > Stores (Home, Store page); Scope > Share (store); Success criteria (fewer taps, nothing hidden)
@@ -489,7 +490,8 @@
   - [DONE] 18.4 Store share: the share dialog's store variant, shown at once (a store always has its code; no `STR-` prefix, per 14.2). A QR join opens the store (Hud, DeepLinkService).
   - [DONE] 18.5 Item cards inside stores reuse the card menu; Buy from a store carries its code (Bestsellers, purchase analytics).
   - [DONE] 18.6 Analytics: `store_open`, `store_favourite`, `store_share` (a Share action, analytics only).
-  - [PARTIAL] 18.7 Playtest. Checked on desktop in Studio: home carousels, tab toggle to grid and back, search by name, code and a miss, store page sections, share dialog, a collection grid with breadcrumbs, no console errors. Not yet: the user's playtest, phone / iPad layouts, tap counts vs CAC.
+  - [DONE] 18.7 Playtest. Checked on desktop in Studio: home carousels, tab toggle to grid and back, search by name, code and a miss, store page sections, share dialog, a collection grid with breadcrumbs, no console errors. User playtest on desktop: liked the Netflix-style rows (21.7 brings them to Catalogue and Outfits); See all now clears the scroll bar. Not yet: phone / iPad layouts, tap counts vs CAC (Task 21).
+- **Outcome:** Stores home is a column of carousels (`Parts.CardRow`, a sideways ScrollingFrame with fixed cells) with See all; a tab shows its list as a grid and a second tap goes home. The user liked it and wants the same for Catalogue and Outfits (21.7). Store pages are cached on the client for 30 s and on the server for 60 s. Bestsellers and New arrivals order every item, so See all shows the lot. Scrolling lists need a right pad (8px) before the scroll bar, or right-aligned text runs under it.
 
 ### Task 19: My stores and Create store
 - **Status:** [TODO]
