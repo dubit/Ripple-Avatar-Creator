@@ -338,9 +338,9 @@ local function Hud()
 			buying = function(key: string): boolean
 				return buyingKey == key
 			end,
-			addStoreRow = function(code: string)
+			addStoreRow = function(code: string, present: { string })
 				Sounds.play("open")
-				setStoreDialog({ kind = "row", code = code })
+				setStoreDialog({ kind = "row", code = code, present = present })
 			end,
 			pickForRow = function(target: any)
 				if target.kind == "outfits" then

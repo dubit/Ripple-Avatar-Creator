@@ -389,8 +389,7 @@ local function RowHeading(props: {
 		controls.Down = e(PillButton, {
 			variant = "round",
 			size = CONTROL,
-			icon = "expand_less",
-			iconRotation = 180,
+			icon = "expand_more",
 			iconSize = 19,
 			disabled = owner.last or owner.busy,
 			glowRadius = 0,
@@ -1630,7 +1629,11 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 				disabled = rowCount >= StoresConfig.maxRows or working ~= nil,
 				sound = false, -- the dialog plays its own sound
 				onActivated = function()
-					hud.addStoreRow(code)
+					local present = {}
+					for _, row in page.rows do
+						table.insert(present, row.kind)
+					end
+					hud.addStoreRow(code, present)
 				end,
 			}),
 		}), skin.px(Tokens.size.ctaHeight))

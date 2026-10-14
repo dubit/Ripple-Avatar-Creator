@@ -16,7 +16,8 @@
 	  Outfits  "Add outfits" for one outfits row: your Community outfits
 	           (Mine), ticked when they're in the row.
 	  Row      "Add row": an items or outfits row (named), or one of the
-	           automatic rows the store doesn't have yet.
+	           automatic rows (greyed out when the store already has it:
+	           the page says which rows it has when it opens the dialog).
 	  Create   "Create store": a name, then the new draft store's page opens.
 
 	Why something failed shows in the dialog itself (no toasts).
@@ -66,7 +67,7 @@ export type Target = { kind: "item", id: number } | { kind: "outfit", code: stri
 export type Dialog =
 	{ kind: "pick", target: Target }
 	| { kind: "outfits", code: string, row: string, storeName: string, rowName: string }
-	| { kind: "row", code: string }
+	| { kind: "row", code: string, present: { string } }
 	| { kind: "create" }
 
 local AUTO_ROWS = {
@@ -679,25 +680,23 @@ local function useSubmit(): (boolean, string?, (action: string, payload: any, wh
 	return waiting, problem, submit
 end
 
-local function AddRow(props: { code: string, t: any, onClose: () -> () })
+local function AddRow(props: { code: string, present: { string }, t: any, onClose: () -> () })
 	local skin = useSkin()
 	local kind, setKind = React.useState("items")
 	local name, setName = React.useState("")
 	local waiting, problem, submit = useSubmit()
-	local page = StoresClient.cached(props.code)
 
+	-- Every kind, always; the automatic rows the store has are greyed out.
 	local present: { [string]: boolean } = {}
-	for _, row in if page then page.rows else {} do
-		present[row.kind] = true
+	for _, existing in props.present do
+		present[existing] = true
 	end
-	local choices = {
+	local choices: { { kind: string, label: string } } = {
 		{ kind = "items", label = "Items" },
 		{ kind = "outfits", label = "Outfits" },
 	}
 	for _, auto in AUTO_ROWS do
-		if not present[auto.kind] then
-			table.insert(choices, auto)
-		end
+		table.insert(choices, auto)
 	end
 	local named = kind == "items" or kind == "outfits"
 	local trimmed = string.match(name, "^%s*(.-)%s*$") or ""
@@ -722,6 +721,7 @@ local function AddRow(props: { code: string, t: any, onClose: () -> () })
 		chips["Chip" .. choice.kind] = e(Chip, {
 			label = choice.label,
 			active = kind == choice.kind,
+			disabled = present[choice.kind] == true and choice.kind ~= "items" and choice.kind ~= "outfits",
 			layoutOrder = index,
 			onActivated = function()
 				setKind(choice.kind)
@@ -729,14 +729,15 @@ local function AddRow(props: { code: string, t: any, onClose: () -> () })
 		})
 	end
 	local chipsTop = skin.px(62)
-	local chipsHeight = skin.px(if #choices > 4 then 76 else 36)
+	local chipsHeight = skin.px(76) -- two lines of chips at most
 	local fieldTop = chipsTop + chipsHeight + skin.px(10)
 	local fieldHeight = if named then skin.px(52) else 0
 	return e(Shell, {
 		t = props.t,
 		height = skin.px(18) + fieldTop + fieldHeight + skin.px(34) + skin.px(Tokens.size.ctaHeight) + skin.px(18),
 		title = "Add row",
-		sub = if named then "A row you name and fill" else "Fills itself from the store's items",
+		sub = if named then "A row you name and fill"
+			else "Fills itself from the store's items. Greyed out: the store has it already",
 		onClose = props.onClose,
 	}, {
 		Chips = e("Frame", {
@@ -875,7 +876,7 @@ local function Dialog(props: {
 			elseif dialog.kind == "outfits" then
 				element = e(Outfits, { dialog = dialog, published = props.published, t = t, onClose = props.onClose })
 			elseif dialog.kind == "row" then
-				element = e(AddRow, { code = dialog.code, t = t, onClose = props.onClose })
+				element = e(AddRow, { code = dialog.code, present = dialog.present, t = t, onClose = props.onClose })
 			else
 				element = e(Create, { t = t, onCreated = props.onCreated, onClose = props.onClose })
 			end

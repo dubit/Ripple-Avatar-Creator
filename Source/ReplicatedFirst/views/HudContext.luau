@@ -21,7 +21,8 @@
 	                           outfits ({ kind = "outfit", code, name })
 	  createStore()            open the Create store dialog (the new store's
 	                           page opens once it's made)
-	  addStoreRow(code)        open the Add row dialog for your store
+	  addStoreRow(code, present)   open the Add row dialog for your store
+	                           (`present`: the kinds of row it has)
 	  pickForRow(target)       fill one of your store's rows: an items row
 	                           opens the Catalogue in pick mode, an outfits
 	                           row the Add outfits dialog. target: { code,
@@ -44,7 +45,7 @@ export type HudActions = {
 	share: (id: any, kind: string?, name: string?) -> (),
 	addToStore: (target: any) -> (),
 	createStore: () -> (),
-	addStoreRow: (code: string) -> (),
+	addStoreRow: (code: string, present: { string }) -> (),
 	pickForRow: (target: any) -> (),
 	picking: any?,
 	isPicked: (id: number) -> boolean,
@@ -61,7 +62,7 @@ local HudContext = React.createContext({
 	share = function(_id: any, _kind: string?, _name: string?) end,
 	addToStore = function(_target: any) end,
 	createStore = function() end,
-	addStoreRow = function(_code: string) end,
+	addStoreRow = function(_code: string, _present: { string }) end,
 	pickForRow = function(_target: any) end,
 	picking = nil,
 	isPicked = function(_id: number): boolean

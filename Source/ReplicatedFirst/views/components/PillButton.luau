@@ -33,7 +33,6 @@
 		iconSize: number?        design px
 		iconColor: Color3?       default white (e.g. an orange star when favourited)
 		iconAfter: boolean?      put the icon after the label (e.g. a trailing chevron)
-		iconRotation: number?    degrees
 		label: string?
 		labelMaxWidth: number?   design px; a longer label ends in "…"
 		textStyle: Tokens.TypeStyle?   default Tokens.type.cta
@@ -76,7 +75,6 @@ export type Props = {
 	iconSize: number?,
 	iconColor: Color3?,
 	iconAfter: boolean?,
-	iconRotation: number?,
 	label: string?,
 	labelMaxWidth: number?,
 	textStyle: Tokens.TypeStyle?,
@@ -168,7 +166,6 @@ local function PillButton(props: Props)
 			name = props.icon,
 			size = props.iconSize or Tokens.size.action.icon,
 			color = props.iconColor,
-			rotation = props.iconRotation,
 			transparency = contentTransparency,
 			layoutOrder = if props.iconAfter then 3 else 1,
 			zIndex = z + 2,
