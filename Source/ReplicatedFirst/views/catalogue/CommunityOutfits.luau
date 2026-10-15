@@ -26,6 +26,8 @@
 		wears(code, server) -> number   the count to show: the server's, or
 		                            yours added to what you'd seen
 		changed                     signal: a list changed
+		toCard(raw) -> Card?        a card from the server's shape (a
+		                            store's outfits arrive this way too)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -98,6 +100,8 @@ local function toCard(raw: any): Card?
 	SharedCodes.remember(card)
 	return card
 end
+
+CommunityOutfits.toCard = toCard
 
 local function fetch(sort: string, state: State)
 	local generation = state.generation

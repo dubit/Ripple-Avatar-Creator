@@ -258,7 +258,9 @@ local function deepScreen(nav: any, look: any)
 		if top.kind == "item" then
 			return e(ItemScreen, { nav = nav, look = look, itemId = top.id })
 		elseif top.kind == "store" then
-			return e(StoresScreen.Store, { nav = nav, look = look, storeId = top.id })
+			return e(StoresScreen.Store, { nav = nav, look = look, code = top.id })
+		elseif top.kind == "storeSection" then
+			return e(StoresScreen.Section, { nav = nav, look = look, code = top.id.code, section = top.id.section })
 		elseif top.kind == "outfit" then
 			return e(OutfitsScreen.Outfit, { nav = nav, look = look, source = top.id.source, index = top.id.index })
 		elseif top.kind == "skin" then

@@ -47,6 +47,10 @@ local WorldHud = require(views:WaitForChild("WorldHud"))
 local FullPanel = require(views:WaitForChild("panel"):WaitForChild("FullPanel"))
 local WorldRenderer = require(views:WaitForChild("WorldRenderer"))
 local ShareDialog = require(views:WaitForChild("screens"):WaitForChild("ShareDialog"))
+local StoreDialogs = require(views:WaitForChild("screens"):WaitForChild("StoreDialogs"))
+local StoresClient = require(views:WaitForChild("catalogue"):WaitForChild("StoresClient"))
+local CatalogueFilters = require(views:WaitForChild("screens"):WaitForChild("CatalogueFilters"))
+local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
 local e = React.createElement
 
@@ -173,9 +177,44 @@ end
 local function Hud()
 	local nav = useNavigation()
 	local rawLook = usePlaceholderLook()
-	-- What the share dialog is open for, if anything: a saved outfit, or one
-	-- saved on Roblox (a creation).
-	local shareTarget, setShareTarget = React.useState(nil :: { kind: string, id: number, name: string }?)
+	-- What the share dialog is open for, if anything: a saved outfit, one
+	-- saved on Roblox (a creation), or a store (id = its code).
+	local shareTarget, setShareTarget = React.useState(nil :: { kind: string, id: any, name: string }?)
+	-- The store picker or the Create store dialog, if one is open.
+	local storeDialog, setStoreDialog = React.useState(nil :: StoreDialogs.Dialog?)
+	-- Filling one of your store's rows from the Catalogue (pick mode): the
+	-- row, the store page's crumbs to go back to, and the row as it'll be
+	-- (`order`, kept here until Done saves it; Cancel leaves the row be).
+	local picking, setPicking = React.useState(nil :: {
+		code: string,
+		row: string,
+		storeName: string,
+		rowName: string,
+		stack: { any },
+		start: { number },
+		order: { number },
+		waiting: boolean,
+		problem: string?,
+	}?)
+	local latestPicking = React.useRef(picking)
+	latestPicking.current = picking
+	local latestNav = React.useRef(nav)
+	latestNav.current = nav
+	-- Choosing an items search row's search in the Catalogue (setup mode):
+	-- the row, the store page's crumbs, and the Catalogue's own browse
+	-- from before (put back after).
+	local searching, setSearching = React.useState(nil :: {
+		code: string,
+		row: string,
+		storeName: string,
+		rowName: string,
+		stack: { any },
+		saved: { [string]: any },
+		waiting: boolean,
+		problem: string?,
+	}?)
+	local latestSearching = React.useRef(searching)
+	latestSearching.current = searching
 	-- The latest purchase we sent (its request id), to sound its outcome,
 	-- and the button that sent it (spinning until the outcome arrives).
 	local buyRequest, setBuyRequest = React.useState(nil :: number?)
@@ -216,6 +255,20 @@ local function Hud()
 		if shareTarget then
 			Sounds.play("back")
 			setShareTarget(nil)
+		elseif storeDialog then
+			Sounds.play("back")
+			setStoreDialog(nil)
+		elseif picking and #nav.stack == 0 then
+			Sounds.play("back") -- (as Cancel)
+			setPicking(nil)
+			nav.restore("Stores", picking.stack)
+		elseif searching and #nav.stack == 0 then
+			Sounds.play("back")
+			for key, value in searching.saved do
+				SessionStore[key] = value
+			end
+			setSearching(nil)
+			nav.restore("Stores", searching.stack)
 		elseif #nav.stack > 0 then
 			Sounds.play("back")
 			nav.back()
@@ -227,8 +280,32 @@ local function Hud()
 		return true
 	end)
 
+	-- Pick mode and search setup are only for the Catalogue: moving off it
+	-- (or closing) ends them (setup mode puts the Catalogue's browse back).
+	-- Only a move off it: they start just before the Catalogue opens, and
+	-- (started from a task) needn't land in the same render.
+	local lastRoot = React.useRef(nav.root)
+	React.useEffect(function()
+		local left = lastRoot.current == "Catalogue" and nav.root ~= "Catalogue"
+		lastRoot.current = nav.root
+		if not left then
+			return nil
+		end
+		if picking then
+			setPicking(nil)
+		end
+		if searching then
+			for key, value in searching.saved do
+				SessionStore[key] = value
+			end
+			setSearching(nil)
+		end
+		return nil
+	end, { nav.root } :: { any })
+
 	-- Joined through a share link (DeepLinkService): open what it shares,
-	-- under Outfits › Community. Kinds we don't show yet are skipped.
+	-- an outfit under Outfits › Community, a store under Stores. Kinds we
+	-- don't show yet are skipped.
 	React.useEffect(function()
 		local thread = task.spawn(function()
 			local ok, link = pcall(function()
@@ -242,6 +319,9 @@ local function Hud()
 				SessionStore["outfits.query"] = ""
 				nav.openRoot("Outfits")
 				nav.push({ kind = "outfit", id = { source = "Shared", index = link.code }, label = "Shared outfit" })
+			elseif link.kind == "store" then
+				nav.openRoot("Stores")
+				nav.push({ kind = "store", id = link.code, label = "Store" })
 			end
 		end)
 		return function()
@@ -278,7 +358,7 @@ local function Hud()
 
 	local actions = React.useMemo(function()
 		return {
-			buy = function(itemIds: { number }, key: string?)
+			buy = function(itemIds: { number }, key: string?, store: string?)
 				local unowned = {}
 				for _, id in itemIds do
 					local item = PlaceholderData.item(id)
@@ -286,7 +366,7 @@ local function Hud()
 						table.insert(unowned, id)
 					end
 				end
-				local request = if #unowned > 0 then latestLook.current.buy(unowned) else nil
+				local request = if #unowned > 0 then latestLook.current.buy(unowned, store) else nil
 				if request then
 					setBuyRequest(request)
 					setBuyingKey(key or (if #itemIds == 1 then "item:" .. itemIds[1] else "items"))
@@ -297,9 +377,228 @@ local function Hud()
 			buying = function(key: string): boolean
 				return buyingKey == key
 			end,
-			share = function(id: number, kind: string?, name: string?)
+			setupSearch = function(target: any)
+				-- The Catalogue opens fresh from the session store, so set the
+				-- row's search there (keeping what was there to put back).
+				local keys = { "catalogue.category", "catalogue.sub", "catalogue.query", "catalogue.filters" }
+				local saved = {}
+				for _, key in keys do
+					saved[key] = SessionStore[key]
+				end
+				local search = target.search
+				if type(search) == "table" and type(search.category) == "string" then
+					local filters = CatalogueFilters.defaults()
+					filters.minPrice = search.minPrice
+					filters.maxPrice = search.maxPrice
+					filters.sort = search.sort or filters.sort
+					filters.sortWindow = search.sortWindow or filters.sortWindow
+					filters.creator = search.creator or ""
+					filters.salesType = search.salesType or filters.salesType
+					if search.includeOffSale ~= nil then
+						filters.includeOffSale = search.includeOffSale
+					end
+					filters.colour = search.colour or ""
+					SessionStore["catalogue.category"] = search.category
+					SessionStore["catalogue.sub"] = search.chip or "All"
+					SessionStore["catalogue.query"] = search.keyword or ""
+					SessionStore["catalogue.filters"] = filters
+				end
+				Sounds.play("open")
+				setPicking(nil)
+				setSearching({
+					code = target.code,
+					row = target.row,
+					storeName = target.storeName,
+					rowName = target.rowName,
+					stack = table.clone(latestNav.current.stack),
+					saved = saved,
+					waiting = false,
+					problem = nil,
+				})
+				latestNav.current.openRoot("Catalogue")
+			end,
+			searching = if searching
+				then { storeName = searching.storeName, rowName = searching.rowName, waiting = searching.waiting, problem = searching.problem }
+				else nil,
+			useSearch = function(browse: any)
+				local current = latestSearching.current
+				if not current or current.waiting then
+					return
+				end
+				setSearching(function(old: any)
+					if not old then
+						return old
+					end
+					local new = table.clone(old)
+					new.waiting = true
+					new.problem = nil
+					return new
+				end)
+				task.spawn(function()
+					local ok, _, err = StoresClient.act(Network.Actions.Stores.SetRowSearch, {
+						code = current.code,
+						row = current.row,
+						content = "items",
+						search = browse,
+					})
+					if ok then
+						Sounds.play("confirm")
+						for key, value in current.saved do
+							SessionStore[key] = value
+						end
+						setSearching(nil)
+						latestNav.current.restore("Stores", current.stack)
+					else
+						Sounds.play("error")
+						setSearching(function(old: any)
+							if not old then
+								return old
+							end
+							local new = table.clone(old)
+							new.waiting = false
+							new.problem = if err == "bad" then "That can't be a search (try a category tab)" else StoreDialogs.message(err, "row")
+							return new
+						end)
+					end
+				end)
+			end,
+			endSearch = function()
+				local current = latestSearching.current
+				if current then
+					Sounds.play("back")
+					for key, value in current.saved do
+						SessionStore[key] = value
+					end
+					setSearching(nil)
+					latestNav.current.restore("Stores", current.stack)
+				end
+			end,
+			pickForRow = function(target: any)
+				if target.kind == "outfits" then
+					Sounds.play("open")
+					setStoreDialog({ kind = "outfits", code = target.code, row = target.row, storeName = target.storeName, rowName = target.rowName })
+					return
+				end
+				Sounds.play("open")
+				setPicking({
+					code = target.code,
+					row = target.row,
+					storeName = target.storeName,
+					rowName = target.rowName,
+					stack = table.clone(latestNav.current.stack),
+					start = table.clone(target.ids or {}),
+					order = table.clone(target.ids or {}),
+					waiting = false,
+					problem = nil,
+				})
+				latestNav.current.openRoot("Catalogue")
+			end,
+			picking = if picking
+				then {
+					code = picking.code,
+					row = picking.row,
+					storeName = picking.storeName,
+					rowName = picking.rowName,
+					count = #picking.order,
+					waiting = picking.waiting,
+					problem = picking.problem,
+				}
+				else nil,
+			isPicked = function(id: number): boolean
+				return picking ~= nil and table.find(picking.order, id) ~= nil
+			end,
+			pickToggle = function(id: number)
+				local current = latestPicking.current
+				local item = PlaceholderData.item(id)
+				if not current or current.waiting or not item or not item.targetId then
+					return
+				end
+				Sounds.play("press")
+				setPicking(function(old: any)
+					if not old or old.code ~= current.code or old.row ~= current.row then
+						return old
+					end
+					local new = table.clone(old)
+					new.order = table.clone(old.order)
+					new.problem = nil
+					local index = table.find(new.order, id)
+					if index then
+						table.remove(new.order, index)
+					else
+						table.insert(new.order, id) -- new ones at the end
+					end
+					return new
+				end)
+			end,
+			endPicking = function(save: boolean)
+				local current = latestPicking.current
+				if not current or current.waiting then
+					return
+				end
+				local function leave()
+					setPicking(nil)
+					latestNav.current.restore("Stores", current.stack)
+				end
+				local same = #current.order == #current.start
+				for index, id in current.order do
+					if current.start[index] ~= id then
+						same = false
+					end
+				end
+				if not save or same then
+					Sounds.play("back")
+					leave()
+					return
+				end
+				local keys = {}
+				for _, id in current.order do
+					local item = PlaceholderData.item(id)
+					if item and item.targetId then
+						table.insert(keys, item.kind .. ":" .. item.targetId)
+					end
+				end
+				setPicking(function(old: any)
+					if not old then
+						return old
+					end
+					local new = table.clone(old)
+					new.waiting = true
+					new.problem = nil
+					return new
+				end)
+				task.spawn(function()
+					local ok, _, err = StoresClient.act(Network.Actions.Stores.SetRowItems, { code = current.code, row = current.row, items = keys })
+					if ok then
+						Sounds.play("confirm")
+						leave()
+					else
+						Sounds.play("error")
+						setPicking(function(old: any)
+							if not old then
+								return old
+							end
+							local new = table.clone(old)
+							new.waiting = false
+							new.problem = StoreDialogs.message(err, "item")
+							return new
+						end)
+					end
+				end)
+			end,
+			addToStore = function(target: any)
+				Sounds.play("open")
+				setStoreDialog({ kind = "pick", target = target })
+			end,
+			createStore = function()
+				Sounds.play("open")
+				setStoreDialog({ kind = "create" })
+			end,
+			share = function(id: any, kind: string?, name: string?)
 				Sounds.play("open")
 				setShareTarget({ kind = kind or "saved", id = id, name = name or "" })
+				if kind == "store" then
+					return -- a store always has its code
+				end
 				-- An outfit with a code shows it at once, so make sure the code
 				-- is listed on Community (one shared before codes were listed).
 				if kind == "creation" then
@@ -318,7 +617,7 @@ local function Hud()
 				end
 			end,
 		}
-	end, { buyingKey })
+	end, { buyingKey, picking, searching } :: { any })
 
 	local panels: { [string]: any } = {}
 	for _, transition in panelTransitions do
@@ -349,6 +648,8 @@ local function Hud()
 					end
 					if target.kind == "creation" then
 						return { id = target.id, name = target.name, code = rawLook.creationCodes[tostring(target.id)] }
+					elseif target.kind == "store" then
+						return { id = 0, name = target.name, code = target.id, kind = "store" }
 					end
 					for _, outfit in rawLook.outfits do
 						if outfit.id == target.id then
@@ -367,6 +668,18 @@ local function Hud()
 				end,
 				onClose = function()
 					setShareTarget(nil)
+				end,
+			}),
+			Stores = e(StoreDialogs.Dialog, {
+				dialog = storeDialog,
+				myStores = rawLook.myStores,
+				published = rawLook.published,
+				onCreated = function(code: string, name: string)
+					setStoreDialog(nil)
+					nav.push({ kind = "store", id = code, label = name })
+				end,
+				onClose = function()
+					setStoreDialog(nil)
 				end,
 			}),
 		}),

@@ -3,15 +3,15 @@
 --[[
 	PlaceholderData (Task 2 — replaced by real data from Task 7 onwards)
 
-	Mock items and stores ported from the design prototype
+	Mock items ported from the design prototype
 	(features/cac-adaptation/design/logic.js) so the shell's screens have
 	believable content to navigate. Nothing here is persisted or networked.
 
 	The Catalogue screen now shows real items (CatalogueClient, Task 7);
 	`item(id)` falls back to them, so the screens that look items up by id
 	(item page, basket, wearing) work for both. The mock items
-	remain for the starting basket/wearing state and the mock stores
-	(Community outfits are real since Task 16: CommunityOutfits).
+	remain for the starting basket/wearing state (Community outfits are
+	real since Task 16, stores since Task 18).
 ]]
 
 local CatalogueClient = require(script.Parent.Parent:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
@@ -19,8 +19,6 @@ local CatalogueClient = require(script.Parent.Parent:WaitForChild("catalogue"):W
 local PlaceholderData = {}
 
 export type Item = CatalogueClient.Item
-
-export type Store = { id: number, name: string, rating: number, visits: number, sponsored: boolean }
 
 local CREATORS = { "JON.", "pixelfox", "mossy_m", "k4tana", "nyxie", "Roblox" }
 
@@ -96,52 +94,6 @@ for index, raw in RAW_ITEMS do
 		colours = { raw[5] :: string },
 		owned = string.find(flags, "o", 1, true) ~= nil,
 	} :: Item)
-end
-
-local RAW_STORES = {
-	{ "Mini Basics", 89, 18.6e6, true },
-	{ "Grouchy UGC", 94, 294e3, true },
-	{ "Hair Studio", 100, 596, true },
-	{ "Cartoony Rainbow", 100, 28.4e3, true },
-	{ "Dolce", 95, 261.9e3, false },
-	{ "Y2K Store", 96, 461.5e3, false },
-	{ "Anime World", 86, 10.2e6, false },
-	{ "Free Shop", 89, 18e6, false },
-	{ "Kings UGC", 96, 45.6e3, false },
-	{ "Chibi Store", 85, 7.4e3, false },
-	{ "Pawing Outfits", 91, 13.6e6, false },
-	{ "Formal Attire", 95, 15.8e3, false },
-	{ "Cosplay Corner", 95, 42.5e3, false },
-	{ "Goth Garden", 97, 1.7e6, false },
-	{ "Blox Fits", 82, 10.1e6, false },
-	{ "Pastel Lab", 93, 88e3, false },
-	{ "Street Kings", 90, 512e3, false },
-	{ "Tiny Hats", 99, 3.2e3, false },
-}
-
-PlaceholderData.stores = {} :: { Store }
-for index, raw in RAW_STORES do
-	table.insert(PlaceholderData.stores, {
-		id = index,
-		name = raw[1] :: string,
-		rating = raw[2] :: number,
-		visits = raw[3] :: number,
-		sponsored = raw[4] :: boolean,
-	})
-end
-
-PlaceholderData.storeSorts = { "Sponsored", "Popular", "Top rated", "Favourites", "My stores" }
-
--- Items a store "sells" (deterministic, as in the prototype).
-function PlaceholderData.storeItems(storeId: number): { Item }
-	local list = {}
-	for _, item in PlaceholderData.items do
-		local i = item.id - 1
-		if (i * 7 + storeId * 3) % 5 < 2 or (i + storeId) % 11 == 0 then
-			table.insert(list, item)
-		end
-	end
-	return list
 end
 
 function PlaceholderData.item(id: number): Item

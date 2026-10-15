@@ -15,6 +15,8 @@
 	  replaceTop(entry) swap the deepest page (e.g. "More like this")
 	  popTo(depth)     jump back to a crumb (0 = the root screen)
 	  back()           pop one level
+	  restore(root, stack)   reopen a root with a stack kept from before
+	                   (back to a store page after picking in the Catalogue)
 	  close()          close the panel, back to the world
 
 	Entries carry their own crumb label so the breadcrumb row never needs to
@@ -44,6 +46,7 @@ export type Navigation = {
 	replaceTop: (entry: Entry) -> (),
 	popTo: (depth: number) -> (),
 	back: () -> (),
+	restore: (root: Root, stack: { Entry }) -> (),
 	close: () -> (),
 }
 
@@ -98,6 +101,10 @@ local function useNavigation(): Navigation
 		end)
 	end, {})
 
+	local restore = React.useCallback(function(root: Root, stack: { Entry })
+		setState({ root = root, stack = table.clone(stack) })
+	end, {})
+
 	local close = React.useCallback(function()
 		setState(CLOSED)
 	end, {})
@@ -113,6 +120,7 @@ local function useNavigation(): Navigation
 		replaceTop = replaceTop,
 		popTo = popTo,
 		back = back,
+		restore = restore,
 		close = close,
 	}
 end

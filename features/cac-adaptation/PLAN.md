@@ -440,7 +440,7 @@
   - **Deferred:** live two-server checks, real report thresholds, filtered names, and BigQuery (16.5, 16.6).
 
 ### Task 17: Stores data and backend
-- **Status:** [TODO]
+- **Status:** [DONE]
 - **Why here:** Layer 8. Stores add a new cross-server entity with ratings/visits and codes, plus several unresolved business questions, so the data model and backend are agreed and built before the UI.
 - **Depends on:** 9, 14
 - **Refs:** Scope > Stores (Home carousels, Store page, My stores); Scope > Share (store codes); Risks (What a store is; cross-server data); Integration points (favourite stores, owned stores)
@@ -452,16 +452,26 @@
 - **Associated UI:** none yet; data follows `logic.js` STORES (name, rating %, visits, sponsored flag) and the store-page sections.
 - **Replication:** logical cross-server data (**cosmetic**); no world entity.
 - **Sub-tasks:**
-  - [TODO] 17.1 Decisions (open questions): what "Sell your own items" means commercially (any creator revenue share is a business question, not assumed); how sponsored placement is sourced (candidate: config-curated list for phase 1); how ratings and visits are defined and protected from abuse; and the moderation approach for user-named stores. Present options and wait.
-  - [TODO] 17.2 Config: `StoresConfig` (limits per player, section sizes, collection rules such as Under 50). `/create-config`.
-  - [TODO] 17.3 Extend `SharedContentService` with store publish/list/rank/visit/rate operations (OrderedDataStore-style ranking candidate from the Task 14 decision) and store codes.
-  - [TODO] 17.4 Model: `models/user/MyStoresModel.luau` (User, owned store ids and favourite store ids may live in `FavouritesModel` from Task 9) and a Stores browse model (UserSession). `/create-model`.
-  - [TODO] 17.5 Controller: `Stores` controller (BrowseCategory, OpenStore, Favourite, Rate, ResolveCode). `/create-controller`.
-  - [TODO] 17.6 Collections derivation (Bestsellers, New arrivals, rule-based collections) computed server-side from store items and cached.
-  - [TODO] 17.7 Slash-command playtest: seed stores, query categories, check rate limits.
+  - [DONE] 17.1 Decisions (made 2026-10-13):
+    - **What a store is:** a curated set of any catalogue items, plus outfits. Anyone can make one. "Sell your own items" gets reworded (Task 19). An outfit put in a store is published to Community too (its own code, wears and favourites, like any Community outfit).
+    - **Revenue share:** none in phase 1. Each purchase records the store it came through, so points for curators can be added later. **Ask this question again before moving on from Task 17.**
+    - **Sponsored:** paused (no paid placement without a way to earn). The Sponsored category is left out for now.
+    - **Rating:** favourites (a star, like Community outfits), not % liked. Top rated = most favourited.
+    - **Visits:** one per player per store per day, never the owner's; batched like Community counts. The page shows total visits and Popular ranks by total.
+    - **Codes:** the same 6-character pool as outfits, no `STR-` prefix. A store keeps its code for good through edits. An unpublished store is a private draft: its code works only for its owner.
+    - **Moderation:** as Community. Names filtered on create and every rename; auto-hide at 3 reports; admin hide, restore and takedown.
+    - **Limits:** 3 stores per player, 4–100 items to publish, names 3–30 characters (StoresConfig).
+    - **Store page:** Bestsellers by purchases through the store (item favourite counts until there are sales); New arrivals by the order items were added; Collections rule-based from config. May change once seen in Task 18.
+  - [DONE] 17.2 Config: `StoresConfig` (types synced; live module created in Studio, reference copy in `Source/ReplicatedStorage/Config/`).
+  - [DONE] 17.3 `StoresService`: stores are `kind = "store"` records in the SharedContent code pool, edited in place; unique names (`StoreNames`); rankings Popular / Top rated / Newest; batched visits, favourites and sales; moderation. Community's ranking and paging code moved to a shared `RankedPages`, and report counting to `SharedContentService.report`.
+  - [DONE] 17.4 Model: `StoresModel` (User): own stores, favourites, visit days. No browse model needed: browsing is a remote function, as for Community.
+  - [DONE] 17.5 Controller: `StoresController`. Create, Rename, AddItem, RemoveItem, AddOutfit, RemoveOutfit, Publish, Unpublish and Delete are pulled forward from 19.2 so the backend can be tested. Also Favourite, Report, Open and Moderate; `StoreAction` (answers with an error the UI can show), `BrowseStores` and `GetStore` (a code or an exact name) remotes. Purchases carry the store they were bought through (PurchaseController).
+  - [DONE] 17.6 Store page sections, server-side from item details (batched, cached): Featured, New arrivals, Bestsellers, Collections.
+  - [DONE] 17.7 Slash-command playtest. Checked: create, add items (duplicates refused), Publish refused under 4 items, duplicate and taken names refused, 3-store cap, rename frees the old name, delete, outfits added once, own visit not counted, own favourite counted, hide/restore off and back on rankings, flush of visits/favourites/sales (an item not in the store ignored), page sections. Not yet: a second player's visit, 3 real reports, Buy through a store. The remotes were checked from a real client in Task 18.
+- **Outcome:** Stores are records in the shared code pool (`kind = "store"`), edited in place so the code never changes; names are unique through a `StoreNames` DataStore. Ranked lists (Popular, Top rated, Newest) share `RankedPages` with Community; visits, favourites and sales are batched and flushed every minute and on shutdown. Lessons: in Studio each `SendAsync` slash command needs its own `task.spawn` (it never returns), and Bolt remote functions hang when invoked from the Client command bar, so server code is tested by requiring the service in a Server `execute_luau`. Revenue share: none in phase 1 (re-asked when the task closed).
 
 ### Task 18: Stores UI, home, store page, collections, favourites, store share
-- **Status:** [TODO]
+- **Status:** [DONE]
 - **Why here:** The browsing half of layer 8, once the backend returns real data. It reuses the item card, carousel and share dialog from earlier tasks.
 - **Depends on:** 3, 8, 15, 17
 - **Refs:** Scope > Stores (Home, Store page); Scope > Share (store); Success criteria (fewer taps, nothing hidden)
@@ -474,16 +484,17 @@
 - **Associated UI:** 5h Stores home; 5c Store page; 5e Share (store variant); item cards from 5b.
 - **Replication:** **Cosmetic**, client-rendered UI; featured item viewer previews are client-only rigs.
 - **Sub-tasks:**
-  - [TODO] 18.1 Stores home (`/html-to-react-luau`, frame 5h): category tabs toggle, carousels with swipe/scroll (reuse `useDrag` where a drag carousel is wanted), See all grid, search/code entry, empty states.
-  - [TODO] 18.2 Store page (`/html-to-react-luau`, frame 5c): header, featured viewer with arrows, carousels, collection tiles, collection grid.
-  - [TODO] 18.3 Favourite store toggle (extends the Favourites controller/model); Favourites carousel.
-  - [TODO] 18.4 Store share (frame 5e store variant) using the Task 14 dialog.
-  - [TODO] 18.5 Item cards inside stores reuse the Task 8 card menu (Try, basket, buy, View).
-  - [TODO] 18.6 Analytics: `store_open`, `store_favourite`, `store_share`.
-  - [TODO] 18.7 Playtest: browse by every route, tap counts to reach an item vs CAC, phone layouts.
+  - [DONE] 18.1 Stores home (frame 5h): tabs Popular · Top rated · Favourites · My stores (Sponsored paused, 17.1) that toggle a grid, a carousel per tab with See all (`Parts.CardRow`: a sideways ScrollingFrame, not `useDrag`), search by loaded names plus a code or exact name from any server, empty states. Store cards are a mosaic of the store's first items (no store logos yet).
+  - [DONE] 18.2 Store page (frame 5c): header (favourites and visits instead of % liked), featured viewer with arrows (Try on, Basket; picture or name opens the item), Bestsellers and New arrivals carousels with See all, an Outfits row (the store's Community outfits), collection tiles, and the See all / collection grid (`storeSection`). Report (twice) on others' stores.
+  - [DONE] 18.3 Favourite store toggle (StoresController / StoresModel rather than FavouritesModel); the count moves at once; Favourites carousel and tab.
+  - [DONE] 18.4 Store share: the share dialog's store variant, shown at once (a store always has its code; no `STR-` prefix, per 14.2). A QR join opens the store (Hud, DeepLinkService).
+  - [DONE] 18.5 Item cards inside stores reuse the card menu; Buy from a store carries its code (Bestsellers, purchase analytics).
+  - [DONE] 18.6 Analytics: `store_open`, `store_favourite`, `store_share` (a Share action, analytics only).
+  - [DONE] 18.7 Playtest. Checked on desktop in Studio: home carousels, tab toggle to grid and back, search by name, code and a miss, store page sections, share dialog, a collection grid with breadcrumbs, no console errors. User playtest on desktop: liked the Netflix-style rows (21.7 brings them to Catalogue and Outfits); See all now clears the scroll bar. Not yet: phone / iPad layouts, tap counts vs CAC (Task 21).
+- **Outcome:** Stores home is a column of carousels (`Parts.CardRow`, a sideways ScrollingFrame with fixed cells) with See all; a tab shows its list as a grid and a second tap goes home. The user liked it and wants the same for Catalogue and Outfits (21.7). Store pages are cached on the client for 30 s and on the server for 60 s. Bestsellers and New arrivals order every item, so See all shows the lot. Scrolling lists need a right pad (8px) before the scroll bar, or right-aligned text runs under it.
 
 ### Task 19: My stores and Create store
-- **Status:** [TODO]
+- **Status:** [DONE]
 - **Why here:** Last feature of layer 8. It has the most open design and business questions, so it is last, built on a fully working store browsing experience.
 - **Depends on:** 17, 18
 - **Refs:** Scope > Stores (My stores: Create store; own stores published/unpublished); Risks (What a store is)
@@ -494,12 +505,15 @@
 - **Associated UI:** 5h "My stores" row and tab ("Create store - Sell your own items"; "My Store - Unpublished"). The create/edit flow is not in the design (gap).
 - **Replication:** logical persisted/shared data (**cosmetic**).
 - **Sub-tasks:**
-  - [TODO] 19.1 Design gap (open question): the store creation/edit/publish screens are not designed. Request a design round or agree a minimal flow before building.
-  - [TODO] 19.2 Controller actions (CreateStore, EditStore, Publish, Unpublish, DeleteStore) with name filtering and item validation. `/create-controller`.
-  - [TODO] 19.3 Store editor UI (`/html-to-react-luau` once designed), reusing catalogue cards and the item picker.
-  - [TODO] 19.4 My stores wiring on Stores home.
-  - [TODO] 19.5 Analytics: `store_create`, `store_publish`.
-  - [TODO] 19.6 Playtest: create, publish from one server, see it from another.
+  - [DONE] 19.1 Decided (user, 2026-10-14): edit in place, no separate editor. My stores starts with a Create store card (a name dialog; the new draft's page opens). Your own store page has an editable name (the outfit name field) and an owner bar: status (draft count towards the 4 to publish, Published, Hidden), Publish / Unpublish and Delete (twice). Items go in and out through a store button beside View in any item card's menu (shown once you have a store), which opens a picker of your stores with ticks; outfits likewise from your shared outfit's page (it must be on Community first). Revenue share re-asked on closing Task 17: still none for phase 1.
+    - **Rows (user, 2026-10-14, after seeing it):** the owner lays out the page as rows. Featured is pinned first and owner-filled (no longer "the first items"). Named rows hold items or outfits (chosen when made). Bestsellers, New arrivals and Collections are rows the owner switches on or off and places. An item can be in several rows (the 100-item limit counts distinct items); it leaves the store when it's in no row. Adding from elsewhere picks store › row (ticks). Adding from inside a store: each row's Add tile opens the Catalogue in pick mode (banner "Adding to Store › Row", tap to add/remove, Done back to the store); an outfits row's opens a list of your Community outfits. Stores from before rows get Featured (first 4), "Items" (all), the automatic rows and "Outfits" on read.
+    - **Rows reworked (user, 2026-10-14):** every row is Items or Outfits, filled By hand or By search, with a style (Square, Wide, Hero, Single, Grid, Tile; outfits Square, Grid, Tile), a limit (1, 4, 10, 20, 30, 60; Hero 2–6: portrait cards across, no scrolling, 2 both wide, 3–4 the first wide, 5–6 all narrow) and a name. Hand-filled rows show items as the owner puts them in (orders were tried and dropped, with the store's per-item sales count: purchases still carry the store code in analytics). Bestsellers, New arrivals and Collections rows are gone; Featured is an ordinary Single row. An items search is set in the Catalogue's setup mode ("Search for Store › Row", Use this search saves the tabs, chip, keyword, creator, colour, price and sort; Cancel or Back leaves it); an outfits search is a Community sort (Popular, Trending, Newest; no "only mine": there's no per-owner index). Search rows are found by each viewer's client, so they aren't the store's items (limits, sales). A store with a search row can publish without 4 hand-picked items. The row menu (Add row, a row's settings) opens from its button like a modal context menu (user: open where you're looking), not a centred dialog, and the row previews its settings live (Cancel puts it back). Name fields' pencils sit just after the name.
+  - [DONE] 19.2 Controller actions: built in Task 17 (Create, Rename, Publish, Unpublish, Delete, with name filtering and item validation); AddItem / RemoveItem / AddOutfit / RemoveOutfit now take a row, plus AddRow, RenameRow, RemoveRow, MoveRow (StoresService row helpers, `StoresConfig.maxRows` 12, `rowNameLength` 1–24), and SetRowItems (a manual row's whole list in order: pick mode's Done and reordering; new items looked up on Roblox first; outfits rows can only reorder or drop their own).
+  - [DONE] 19.3 Store editing UI: `StoreDialogs` (store › row picker, Add outfits, Add row, Create store; Hud-owned like the share dialog), the card menu's store button (`Parts`), the owner bar and in-place rename, row headings with Add items / Add outfits (a black button; the Add tiles went, 2026-10-15), the row menu, reorder, up / down, remove (StoresScreen), Catalogue pick mode (Hud state, banner with Cancel and Done, tap-to-toggle cards in CatalogueScreen; picks are kept until Done saves them with SetRowItems, `nav.restore` back to the store), reorder mode (the row in a line with left / right arrows on each card, Cancel / Done), outfits rows in every style (OutfitsScreen.mosaic lays an outfit's pictures out square, wide: big first plus 2×2, or tall: big first plus a line of three; a Single outfit has Wear all items and View), the outfit page's store button; `StoresClient.act` calls `StoreAction` and drops cached pages and lists on success. Checked in Studio: rows of every style render (search rows find items), the row menu opens by its button (above, below or beside), Add row → search setup → Use this search saves and returns to the store, old stores convert.
+  - [DONE] 19.4 My stores wiring on Stores home: the Create store card in the My stores row and tab while under the limit.
+  - [DONE] 19.5 Analytics: `store_create`, `store_publish` (with `store_unpublish`, `store_delete`, `store_open`, `store_favourite`, `store_share`, `store_report`: StoresController, Task 17); purchases carry `store_code`.
+  - [TODO] 19.6 Playtest: create, publish from one server, see it from another. Deferred with Task 16's two-server checks: the user closed the task after single-server testing (2026-10-15).
+- **Outcome:** Stores are edited in place on their own page, laid out as rows the owner chooses: Items or Outfits, filled by hand or by a search (a Catalogue browse chosen in setup mode, or a Community sort), each with a style (Square, Wide, Hero 2–6 portrait cards, Single, Grid, Tile) and a limit. Rows preview live while their menu is open; hand-filled rows keep the owner's order (reorder mode with arrows; ordering and per-store sales counting were dropped). Pick mode keeps picks until Done (SetRowItems), with Cancel. Decisions came from seeing it: menus open from their button rather than as pop-up modals ("open where you're looking"), and outfits get every style, with picture layouts that suit the card shape. Lessons: a Luau if-expression yields only its first value (`local a, b = if x then f() else nil, nil` leaves b nil); measure local size from the frame mounted on first render (a ref only on the loaded frame read 0, so scale fell back to 1); and a mode started from a task shouldn't end on the first render where its screen isn't showing, only when you move off it.
 
 ### Task 20: Retire template example features and refresh docs
 - **Status:** [TODO]
@@ -540,6 +554,7 @@
   - [TODO] 21.4 Feel pass: audit every interactive element for hover/press states, motion and sounds; remove anything cluttering; tune springs and volumes.
   - [TODO] 21.5 Device pass on desktop, iPad and phone: sizing issues captured in earlier tasks, touch targets, safe areas, performance (frame rate with previews and carousels).
   - [TODO] 21.6 Triage and fix, or log for phase 2, anything found. Confirm with the user that phase 1 is acceptable.
+  - [TODO] 21.7 Netflix-style home rows for Catalogue and Outfits, like the Stores home (user liked it in Task 18): a titled carousel per list (`Parts.CardRow`) with See all opening the full grid, and the tabs toggling between rows and grid.
 
 ### Task 22: Other avatars in the world
 - **Status:** [TODO]

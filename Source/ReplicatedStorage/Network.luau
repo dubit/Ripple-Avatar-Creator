@@ -51,6 +51,7 @@ local NetworkConfig = {
 		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected", "Follow", "Share", "ShareCreation", "WearShared" },
 		Purchase = { "Buy", "Finished", "Check" },
 		Shrine = { "Donate" },
+		Stores = { "Create", "Rename", "AddItem", "RemoveItem", "AddOutfit", "RemoveOutfit", "SetRowItems", "AddRow", "EditRow", "SetRowSearch", "RenameRow", "RemoveRow", "MoveRow", "Publish", "Unpublish", "Delete", "Favourite", "Report", "Open", "Share", "Moderate" },
 		SlashCommand = {},  -- No actions, just the intent
 		WorldOptions = { "Set", "Reset" },
 	},
@@ -130,6 +131,15 @@ local NetworkConfig = {
 			ownerId = "",
 			message = "",
 		},
+		-- The player's side of stores (persisted; StoresModel): codes of the
+		-- stores they own and have starred (newest first), and the day they
+		-- last visited each store.
+		Stores = {
+			ownerId = "",
+			mine = {},
+			favourites = {},
+			visited = {},
+		},
 		-- Defaults mirror WorldOptionsConfig.defaults (the model loads them).
 		WorldOptions = {
 			ownerId = "",
@@ -167,6 +177,7 @@ export type FavouritesAction = "Toggle"
 export type PurchaseAction = "Buy" | "Finished" | "Check"
 export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected" | "Follow" | "Share" | "ShareCreation" | "WearShared"
 export type ShrineAction = "Donate"
+export type StoresAction = "Create" | "Rename" | "AddItem" | "RemoveItem" | "AddOutfit" | "RemoveOutfit" | "SetRowItems" | "AddRow" | "EditRow" | "SetRowSearch" | "RenameRow" | "RemoveRow" | "MoveRow" | "Publish" | "Unpublish" | "Delete" | "Favourite" | "Report" | "Open" | "Share" | "Moderate"
 export type WorldOptionsAction = "Set" | "Reset"
 
 -- State Type Exports (manually defined for type safety)
@@ -254,6 +265,13 @@ export type InventoryState = {
 	gold: number,
 	treasure: number,
 	favourIds: {string},
+}
+
+export type StoresState = {
+	ownerId: string,
+	mine: { string }, -- codes of the player's own stores (drafts too), newest first
+	favourites: { string }, -- codes of stores starred, newest first
+	visited: { [string]: number }, -- code -> day (days since 1970) last visited
 }
 
 export type ShrineState = {

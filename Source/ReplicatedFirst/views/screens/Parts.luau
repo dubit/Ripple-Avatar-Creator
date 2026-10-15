@@ -11,13 +11,15 @@
 	  ItemCard   catalogue card: thumb with wearing / in-basket / favourite
 	             markers, name, price;
 	             with `menu`, a tap opens the design's card menu over the thumb
-	             (Try · basket · Buy · View) instead of calling onActivated
+	             (Try · basket · Buy · View, and a store button beside View
+	             when `onStore` is given) instead of calling onActivated
 	  ListRow    Basket/Wearing/Outfit row: thumb, name, sub-line, price, actions
 	  LoadingCard  a grid cell holding a spinner: "more results are on the way"
 	  CardGrid   scrolling grid with an explicit column count — cells and scroll
 	             extent sized from measured width (no AutomaticCanvasSize, which
 	             mis-sizes under the canvas UIScale)
 	  Heading    section title with optional "See all"-style trailing element
+	  CardRow    a carousel: one row of cells that scrolls sideways
 
 	Real catalogue items show their thumbnail over the tint; mock items show
 	their sub-category caption instead.
@@ -206,7 +208,8 @@ function Parts.PriceTag(props: PriceProps)
 	})
 end
 
--- The card menu (design 5b): Try / Take off, basket toggle, Buy, View.
+-- The card menu (design 5b): Try / Take off, basket toggle, Buy, View;
+-- with onStore (the player has a store), a store button beside View.
 export type CardMenu = {
 	open: boolean,
 	onToggle: () -> (), -- a tap on the card opens/closes its menu
@@ -214,6 +217,7 @@ export type CardMenu = {
 	onBasket: () -> (),
 	onBuy: () -> (),
 	onView: () -> (),
+	onStore: (() -> ())?,
 }
 
 export type ItemCardProps = {
@@ -221,6 +225,9 @@ export type ItemCardProps = {
 	wearing: boolean,
 	inBasket: boolean,
 	favourite: boolean?, -- a star badge
+	fill: boolean?, -- the thumb fills the cell above the labels (wide / tall cells), not square
+	picked: boolean?, -- pick mode: in the store row being filled (a tick, an orange ring)
+	pickBusy: boolean?, -- pick mode: being added / taken out (a spinner)
 	onActivated: (() -> ())?, -- plain tap (cards without a menu)
 	menu: CardMenu?,
 	layoutOrder: number?,
@@ -312,17 +319,44 @@ local function CardMenuOverlay(props: { item: PlaceholderData.Item, wearing: boo
 				}),
 			}),
 		}),
-		View = e(PillButton, {
-			variant = "pill",
-			size = MENU_BUTTON,
-			icon = "visibility",
-			iconSize = 16,
-			label = "View",
-			textStyle = MENU_TEXT,
-			glowRadius = 0,
-			layoutOrder = 3,
-			zIndex = 3,
-			onActivated = menu.onView,
+		Last = e("Frame", {
+			Size = UDim2.new(1, 0, 0, skin.px(MENU_BUTTON)),
+			BackgroundTransparency = 1,
+			LayoutOrder = 3,
+			ZIndex = 3,
+		}, {
+			View = e("Frame", {
+				Size = UDim2.new(1, if menu.onStore then -(skin.px(MENU_BUTTON) + gap) else 0, 1, 0),
+				BackgroundTransparency = 1,
+				ZIndex = 3,
+			}, {
+				Button = e(PillButton, {
+					variant = "pill",
+					size = MENU_BUTTON,
+					icon = "visibility",
+					iconSize = 16,
+					label = "View",
+					textStyle = MENU_TEXT,
+					glowRadius = 0,
+					zIndex = 3,
+					onActivated = menu.onView,
+				}),
+			}),
+			-- Add to (or take out of) one of your stores.
+			Store = if menu.onStore
+				then e(PillButton, {
+					variant = "round",
+					size = MENU_BUTTON,
+					icon = "add_business",
+					iconSize = 17,
+					glowRadius = 0,
+					sound = false, -- the picker plays its own sound
+					anchorPoint = Vector2.new(1, 0),
+					position = UDim2.fromScale(1, 0),
+					zIndex = 3,
+					onActivated = menu.onStore,
+				})
+				else nil,
 		}),
 	})
 end
@@ -359,10 +393,11 @@ function Parts.ItemCard(props: ItemCardProps)
 			image = Parts.image(item),
 			caption = string.lower(item.sub),
 			hovered = interaction.hovered,
-			-- Square: the thumb is as tall as the card is wide.
-			size = UDim2.fromScale(1, 1),
+			-- Square: the thumb is as tall as the card is wide (or, with
+			-- `fill`, whatever the cell leaves above the labels).
+			size = if props.fill then UDim2.new(1, 0, 1, -skin.px(40)) else UDim2.fromScale(1, 1),
 		}, {
-			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
+			Aspect = if props.fill then nil else e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
 			Markers = e("Frame", {
 				Position = UDim2.fromOffset(skin.px(6), skin.px(6)),
 				Size = UDim2.fromOffset(skin.px(80), skin.px(24)),
@@ -374,6 +409,9 @@ function Parts.ItemCard(props: ItemCardProps)
 					SortOrder = Enum.SortOrder.LayoutOrder,
 					Padding = UDim.new(0, skin.px(4)),
 				}),
+				Picked = if props.picked
+					then e(Badge, { kind = "marker", tone = "orange", icon = "check", layoutOrder = 0, zIndex = 2 })
+					else nil,
 				Wearing = if props.wearing
 					then e(Badge, { kind = "marker", tone = "orange", icon = "checkroom", layoutOrder = 1, zIndex = 2 })
 					else nil,
@@ -384,6 +422,16 @@ function Parts.ItemCard(props: ItemCardProps)
 					then e(Badge, { kind = "marker", tone = "white", icon = "star", layoutOrder = 3, zIndex = 2 })
 					else nil,
 			}),
+			Ring = if props.picked
+				then e("UIStroke", {
+					Color = Tokens.color.accent,
+					Thickness = skin.stroke(3),
+					ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+				})
+				else nil,
+			Busy = if props.pickBusy
+				then e(Spinner, { size = 32, anchorPoint = Vector2.new(0.5, 0.5), position = UDim2.fromScale(0.5, 0.5), zIndex = 3 })
+				else nil,
 			Menu = if props.menu and props.menu.open
 				then e(CardMenuOverlay, {
 					item = item,
@@ -641,6 +689,57 @@ function Parts.CardGrid(props: CardGridProps)
 		Grid = e("UIGridLayout", {
 			CellSize = UDim2.fromOffset(cellWidth, cellHeight),
 			CellPadding = UDim2.fromOffset(gap, gap),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		Cells = e(React.Fragment, nil, props.children),
+	})
+end
+
+export type CardRowProps = {
+	cardWidth: number, -- design px
+	thumbHeight: number?, -- design px of each cell above its labels (default cardWidth: square)
+	extraHeight: number?, -- design px below each square cell (labels; default 40)
+	gap: number?, -- design px
+	count: number,
+	layoutOrder: number?,
+	children: any, -- cells, keyed, with LayoutOrder
+}
+
+-- The row's height in pixels for these props (to lay out what's around it).
+function Parts.cardRowHeight(skin: any, cardWidth: number, extraHeight: number?, thumbHeight: number?): number
+	return skin.px(thumbHeight or cardWidth) + skin.px(extraHeight or 40) + skin.px(3) * 2 + skin.px(12)
+end
+
+-- A carousel: one row of fixed-width cells that scrolls sideways (drag on
+-- touch, or the scroll bar under it).
+function Parts.CardRow(props: CardRowProps)
+	local skin = useSkin()
+	local width = skin.px(props.cardWidth)
+	local height = skin.px(props.thumbHeight or props.cardWidth) + skin.px(props.extraHeight or 40)
+	local gap = skin.px(props.gap or 12)
+	local inset = skin.px(3) -- room for strokes and glows, as in CardGrid
+	local count = props.count
+	return e("ScrollingFrame", {
+		Name = "CardRow",
+		Size = UDim2.new(1, 0, 0, Parts.cardRowHeight(skin, props.cardWidth, props.extraHeight, props.thumbHeight)),
+		LayoutOrder = props.layoutOrder or 0,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.fromOffset(count * width + math.max(0, count - 1) * gap + inset * 2, 0),
+		ScrollingDirection = Enum.ScrollingDirection.X,
+		ScrollBarThickness = skin.px(6),
+		ScrollBarImageColor3 = Tokens.color.accent,
+		HorizontalScrollBarInset = Enum.ScrollBarInset.Always,
+	}, {
+		Inset = e("UIPadding", {
+			PaddingTop = UDim.new(0, inset),
+			PaddingLeft = UDim.new(0, inset),
+			PaddingRight = UDim.new(0, inset),
+		}),
+		Grid = e("UIGridLayout", {
+			CellSize = UDim2.fromOffset(width, height),
+			CellPadding = UDim2.fromOffset(gap, gap),
+			FillDirection = Enum.FillDirection.Horizontal,
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
 		Cells = e(React.Fragment, nil, props.children),

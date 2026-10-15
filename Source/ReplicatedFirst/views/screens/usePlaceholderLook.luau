@@ -50,6 +50,7 @@ local views = script.Parent.Parent
 local PlaceholderData = require(script.Parent:WaitForChild("PlaceholderData"))
 local CatalogueClient = require(views:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
 local CommunityOutfits = require(views:WaitForChild("catalogue"):WaitForChild("CommunityOutfits"))
+local StoresClient = require(views:WaitForChild("catalogue"):WaitForChild("StoresClient"))
 local useBoltState = require(views:WaitForChild("hooks"):WaitForChild("useBoltState"))
 
 local AvatarConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AvatarConfig"))
@@ -90,7 +91,7 @@ export type Look = {
 	addToBasket: (ids: { number }) -> number, -- how many were sent
 	clearBasket: () -> (),
 	checkOwned: (ids: { number }) -> (), -- ask the server, once a session each
-	buy: (ids: { number }) -> number?, -- the request id; nil if nothing to buy
+	buy: (ids: { number }, store: string?) -> number?, -- the request id; nil if nothing to buy (`store`: bought through it)
 	purchase: Network.PurchaseResult, -- the latest purchase's outcome
 	outfits: { SavedOutfit }, -- the player's saved outfits, oldest first
 	currentOutfit: SavedOutfit?, -- the saved outfit being worn exactly, if any
@@ -119,12 +120,20 @@ export type Look = {
 	toggleCommunityFavourite: (code: string) -> (),
 	reportCommunity: (code: string) -> (),
 	openCommunity: (code: string) -> (), -- its page was opened (Recent)
+	myStores: { string }, -- codes of the player's own stores (drafts too), newest first
+	storeFavourites: { string }, -- stores starred, newest first
+	isStoreFavourite: (code: string) -> boolean,
+	toggleStoreFavourite: (code: string) -> (),
+	reportStore: (code: string) -> (),
+	openStore: (code: string) -> (), -- its page was opened (a visit)
+	shareStore: (code: string) -> (), -- its share dialog was opened (analytics)
 }
 
 local DEFAULT_AVATAR = { worn = {}, canUndo = false }
 local DEFAULT_FAVOURITES = { items = {} }
 local DEFAULT_BASKET = { items = {} }
 local DEFAULT_OUTFITS = { outfits = {} }
+local DEFAULT_STORES = { mine = {}, favourites = {} }
 local DEFAULT_OWNERSHIP = { owned = {}, purchase = { id = 0, state = "idle", reason = "", bought = {} } }
 local MAX_CHECK = 50 -- items per ownership check (PurchaseController's limit)
 local MAX_BUY = 20 -- items per purchase prompt (PurchaseController's limit)
@@ -186,6 +195,7 @@ local function usePlaceholderLook(): Look
 	local basketState = useBoltState(Network.State.Basket, DEFAULT_BASKET :: any)
 	local ownership = useBoltState(Network.State.Ownership, DEFAULT_OWNERSHIP :: any)
 	local outfitState = useBoltState(Network.State.Outfits, DEFAULT_OUTFITS :: any)
+	local storeState = useBoltState(Network.State.Stores, DEFAULT_STORES :: any)
 	local outfits: { SavedOutfit } = {}
 	for _, outfit in outfitState.outfits or {} do
 		local ids = {}
@@ -476,7 +486,7 @@ local function usePlaceholderLook(): Look
 			end
 		end,
 		checkOwned = checkOwned,
-		buy = function(ids: { number }): number?
+		buy = function(ids: { number }, store: string?): number?
 			local refs = {}
 			for _, id in ids do
 				local item = PlaceholderData.item(id)
@@ -488,7 +498,7 @@ local function usePlaceholderLook(): Look
 				return nil
 			end
 			lastRequestId += 1
-			Network.Intent.Purchase:FireServer(Network.Actions.Purchase.Buy, { id = lastRequestId, items = refs })
+			Network.Intent.Purchase:FireServer(Network.Actions.Purchase.Buy, { id = lastRequestId, items = refs, store = store })
 			return lastRequestId
 		end,
 		purchase = ownership.purchase or DEFAULT_OWNERSHIP.purchase,
@@ -570,6 +580,24 @@ local function usePlaceholderLook(): Look
 		end,
 		openCommunity = function(code: string)
 			Network.Intent.Community:FireServer(Network.Actions.Community.Open, { code = code })
+		end,
+		myStores = storeState.mine or {},
+		storeFavourites = storeState.favourites or {},
+		isStoreFavourite = function(code: string): boolean
+			return table.find(storeState.favourites or {}, code) ~= nil
+		end,
+		toggleStoreFavourite = function(code: string)
+			Network.Intent.Stores:FireServer(Network.Actions.Stores.Favourite, { code = code })
+		end,
+		reportStore = function(code: string)
+			Network.Intent.Stores:FireServer(Network.Actions.Stores.Report, { code = code })
+			task.delay(2, StoresClient.reset) -- once the server has it
+		end,
+		openStore = function(code: string)
+			Network.Intent.Stores:FireServer(Network.Actions.Stores.Open, { code = code })
+		end,
+		shareStore = function(code: string)
+			Network.Intent.Stores:FireServer(Network.Actions.Stores.Share, { code = code })
 		end,
 	}
 end

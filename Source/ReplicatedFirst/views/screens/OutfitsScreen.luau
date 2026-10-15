@@ -62,6 +62,8 @@ local Tokens = require(views:WaitForChild("Tokens"))
 local Press = require(views:WaitForChild("Press"))
 local Sounds = require(views:WaitForChild("Sounds"))
 local useSkin = require(hooks:WaitForChild("useSkin"))
+local useTextWidth = require(hooks:WaitForChild("useTextWidth"))
+local useLocalSize = require(hooks:WaitForChild("useLocalSize"))
 local useInteraction = require(hooks:WaitForChild("useInteraction"))
 local useSessionState = require(hooks:WaitForChild("useSessionState"))
 local TextTab = require(components:WaitForChild("TextTab"))
@@ -218,8 +220,51 @@ local function useRobloxOutfits(active: boolean)
 	end, { active })
 end
 
--- Up to four item thumbnails in a 2×2 grid (items with pictures first).
-local function mosaic(items: { number }): { [string]: any }
+-- An outfit's item thumbnails (items with pictures first), laid out for
+-- its card's shape:
+--   "square"  up to four, 2×2
+--   "wide"    the first big on the left, up to four more 2×2 beside it
+--   "tall"    the first big on top, up to three more in a line under it
+-- Wide and tall keep their proportions (2:1, 3:4) in the middle of the
+-- thumb, whatever its size.
+local SHAPES = {
+	square = { count = 4, aspect = 1 },
+	wide = { count = 5, aspect = 2 },
+	tall = { count = 4, aspect = 0.75 },
+}
+
+-- Where each picture goes, in scale of the shape's box: { x, y, w, h }.
+local function cellsFor(shape: string, n: number): { { number } }
+	if n == 1 then
+		return { { 0.05, 0.05, 0.9, 0.9 } }
+	end
+	local boxes = {}
+	if shape == "wide" then
+		table.insert(boxes, { 0.02, 0.04, 0.46, 0.92 })
+		for index = 1, n - 1 do
+			local column, row = (index - 1) % 2, (index - 1) // 2
+			table.insert(boxes, { 0.52 + column * 0.24, 0.04 + row * 0.48, 0.22, 0.44 })
+		end
+	elseif shape == "tall" then
+		table.insert(boxes, { 0.04, 0.03, 0.92, 0.69 })
+		local rest = n - 1
+		for index = 1, rest do
+			local width = 0.92 / 3
+			local start = 0.04 + (0.92 - width * rest) / 2
+			table.insert(boxes, { start + (index - 1) * width + 0.01, 0.74, width - 0.02, 0.23 })
+		end
+	else
+		for index = 1, n do
+			local column, row = (index - 1) % 2, (index - 1) // 2
+			table.insert(boxes, { 0.04 + column * 0.48, 0.04 + row * 0.48, 0.44, 0.44 })
+		end
+	end
+	return boxes
+end
+
+local function mosaic(items: { number }, shape: string?): { [string]: any }
+	local layout = SHAPES[shape or "square"] or SHAPES.square
+	local kind = if SHAPES[shape or ""] then shape :: string else "square"
 	local ordered = {}
 	for index, id in items do
 		local item = PlaceholderData.item(id)
@@ -246,25 +291,34 @@ local function mosaic(items: { number }): { [string]: any }
 		local image = Parts.image(entry.item)
 		if image then
 			table.insert(images, image)
-			if #images == 4 then
+			if #images == layout.count then
 				break
 			end
 		end
 	end
 	local cells: { [string]: any } = {}
-	for index, image in images do
-		local column, row = (index - 1) % 2, (index - 1) // 2
-		local single = #images == 1
+	for index, box in cellsFor(kind, #images) do
 		cells["Cell" .. index] = e("ImageLabel", {
-			AnchorPoint = if single then Vector2.new(0.5, 0.5) else Vector2.zero,
-			Position = if single then UDim2.fromScale(0.5, 0.5) else UDim2.fromScale(0.04 + column * 0.48, 0.04 + row * 0.48),
-			Size = if single then UDim2.fromScale(0.9, 0.9) else UDim2.fromScale(0.44, 0.44),
+			Position = UDim2.fromScale(box[1], box[2]),
+			Size = UDim2.fromScale(box[3], box[4]),
 			BackgroundTransparency = 1,
-			Image = image,
+			Image = images[index],
 			ScaleType = Enum.ScaleType.Fit,
 		})
 	end
-	return cells
+	if kind == "square" or not next(cells) then
+		return cells
+	end
+	-- (Its own proportions, centred in the thumb.)
+	cells.Aspect = e("UIAspectRatioConstraint", { AspectRatio = layout.aspect })
+	return {
+		Box = e("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+		}, cells),
+	}
 end
 
 local function OutfitCard(props: {
@@ -272,13 +326,17 @@ local function OutfitCard(props: {
 	sub: string,
 	ring: boolean,
 	badge: any?, -- top-left marker (your avatar / from Roblox)
+	-- The thumb fills the cell above the labels (a store's wide / hero
+	-- cells), its pictures laid out for `shape` ("wide" | "tall"); else square.
+	fill: boolean?,
+	shape: string?,
 	onActivated: () -> (),
 	layoutOrder: number,
 })
 	local skin = useSkin()
 	local interaction = useInteraction()
 	local first = PlaceholderData.item(props.outfit.items[1])
-	local cells = mosaic(props.outfit.items)
+	local cells = mosaic(props.outfit.items, if props.fill then props.shape else nil)
 	return e("TextButton", {
 		Name = "OutfitCard",
 		Size = UDim2.fromScale(1, 1),
@@ -297,8 +355,9 @@ local function OutfitCard(props: {
 			hovered = interaction.hovered,
 			selected = props.ring,
 			caption = if next(cells) then nil else "outfit",
+			size = if props.fill then UDim2.new(1, 0, 1, -skin.px(40)) else nil,
 		}, {
-			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
+			Aspect = if props.fill then nil else e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
 			Mosaic = e(React.Fragment, nil, cells),
 			Badge = if props.badge
 				then e("Frame", {
@@ -1221,19 +1280,33 @@ end
 -- The outfit's name. A saved outfit's can be edited in place: once the text
 -- differs from the saved name the pencil turns orange, and pressing it (or
 -- Enter) saves the new name, after which it goes back to black. Pressing
--- the black pencil puts the cursor in the name.
-local function NameField(props: { name: string, editable: boolean, onRename: (name: string) -> () })
+-- the black pencil puts the cursor in the name. The pencil sits just after
+-- the name (as far as the space allows). (Also a store's name, with its
+-- own `maxLength` and `size`.)
+local function NameField(props: {
+	name: string,
+	editable: boolean,
+	onRename: (name: string) -> (),
+	maxLength: number?,
+	size: number?,
+	maxWidth: number?,
+	layoutOrder: number?,
+})
 	local skin = useSkin()
-	local style = { size = 24, weight = 900 }
+	local style = { size = props.size or 24, weight = 900 }
+	local maxLength = props.maxLength or AvatarConfig.outfits.nameLength
 	local draft, setDraft = React.useState(props.name)
 	local boxRef = React.useRef(nil :: TextBox?)
+	local fieldRef = React.useRef(nil :: Frame?)
+	local fieldSize = useLocalSize(fieldRef)
+	local textWidth = useTextWidth(if draft ~= "" then draft else " ", Tokens.font(900), skin.textPx(style.size))
 	-- A new saved name (ours arriving, or a rename elsewhere) replaces the draft.
 	React.useEffect(function()
 		setDraft(props.name)
 		return nil
 	end, { props.name })
 	if not props.editable then
-		return e(ShadowText, { text = props.name, style = style, maxWidth = skin.px(LEFT_WIDTH), layoutOrder = 2 })
+		return e(ShadowText, { text = props.name, style = style, maxWidth = props.maxWidth or skin.px(LEFT_WIDTH), layoutOrder = props.layoutOrder or 2 })
 	end
 	local changed = draft ~= props.name and string.match(draft, "%S") ~= nil
 	local function save()
@@ -1242,18 +1315,24 @@ local function NameField(props: { name: string, editable: boolean, onRename: (na
 		end
 	end
 	local pencil = skin.px(Tokens.size.small.size)
+	local gap = skin.px(8)
+	-- The name's own width (a little spare for the cursor), up to the room
+	-- the pencil leaves.
+	local room = math.max(0, fieldSize.X - pencil - gap)
+	local boxWidth = if fieldSize.X > 0 then math.min(textWidth + skin.px(6), room) else room
 	return e("Frame", {
-		Size = UDim2.new(1, 0, 0, math.max(skin.textPx(24) + skin.px(6), pencil)),
+		Size = UDim2.new(1, 0, 0, math.max(skin.textPx(style.size) + skin.px(6), pencil)),
 		BackgroundTransparency = 1,
-		LayoutOrder = 2,
+		LayoutOrder = props.layoutOrder or 2,
+		ref = fieldRef,
 	}, {
 		Box = e("TextBox", {
-			Size = UDim2.new(1, -(pencil + skin.px(8)), 1, 0),
+			Size = UDim2.new(0, boxWidth, 1, 0),
 			BackgroundTransparency = 1,
 			ClearTextOnFocus = false,
 			Text = draft,
 			TextColor3 = Tokens.color.white,
-			TextSize = skin.textPx(24),
+			TextSize = skin.textPx(style.size),
 			FontFace = Tokens.font(900),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
@@ -1261,8 +1340,8 @@ local function NameField(props: { name: string, editable: boolean, onRename: (na
 			[React.Change.Text] = function(box: TextBox)
 				-- Names are capped (the server caps them too).
 				local text = box.Text
-				if (utf8.len(text) or 0) > AvatarConfig.outfits.nameLength then
-					text = string.sub(text, 1, (utf8.offset(text, AvatarConfig.outfits.nameLength + 1) or (#text + 1)) - 1)
+				if (utf8.len(text) or 0) > maxLength then
+					text = string.sub(text, 1, (utf8.offset(text, maxLength + 1) or (#text + 1)) - 1)
 					box.Text = text
 				end
 				setDraft(text)
@@ -1281,8 +1360,8 @@ local function NameField(props: { name: string, editable: boolean, onRename: (na
 			glowRadius = 0,
 			active = changed,
 			sound = if changed then "confirm" else nil,
-			anchorPoint = Vector2.new(1, 0.5),
-			position = UDim2.fromScale(1, 0.5),
+			anchorPoint = Vector2.new(0, 0.5),
+			position = UDim2.new(0, boxWidth + gap, 0.5, 0),
 			onActivated = function()
 				if changed then
 					save()
@@ -1579,6 +1658,14 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local outfitId = outfit.id
 	local kind = outfit.kind
 	local showStar = kind == "shared" and listed
+	-- One of your outfits on Community can go in your stores (the store
+	-- picker): your own Community copy, or a saved / Roblox outfit shared
+	-- with a listed code.
+	local storeCode = if #look.myStores == 0 then nil
+		elseif kind == "shared" and mineShared and listed then sharedCode
+		elseif (saved or kind == "roblox") and outfit.code and look.isPublished(outfit.code) then outfit.code
+		else nil
+	local roundButtons = (if saved or kind == "roblox" or showStar then 1 else 0) + (if storeCode then 1 else 0)
 	local twoRows = saved or kind == "user" or (kind == "shared" and listed and not mineShared)
 	-- A saved / Roblox outfit with a code shows it (Share shows its QR).
 	local byText = outfit.by .. (if outfit.code then " · code " .. outfit.code else "") .. " · " .. #items .. " items"
@@ -1649,7 +1736,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 					Padding = UDim.new(0, skin.px(8)),
 				}),
 				Wear = e("Frame", {
-					Size = UDim2.new(1, if saved or kind == "roblox" or showStar then -(buttonsHeight + skin.px(8)) else 0, 1, 0),
+					Size = UDim2.new(1, -roundButtons * (buttonsHeight + skin.px(8)), 1, 0),
 					BackgroundTransparency = 1,
 					LayoutOrder = 1,
 				}, {
@@ -1700,6 +1787,21 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 							else
 								hud.share(outfitId)
 							end
+						end,
+					})
+					else nil,
+				-- Put it in (or take it out of) one of your stores.
+				Store = if storeCode
+					then e(PillButton, {
+						variant = "round",
+						size = Tokens.size.ctaHeight,
+						icon = "add_business",
+						iconSize = 20,
+						glowRadius = 0,
+						sound = false, -- the picker plays its own sound
+						layoutOrder = 3,
+						onActivated = function()
+							hud.addToStore({ kind = "outfit", code = storeCode, name = outfit.name })
 						end,
 					})
 					else nil,
@@ -1875,4 +1977,13 @@ end
 return {
 	Root = OutfitsScreen,
 	Outfit = OutfitScreen,
+	-- Shared with the store page (a store's outfits, its card art).
+	OutfitCard = OutfitCard,
+	sharedView = sharedView,
+	communitySub = communitySub,
+	mosaic = mosaic,
+	wearingExactly = wearingExactly,
+	-- And with the store page and the store picker.
+	NameField = NameField,
+	Checkbox = Checkbox,
 }

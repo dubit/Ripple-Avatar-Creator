@@ -5,14 +5,43 @@
 
 	HUD-wide actions any view can reach without prop-drilling, provided by Hud:
 
-	  buy(itemIds, key?)       buy one or more items through Roblox's own
-	                           purchase prompt (owned items are skipped).
+	  buy(itemIds, key?, store?)   buy one or more items through Roblox's
+	                           own purchase prompt (owned items are skipped).
 	                           `key` names the button that asked ("basket";
-	                           default "item:<id>" for one item, else "items")
+	                           default "item:<id>" for one item, else "items");
+	                           `store` is the code of the store it's bought
+	                           from (its Bestsellers count it)
 	  buying(key) -> boolean   that button's purchase is under way: show a
 	                           spinner on it until Roblox's prompt has ended
-	  share(outfitId, kind?)   open the share dialog for a saved outfit, or
-	                           (kind "creation") one saved on Roblox, with its name
+	  share(id, kind?, name?)  open the share dialog for a saved outfit, or
+	                           (kind "creation") one saved on Roblox, with its
+	                           name, or (kind "store", id its code) a store
+	  addToStore(target)       open the store picker for an item
+	                           ({ kind = "item", id }) or one of your shared
+	                           outfits ({ kind = "outfit", code, name })
+	  createStore()            open the Create store dialog (the new store's
+	                           page opens once it's made)
+	  pickForRow(target)       fill one of your store's rows: an items row
+	                           opens the Catalogue in pick mode, an outfits
+	                           row the Add outfits dialog. target: { code,
+	                           row, kind, storeName, rowName, ids? (the
+	                           row's items) }
+	  picking                  the pick mode under way, or nil: { code, row,
+	                           storeName, rowName, count, waiting, problem? }
+	  isPicked(id) -> boolean  in the row as picked so far
+	  pickToggle(id)           put the item in the row, or take it out (kept
+	                           until Done)
+	  endPicking(save)         Done (save: the row's new list, then back to
+	                           the store page) or Cancel (just back)
+	  setupSearch(target)      choose an items search row's search: the
+	                           Catalogue opens in search setup mode (on the
+	                           row's search, if it has one). target: { code,
+	                           row, storeName, rowName, search? }
+	  searching                setup mode under way, or nil: { storeName,
+	                           rowName, waiting, problem? }
+	  useSearch(browse)        save what the Catalogue shows as the row's
+	                           search, and go back to the store page
+	  endSearch()              leave setup mode without saving
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,17 +49,41 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
 
 export type HudActions = {
-	buy: (itemIds: { number }, key: string?) -> (),
+	buy: (itemIds: { number }, key: string?, store: string?) -> (),
 	buying: (key: string) -> boolean,
-	share: (outfitId: number, kind: string?, name: string?) -> (),
+	share: (id: any, kind: string?, name: string?) -> (),
+	addToStore: (target: any) -> (),
+	createStore: () -> (),
+	pickForRow: (target: any) -> (),
+	picking: any?,
+	isPicked: (id: number) -> boolean,
+	pickToggle: (id: number) -> (),
+	endPicking: (save: boolean) -> (),
+	setupSearch: (target: any) -> (),
+	searching: any?,
+	useSearch: (browse: any) -> (),
+	endSearch: () -> (),
 }
 
 local HudContext = React.createContext({
-	buy = function(_itemIds: { number }, _key: string?) end,
+	buy = function(_itemIds: { number }, _key: string?, _store: string?) end,
 	buying = function(_key: string): boolean
 		return false
 	end,
-	share = function(_outfitId: number, _kind: string?, _name: string?) end,
+	share = function(_id: any, _kind: string?, _name: string?) end,
+	addToStore = function(_target: any) end,
+	createStore = function() end,
+	pickForRow = function(_target: any) end,
+	picking = nil,
+	isPicked = function(_id: number): boolean
+		return false
+	end,
+	pickToggle = function(_id: number) end,
+	endPicking = function(_save: boolean) end,
+	setupSearch = function(_target: any) end,
+	searching = nil,
+	useSearch = function(_browse: any) end,
+	endSearch = function() end,
 } :: HudActions)
 
 return HudContext

@@ -9,8 +9,8 @@
 	DataStores for shared content; OrderedDataStore for rankings and
 	MemoryStore for caches when later tasks need them.)
 
-	All kinds of shared things (outfits now; stores later) share one pool of
-	codes: the record says what it is, so a lookup knows what it found
+	All kinds of shared things (outfits, and stores: StoresService) share
+	one pool of codes: the record says what it is, so a lookup knows what it found
 	before showing it:
 		{ kind, ownerId, ownerName, updated, ... the content ... }
 
@@ -24,6 +24,10 @@
 
 	Lookups are cached per server for CACHE_SECONDS; each player gets
 	LOOKUP_BUDGET lookups per window.
+
+	Reports (CommunityReports store, keyed by code) are kept here for every
+	kind: who reported a code, once each, up to MAX_REPORTERS. What happens
+	at enough reports is up to the kind's service.
 
 	API:
 		claim(record) -> string?                  a new code holding `record`
@@ -44,6 +48,8 @@
 		lookup(code) -> record?                   cached; nil if unknown
 		normalise(text) -> string?                " 7kq2xm " -> "7KQ2XM"
 		allowed(player) -> boolean                the lookup budget
+		report(player, code) -> (boolean, number) whether this report was
+		                                          new, and the count now
 ]]
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -61,6 +67,7 @@ local CODE_LENGTH = 6
 local MAX_ATTEMPTS = 5
 local CACHE_SECONDS = 30
 local LOOKUP_BUDGET = { requests = 15, seconds = 30 }
+local MAX_REPORTERS = 50
 
 local store: DataStore? = nil
 local cache: { [string]: { record: any, at: number } } = {}
@@ -271,6 +278,32 @@ function SharedContentService.allowed(player: Player): boolean
 	end
 	table.insert(times, now)
 	return true
+end
+
+function SharedContentService.report(player: Player, code: string): (boolean, number)
+	local reports: DataStore? = nil
+	local ok = pcall(function()
+		reports = DataStoreService:GetDataStore("CommunityReports")
+	end)
+	if not ok or not reports then
+		return false, 0
+	end
+	local count = 0
+	local added = false
+	local updated = pcall(function()
+		(reports :: DataStore):UpdateAsync(code, function(old: any)
+			local reporters = if type(old) == "table" then old else {}
+			if table.find(reporters, player.UserId) or #reporters >= MAX_REPORTERS then
+				count = #reporters
+				return nil
+			end
+			table.insert(reporters, player.UserId)
+			count = #reporters
+			added = true
+			return reporters
+		end)
+	end)
+	return updated and added, count
 end
 
 function SharedContentService.init()

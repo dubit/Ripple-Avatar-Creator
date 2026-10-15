@@ -15,6 +15,7 @@
 		onActivated: () -> ()
 		icon: string?
 		layoutOrder: number?
+		disabled: boolean?   dimmed and inert (e.g. a row the store already has)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -40,6 +41,7 @@ export type Props = {
 	onActivated: () -> (),
 	icon: string?,
 	layoutOrder: number?,
+	disabled: boolean?,
 }
 
 local BORDER_IDLE = Color3.new(1, 1, 1)
@@ -49,17 +51,21 @@ local TEXT_IDLE = Color3.new(1, 1, 1)
 
 local function Chip(props: Props)
 	local skin = useSkin()
-	local interaction = useInteraction()
+	local interaction = useInteraction(props.disabled)
+	local hovered = interaction.hovered and not props.disabled
 
-	local borderColor = if props.active then BORDER_ACCENT elseif interaction.hovered then BORDER_HOVER else BORDER_IDLE
-	local borderTransparency = if props.active then 1 - 0.65 elseif interaction.hovered then 1 - 0.7 else 1 - 0.14
+	local borderColor = if props.active then BORDER_ACCENT elseif hovered then BORDER_HOVER else BORDER_IDLE
+	local borderTransparency = if props.active then 1 - 0.65
+		elseif props.disabled then 1 - 0.06
+		elseif hovered then 1 - 0.7
+		else 1 - 0.14
 
 	local spring = useSpring({
 		fill = if props.active then 1 - 0.16 else 1,
 		borderColor = borderColor,
 		borderTransparency = borderTransparency,
 		textColor = if props.active then Tokens.color.accentSoft else TEXT_IDLE,
-		textTransparency = if props.active then 0 else 1 - 0.75,
+		textTransparency = if props.active then 0 elseif props.disabled then 1 - 0.3 else 1 - 0.75,
 	}, Tokens.spring.state)
 
 	local style = Tokens.type.chip
@@ -74,6 +80,9 @@ local function Chip(props: Props)
 	local width = padding * 2 + textWidth + (if props.icon then iconSize + gap else 0)
 
 	local function onPress()
+		if props.disabled then
+			return
+		end
 		Sounds.play("tab")
 		props.onActivated()
 	end

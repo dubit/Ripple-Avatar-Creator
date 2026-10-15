@@ -31,8 +31,12 @@
 	Check(items): look up ownership of up to MAX_CHECK items (the worn list,
 	the basket, an item page); each is looked up once a session.
 
+	A Buy made from a store page carries the store's code (`store`): the
+	purchase analytics say which store it was (not when its owner buys),
+	so store owners could be rewarded later.
+
 	Analytics: purchase_prompted, purchase_completed (item ids, Robux spent as
-	the client reported it), purchase_cancelled (with the reason).
+	the client reported it, store_code), purchase_cancelled (with the reason).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -46,6 +50,8 @@ local OwnershipModel = require(script.Parent.Parent.models.userSession.Ownership
 local BasketModel = require(script.Parent.Parent.models.user.BasketModel)
 local AvatarService = require(ServerScriptService.services.game.AvatarService)
 local OwnershipService = require(ServerScriptService.services.game.OwnershipService)
+local SharedContentService = require(ServerScriptService.services.game.SharedContentService)
+local StoresService = require(ServerScriptService.services.game.StoresService)
 local Network = require(ReplicatedStorage.Network)
 
 local PurchaseController = {}
@@ -174,6 +180,12 @@ local function buy(player: Player, model: any, raw: any)
 		return
 	end
 	model:startPurchase(id, items)
+	-- Bought through a store (a published one, not the buyer's own).
+	local store = SharedContentService.normalise(raw.store)
+	local record = store and SharedContentService.lookup(store)
+	if store and StoresService.isListed(record) and record.ownerId ~= player.UserId then
+		model._pending.store = store
+	end
 	local ok, err = pcall(function()
 		MarketplaceService:PromptBulkPurchase(player, lineItems, {})
 	end)
@@ -186,7 +198,7 @@ local function buy(player: Player, model: any, raw: any)
 	for _, item in items do
 		table.insert(keys, item.key)
 	end
-	track(player, "purchase_prompted", { item_ids = idList(keys), item_count = #keys })
+	track(player, "purchase_prompted", { item_ids = idList(keys), item_count = #keys, store_code = model._pending.store })
 end
 
 local function finished(player: Player, model: any, raw: any)
@@ -277,6 +289,7 @@ local function finished(player: Player, model: any, raw: any)
 			item_ids = idList(bought),
 			item_count = #bought,
 			robux_spent = if type(raw.robuxSpent) == "number" then raw.robuxSpent else nil,
+			store_code = pending.store,
 		})
 	else
 		track(player, "purchase_cancelled", { item_count = total, reason = model.purchase.reason })

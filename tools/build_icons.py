@@ -19,7 +19,7 @@ from fontTools.ttLib import TTFont
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ICONS = (
-    "apparel storefront checkroom arrow_back chevron_left chevron_right expand_less close "
+    "apparel storefront checkroom arrow_back chevron_left chevron_right expand_less expand_more swap_horiz close "
     "search shopping_basket add_shopping_cart remove_shopping_cart toll person_add cloud_upload restart_alt "
     "undo remove delete delete_sweep star visibility bookmark_add add_circle edit share "
     "add_business lock link ios_share content_copy check check_circle landscape "
