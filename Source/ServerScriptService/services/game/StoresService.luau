@@ -27,7 +27,7 @@
 		  search = { ... } }           search rows: a catalogue query
 		                               (cleanSearch) or a Community sort
 	Styles: "square" | "wide" | "hero" | "single" | "grid" | "tile"
-	(outfits rows: square, grid, tile). `limit` caps what the row shows
+	(items and outfits rows alike). `limit` caps what the row shows
 	(a tile opens all of it); a hero row shows 2 to 6 (HERO_LIMIT). A search row's items are found by each
 	viewer's client from its search, so they aren't the store's items:
 	the store's limits are about the manual ones.
@@ -91,6 +91,13 @@
 		removeItem(record, rowId, key)
 		addOutfit(record, rowId, code) -> string?
 		removeOutfit(record, rowId, code)
+		setRowItems(record, rowId, keys, items) -> string?   a manual items
+		                                        row's whole list, in order
+		                                        (`items`: any not yet in the
+		                                        store); ("norow", "dupe", "full")
+		setRowOutfits(record, rowId, codes) -> string?   a manual outfits
+		                                        row's list: its own outfits,
+		                                        reordered or fewer
 		addRow(record, spec) -> (string?, string?)   its id, or why not
 		                                        ("full", "bad")
 		editRow(record, rowId, spec) -> string?   style, limit, name
@@ -358,7 +365,6 @@ end
 -- Rows ------------------------------------------------------------------------
 
 local STYLES = { square = true, wide = true, hero = true, single = true, grid = true, tile = true }
-local OUTFIT_STYLES = { square = true, grid = true, tile = true }
 local HERO_LIMIT = { min = 2, max = 6 } -- a hero row doesn't scroll
 local ROWS_VERSION = 3
 local OUTFIT_SORTS = { popular = true, trending = true, newest = true }
@@ -547,6 +553,67 @@ function StoresService.removeOutfit(record: any, rowId: any, code: string)
 	end
 end
 
+-- A manual items row's whole list at once (pick mode's Done, or a
+-- reorder): `keys` in order, `items` the ones the store doesn't have yet.
+function StoresService.setRowItems(record: any, rowId: any, keys: { string }, items: { [string]: Item }): string?
+	local row = findRow(record, rowId)
+	if not row or not row.items then
+		return "norow"
+	end
+	local seen = {}
+	for _, key in keys do
+		if seen[key] then
+			return "dupe"
+		end
+		seen[key] = true
+	end
+	record.items = record.items or {}
+	local known = {}
+	for _, existing in record.items do
+		known[keyOf(existing)] = true
+	end
+	local adding = {}
+	for _, key in keys do
+		if not known[key] then
+			local item = items[key]
+			if not item then
+				return "notfound"
+			end
+			table.insert(adding, item)
+		end
+	end
+	if #record.items + #adding > StoresConfig.maxItems then
+		return "full"
+	end
+	for _, item in adding do
+		table.insert(record.items, { targetId = item.targetId, kind = item.kind, typeName = item.typeName, name = item.name })
+	end
+	row.items = table.clone(keys)
+	prune(record)
+	return nil
+end
+
+-- A manual outfits row's list: the outfits it has, reordered (or fewer).
+function StoresService.setRowOutfits(record: any, rowId: any, codes: { string }): string?
+	local row = findRow(record, rowId)
+	if not row or not row.outfits then
+		return "norow"
+	end
+	local seen = {}
+	for _, code in codes do
+		if seen[code] then
+			return "dupe"
+		end
+		if not table.find(row.outfits, code) then
+			return "notfound"
+		end
+		seen[code] = true
+	end
+	row.outfits = table.clone(codes)
+	prune(record)
+	return nil
+end
+
 -- A row's settings from a request, checked; nil if they don't make sense.
 -- (The name is checked separately: cleanRowName.)
 function StoresService.cleanSpec(raw: any): RowSpec?
@@ -562,7 +629,7 @@ function StoresService.cleanSpec(raw: any): RowSpec?
 	if source ~= "manual" and source ~= "search" then
 		return nil
 	end
-	if type(style) ~= "string" or not (if content == "outfits" then OUTFIT_STYLES else STYLES)[style] then
+	if type(style) ~= "string" or not STYLES[style] then
 		return nil
 	end
 	local limit = tonumber(raw.limit) or StoresConfig.rowLimit.default

@@ -246,7 +246,6 @@ local function CatalogueScreen(props: { nav: any, look: any })
 			inBasket = props.look.inBasket(item.id),
 			favourite = props.look.isFavourite(item.id),
 			picked = picking ~= nil and hud.isPicked(item.id),
-			pickBusy = picking ~= nil and hud.pickBusy(item.id),
 			layoutOrder = count,
 			onActivated = if picking
 				then function()
@@ -468,7 +467,7 @@ local function CatalogueScreen(props: { nav: any, look: any })
 					PaddingRight = UDim.new(0, skin.px(7)),
 				}),
 				Text = e("TextLabel", {
-					Size = UDim2.new(1, -skin.px(140), 1, 0),
+					Size = UDim2.new(1, -skin.px(260), 1, 0),
 					BackgroundTransparency = 1,
 					Text = picking.problem or `Adding to {picking.storeName} › {picking.rowName} · {picking.count} in this row. Tap items to add or take out`,
 					TextColor3 = if picking.problem then Tokens.color.accentText else Tokens.color.white,
@@ -477,18 +476,46 @@ local function CatalogueScreen(props: { nav: any, look: any })
 					TextXAlignment = Enum.TextXAlignment.Left,
 					TextTruncate = Enum.TextTruncate.AtEnd,
 				}),
-				Done = e(PillButton, {
-					variant = "pill",
-					size = PICK_HEIGHT - 12,
-					width = 120,
-					icon = "check",
-					iconSize = 18,
-					label = "Done",
-					active = true,
-					sound = false, -- endPicking plays it
-					anchorPoint = Vector2.new(1, 0.5),
-					position = UDim2.fromScale(1, 0.5),
-					onActivated = hud.endPicking,
+				Buttons = e("Frame", {
+					AnchorPoint = Vector2.new(1, 0.5),
+					Position = UDim2.fromScale(1, 0.5),
+					Size = UDim2.fromOffset(skin.px(250), skin.px(PICK_HEIGHT - 12)),
+					BackgroundTransparency = 1,
+				}, {
+					Layout = e("UIListLayout", {
+						FillDirection = Enum.FillDirection.Horizontal,
+						HorizontalAlignment = Enum.HorizontalAlignment.Right,
+						VerticalAlignment = Enum.VerticalAlignment.Center,
+						SortOrder = Enum.SortOrder.LayoutOrder,
+						Padding = UDim.new(0, skin.px(8)),
+					}),
+					Cancel = e(PillButton, {
+						variant = "pill",
+						size = PICK_HEIGHT - 12,
+						width = 110,
+						label = "Cancel",
+						disabled = picking.waiting,
+						sound = false, -- endPicking plays it
+						layoutOrder = 1,
+						onActivated = function()
+							hud.endPicking(false)
+						end,
+					}),
+					Done = e(PillButton, {
+						variant = "pill",
+						size = PICK_HEIGHT - 12,
+						width = 120,
+						icon = "check",
+						iconSize = 18,
+						label = "Done",
+						active = true,
+						loading = picking.waiting,
+						sound = false, -- the outcome plays its own sound
+						layoutOrder = 2,
+						onActivated = function()
+							hud.endPicking(true)
+						end,
+					}),
 				}),
 			})
 			else nil,

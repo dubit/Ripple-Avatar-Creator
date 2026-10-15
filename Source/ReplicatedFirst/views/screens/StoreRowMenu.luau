@@ -62,16 +62,12 @@ type Choice = { id: string, label: string }
 
 local CONTENTS: { Choice } = { { id = "items", label = "Items" }, { id = "outfits", label = "Outfits" } }
 local SOURCES: { Choice } = { { id = "manual", label = "By hand" }, { id = "search", label = "By search" } }
-local ITEM_STYLES: { Choice } = {
+-- (Items and outfits rows alike.)
+local STYLES: { Choice } = {
 	{ id = "square", label = "Square" },
 	{ id = "wide", label = "Wide" },
 	{ id = "hero", label = "Hero" },
 	{ id = "single", label = "Single" },
-	{ id = "grid", label = "Grid" },
-	{ id = "tile", label = "Tile" },
-}
-local OUTFIT_STYLES: { Choice } = {
-	{ id = "square", label = "Square" },
 	{ id = "grid", label = "Grid" },
 	{ id = "tile", label = "Tile" },
 }
@@ -163,16 +159,7 @@ local function RowMenu(props: {
 		return true
 	end)
 
-	local styles = if content == "outfits" then OUTFIT_STYLES else ITEM_STYLES
-	local styleOk = false
-	for _, choice in styles do
-		if choice.id == style then
-			styleOk = true
-		end
-	end
-	if not styleOk then
-		style = "square"
-	end
+	local styles = STYLES
 	local outfitSearch = content == "outfits" and source == "search"
 	local itemSearch = content == "items" and source == "search"
 	-- Hero doesn't scroll: 2 to 6 (and back from it, a usual amount).

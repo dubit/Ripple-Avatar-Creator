@@ -183,16 +183,17 @@ local function Hud()
 	-- The store picker or the Create store dialog, if one is open.
 	local storeDialog, setStoreDialog = React.useState(nil :: StoreDialogs.Dialog?)
 	-- Filling one of your store's rows from the Catalogue (pick mode): the
-	-- row, the store page's crumbs to go back to, what's in the row, and
-	-- the items being changed.
+	-- row, the store page's crumbs to go back to, and the row as it'll be
+	-- (`order`, kept here until Done saves it; Cancel leaves the row be).
 	local picking, setPicking = React.useState(nil :: {
 		code: string,
 		row: string,
 		storeName: string,
 		rowName: string,
 		stack: { any },
-		ids: { [number]: boolean },
-		pending: { [number]: boolean },
+		start: { number },
+		order: { number },
+		waiting: boolean,
 		problem: string?,
 	}?)
 	local latestPicking = React.useRef(picking)
@@ -258,7 +259,7 @@ local function Hud()
 			Sounds.play("back")
 			setStoreDialog(nil)
 		elseif picking and #nav.stack == 0 then
-			Sounds.play("back")
+			Sounds.play("back") -- (as Cancel)
 			setPicking(nil)
 			nav.restore("Stores", picking.stack)
 		elseif searching and #nav.stack == 0 then
@@ -478,10 +479,6 @@ local function Hud()
 					setStoreDialog({ kind = "outfits", code = target.code, row = target.row, storeName = target.storeName, rowName = target.rowName })
 					return
 				end
-				local ids: { [number]: boolean } = {}
-				for _, id in target.ids or {} do
-					ids[id] = true
-				end
 				Sounds.play("open")
 				setPicking({
 					code = target.code,
@@ -489,74 +486,104 @@ local function Hud()
 					storeName = target.storeName,
 					rowName = target.rowName,
 					stack = table.clone(latestNav.current.stack),
-					ids = ids,
-					pending = {},
+					start = table.clone(target.ids or {}),
+					order = table.clone(target.ids or {}),
+					waiting = false,
 					problem = nil,
 				})
 				latestNav.current.openRoot("Catalogue")
 			end,
 			picking = if picking
-				then (function()
-					local count = 0
-					for _ in picking.ids do
-						count += 1
-					end
-					return { code = picking.code, row = picking.row, storeName = picking.storeName, rowName = picking.rowName, count = count, problem = picking.problem }
-				end)()
+				then {
+					code = picking.code,
+					row = picking.row,
+					storeName = picking.storeName,
+					rowName = picking.rowName,
+					count = #picking.order,
+					waiting = picking.waiting,
+					problem = picking.problem,
+				}
 				else nil,
 			isPicked = function(id: number): boolean
-				return picking ~= nil and picking.ids[id] == true
-			end,
-			pickBusy = function(id: number): boolean
-				return picking ~= nil and picking.pending[id] == true
+				return picking ~= nil and table.find(picking.order, id) ~= nil
 			end,
 			pickToggle = function(id: number)
 				local current = latestPicking.current
 				local item = PlaceholderData.item(id)
-				if not current or current.pending[id] or not item or not item.targetId then
+				if not current or current.waiting or not item or not item.targetId then
 					return
 				end
-				local inside = current.ids[id] == true
-				local function update(change: (any) -> ())
-					setPicking(function(old: any)
-						if not old or old.code ~= current.code or old.row ~= current.row then
-							return old
-						end
-						local new = table.clone(old)
-						new.ids = table.clone(old.ids)
-						new.pending = table.clone(old.pending)
-						change(new)
-						return new
-					end)
-				end
 				Sounds.play("press")
-				update(function(new: any)
-					new.pending[id] = true
+				setPicking(function(old: any)
+					if not old or old.code ~= current.code or old.row ~= current.row then
+						return old
+					end
+					local new = table.clone(old)
+					new.order = table.clone(old.order)
 					new.problem = nil
-				end)
-				task.spawn(function()
-					local ok, _, err = StoresClient.act(
-						if inside then Network.Actions.Stores.RemoveItem else Network.Actions.Stores.AddItem,
-						{ code = current.code, row = current.row, targetId = item.targetId, kind = item.kind }
-					)
-					Sounds.play(if ok then "confirm" else "error")
-					update(function(new: any)
-						new.pending[id] = nil
-						if ok then
-							new.ids[id] = if inside then nil else true
-						else
-							new.problem = StoreDialogs.message(err, "item")
-						end
-					end)
+					local index = table.find(new.order, id)
+					if index then
+						table.remove(new.order, index)
+					else
+						table.insert(new.order, id) -- new ones at the end
+					end
+					return new
 				end)
 			end,
-			endPicking = function()
+			endPicking = function(save: boolean)
 				local current = latestPicking.current
-				if current then
-					Sounds.play("back")
+				if not current or current.waiting then
+					return
+				end
+				local function leave()
 					setPicking(nil)
 					latestNav.current.restore("Stores", current.stack)
 				end
+				local same = #current.order == #current.start
+				for index, id in current.order do
+					if current.start[index] ~= id then
+						same = false
+					end
+				end
+				if not save or same then
+					Sounds.play("back")
+					leave()
+					return
+				end
+				local keys = {}
+				for _, id in current.order do
+					local item = PlaceholderData.item(id)
+					if item and item.targetId then
+						table.insert(keys, item.kind .. ":" .. item.targetId)
+					end
+				end
+				setPicking(function(old: any)
+					if not old then
+						return old
+					end
+					local new = table.clone(old)
+					new.waiting = true
+					new.problem = nil
+					return new
+				end)
+				task.spawn(function()
+					local ok, _, err = StoresClient.act(Network.Actions.Stores.SetRowItems, { code = current.code, row = current.row, items = keys })
+					if ok then
+						Sounds.play("confirm")
+						leave()
+					else
+						Sounds.play("error")
+						setPicking(function(old: any)
+							if not old then
+								return old
+							end
+							local new = table.clone(old)
+							new.waiting = false
+							new.problem = StoreDialogs.message(err, "item")
+							return new
+						end)
+					end
+				end)
 			end,
 			addToStore = function(target: any)
 				Sounds.play("open")

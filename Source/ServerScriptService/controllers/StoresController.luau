@@ -26,6 +26,11 @@
 		AddOutfit(code, row, outfitCode)   one of the player's own Community
 		                                   outfits, into an outfits row
 		RemoveOutfit(code, row, outfitCode)
+		SetRowItems { code, row, items = { "Asset:123", ... } }   a manual
+		                                   items row's whole list, in order
+		                                   (new ones looked up as AddItem)
+		SetRowItems { code, row, outfits = { code } }   a manual outfits
+		                                   row's own outfits, reordered
 		AddRow(code, content, source, style, name)   content "items" |
 		                                   "outfits", source "manual" |
 		                                   "search", a style (StoresService);
@@ -310,6 +315,72 @@ local function removeOutfit(player: Player, model: any, raw: any, ...: any): Res
 	end)
 end
 
+local MAX_LOOKUPS = 60 -- new items in one SetRowItems
+
+local function setRowItems(player: Player, model: any, raw: any): Result
+	local a = args(raw)
+	local code = ownCode(player, model, a.code)
+	local row = rowOf(a)
+	if not code or not row then
+		return fail("bad")
+	end
+	if type(a.outfits) == "table" then
+		local codes = {}
+		for _, value in a.outfits do
+			local outfit = codeOf(value)
+			if not outfit or #codes >= StoresConfig.maxOutfits then
+				return fail("bad")
+			end
+			table.insert(codes, outfit)
+		end
+		return change(player, code, function(record: any): string?
+			return StoresService.setRowOutfits(record, row, codes)
+		end)
+	end
+	if type(a.items) ~= "table" or #a.items > StoresConfig.maxItems then
+		return fail("bad")
+	end
+	local keys = {}
+	for _, key in a.items do
+		if type(key) ~= "string" then
+			return fail("bad")
+		end
+		local kind, id = string.match(key, "^(%a+):(%d+)$")
+		local targetId = tonumber(id)
+		if (kind ~= "Asset" and kind ~= "Bundle") or not targetId or targetId <= 0 then
+			return fail("bad")
+		end
+		table.insert(keys, key)
+	end
+	-- Look up the ones the store doesn't have yet (outside the edit: each
+	-- may wait on Roblox).
+	local current = SharedContentService.lookup(code)
+	local known = {}
+	for _, item in (current and current.items) or {} do
+		known[StoresService.keyOf(item)] = true
+	end
+	local items: { [string]: any } = {}
+	local lookups = 0
+	for _, key in keys do
+		if not known[key] and not items[key] then
+			lookups += 1
+			if lookups > MAX_LOOKUPS then
+				return fail("full")
+			end
+			local kind, id = string.match(key, "^(%a+):(%d+)$")
+			local item = AvatarService.resolve(tonumber(id) :: number, kind :: any)
+			if not item then
+				return fail("notfound")
+			end
+			items[key] = item
+		end
+	end
+	return change(player, code, function(record: any): string?
+		-- (One the store has had since the lookup counts as known.)
+		return StoresService.setRowItems(record, row, keys, items)
+	end)
+end
+
 -- Rows ---------------------------------------------------------------------------
 
 -- A row's name from a request (or, for a slash command, its words).
@@ -551,6 +622,7 @@ local ACTIONS: { [string]: (Player, any, any, ...any) -> Result } = {
 	[Network.Actions.Stores.RemoveItem] = budgeted(removeItem),
 	[Network.Actions.Stores.AddOutfit] = budgeted(addOutfit),
 	[Network.Actions.Stores.RemoveOutfit] = budgeted(removeOutfit),
+	[Network.Actions.Stores.SetRowItems] = budgeted(setRowItems),
 	[Network.Actions.Stores.AddRow] = budgeted(addRow),
 	[Network.Actions.Stores.EditRow] = budgeted(editRow),
 	[Network.Actions.Stores.SetRowSearch] = budgeted(setRowSearch),

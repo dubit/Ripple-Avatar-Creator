@@ -27,10 +27,12 @@
 	                           row, kind, storeName, rowName, ids? (the
 	                           row's items) }
 	  picking                  the pick mode under way, or nil: { code, row,
-	                           storeName, rowName, count, problem? }
-	  isPicked(id) / pickBusy(id) -> boolean   in the row / being changed
-	  pickToggle(id)           add the item to the row, or take it out
-	  endPicking()             back to the store page
+	                           storeName, rowName, count, waiting, problem? }
+	  isPicked(id) -> boolean  in the row as picked so far
+	  pickToggle(id)           put the item in the row, or take it out (kept
+	                           until Done)
+	  endPicking(save)         Done (save: the row's new list, then back to
+	                           the store page) or Cancel (just back)
 	  setupSearch(target)      choose an items search row's search: the
 	                           Catalogue opens in search setup mode (on the
 	                           row's search, if it has one). target: { code,
@@ -55,9 +57,8 @@ export type HudActions = {
 	pickForRow: (target: any) -> (),
 	picking: any?,
 	isPicked: (id: number) -> boolean,
-	pickBusy: (id: number) -> boolean,
 	pickToggle: (id: number) -> (),
-	endPicking: () -> (),
+	endPicking: (save: boolean) -> (),
 	setupSearch: (target: any) -> (),
 	searching: any?,
 	useSearch: (browse: any) -> (),
@@ -77,11 +78,8 @@ local HudContext = React.createContext({
 	isPicked = function(_id: number): boolean
 		return false
 	end,
-	pickBusy = function(_id: number): boolean
-		return false
-	end,
 	pickToggle = function(_id: number) end,
-	endPicking = function() end,
+	endPicking = function(_save: boolean) end,
 	setupSearch = function(_target: any) end,
 	searching = nil,
 	useSearch = function(_browse: any) end,

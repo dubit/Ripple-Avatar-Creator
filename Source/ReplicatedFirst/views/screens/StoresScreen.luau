@@ -33,16 +33,20 @@
 	    (no scrolling) or Tile (opens the row as its own grid). A
 	    hand-filled row longer than its limit has See all
 	Item cards have the card menu (Try · basket · Buy · View, and the store
-	button once you have a store); buying from a store counts towards its
-	Bestsellers. Opening someone's published store is a visit (once a day).
+	button once you have a store); outfits rows show outfit cards in the
+	same styles, their pictures laid out to fit (OutfitsScreen.mosaic), and
+	a Single outfit has Wear all items. Opening someone's published store
+	is a visit (once a day).
 
 	Your own store is edited in place (PLAN 19.1): its name is editable (the
 	pencil saves it), and a bar under the header says where it stands and
 	has Publish / Unpublish and Delete (twice). Every row shows, even empty,
 	with what it is, its menu (StoreRowMenu, opening from the button), up /
 	down and remove (twice); Add row at the bottom opens the same menu. A
-	hand-filled row's Add tile (or Add items) fills it: items through the
-	Catalogue in pick mode (Hud), outfits through the Add outfits dialog.
+	hand-filled row's Add items (or Add outfits) fills it: items through the
+	Catalogue in pick mode (Hud: kept until Done), outfits through the Add
+	outfits dialog. Its reorder button puts the row in a line with arrows on
+	each card, until Cancel or Done (SetRowItems).
 	An items search row's search is chosen in the Catalogue's setup mode. Items also go in and out
 	through the store button on any item card, outfits from your shared
 	outfit's page (the store picker: StoreDialogs).
@@ -293,8 +297,9 @@ local function CreateCard(props: { layoutOrder: number })
 end
 
 -- A row's heading on a store page: its name, See all, and on your own
--- store its controls: the row's menu (its settings, from that button), up /
--- down, and remove (twice).
+-- store its controls: Add items (a hand-filled row), the row's menu (its
+-- settings, from that button), reorder (a hand-filled row of two or more),
+-- up / down, and remove (twice). While reordering: Cancel and Done.
 type RowOwner = {
 	sub: string, -- what the row is ("By hand · Square · 20")
 	first: boolean,
@@ -303,6 +308,8 @@ type RowOwner = {
 	onMenu: (anchor: GuiObject) -> (),
 	onMove: (by: number) -> (),
 	onRemove: () -> (),
+	onReorder: (() -> ())?,
+	reordering: { saving: boolean, onCancel: () -> (), onDone: () -> () }?,
 }
 
 local function RemoveControl(props: { disabled: boolean, onConfirm: () -> (), layoutOrder: number })
@@ -386,15 +393,46 @@ local function MenuControl(props: { disabled: boolean, onMenu: (anchor: GuiObjec
 	})
 end
 
+local function roundControl(icon: string, disabled: boolean, order: number, onActivated: () -> ()): any
+	return e(PillButton, {
+		variant = "round",
+		size = CONTROL,
+		icon = icon,
+		iconSize = 19,
+		disabled = disabled,
+		glowRadius = 0,
+		layoutOrder = order,
+		onActivated = onActivated,
+	})
+end
+
+local function pillControl(label: string, width: number, order: number, extra: { [string]: any }): any
+	local props: { [string]: any } = {
+		variant = "pill",
+		size = CONTROL,
+		width = width,
+		label = label,
+		textStyle = { size = 13.5, weight = 800 },
+		glowRadius = 0,
+		layoutOrder = order,
+	}
+	for key, value in extra do
+		props[key] = value
+	end
+	return e(PillButton, props)
+end
+
 local function RowHeading(props: {
 	text: string,
 	layoutOrder: number?,
 	onSeeAll: (() -> ())?,
 	onAdd: (() -> ())?,
+	addLabel: string?,
 	owner: RowOwner?,
 })
 	local skin = useSkin()
 	local owner = props.owner
+	local reordering = owner and owner.reordering
 	local controls: { [string]: any } = {
 		Layout = e("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
@@ -405,42 +443,51 @@ local function RowHeading(props: {
 		}),
 	}
 	local width = 0
-	if props.onSeeAll then
-		controls.SeeAll = e(TextLink, { text = "See all", width = 70, layoutOrder = 1, onActivated = props.onSeeAll })
-		width += 76
-	end
-	if props.onAdd then
-		controls.Add = e(TextLink, { text = "Add items", width = 80, layoutOrder = 2, onActivated = props.onAdd })
-		width += 86
-	end
-	if owner then
-		controls.Menu = e(MenuControl, { disabled = owner.busy, onMenu = owner.onMenu, layoutOrder = 3 })
-		controls.Up = e(PillButton, {
-			variant = "round",
-			size = CONTROL,
-			icon = "expand_less",
-			iconSize = 19,
-			disabled = owner.first or owner.busy,
-			glowRadius = 0,
-			layoutOrder = 4,
-			onActivated = function()
+	if reordering then
+		controls.Cancel = pillControl("Cancel", 90, 1, {
+			disabled = reordering.saving,
+			sound = "back",
+			onActivated = reordering.onCancel,
+		})
+		controls.Done = pillControl("Done", 100, 2, {
+			icon = "check",
+			iconSize = 16,
+			active = true,
+			loading = reordering.saving,
+			sound = false, -- the outcome plays its own sound
+			onActivated = reordering.onDone,
+		})
+		width += 90 + 100 + 12
+	else
+		if props.onSeeAll then
+			controls.SeeAll = e(TextLink, { text = "See all", width = 70, layoutOrder = 1, onActivated = props.onSeeAll })
+			width += 76
+		end
+		if props.onAdd then
+			controls.Add = pillControl(props.addLabel or "Add items", 132, 2, {
+				icon = "add_circle",
+				iconSize = 17,
+				disabled = owner ~= nil and owner.busy,
+				onActivated = props.onAdd,
+			})
+			width += 138
+		end
+		if owner then
+			controls.Menu = e(MenuControl, { disabled = owner.busy, onMenu = owner.onMenu, layoutOrder = 3 })
+			local count = 4
+			if owner.onReorder then
+				controls.Reorder = roundControl("swap_horiz", owner.busy, 4, owner.onReorder)
+				count += 1
+			end
+			controls.Up = roundControl("expand_less", owner.first or owner.busy, 5, function()
 				owner.onMove(-1)
-			end,
-		})
-		controls.Down = e(PillButton, {
-			variant = "round",
-			size = CONTROL,
-			icon = "expand_more",
-			iconSize = 19,
-			disabled = owner.last or owner.busy,
-			glowRadius = 0,
-			layoutOrder = 5,
-			onActivated = function()
+			end)
+			controls.Down = roundControl("expand_more", owner.last or owner.busy, 6, function()
 				owner.onMove(1)
-			end,
-		})
-		controls.Remove = e(RemoveControl, { disabled = owner.busy, layoutOrder = 6, onConfirm = owner.onRemove })
-		width += 4 * (CONTROL + 6)
+			end)
+			controls.Remove = e(RemoveControl, { disabled = owner.busy, layoutOrder = 7, onConfirm = owner.onRemove })
+			width += count * (CONTROL + 6)
+		end
 	end
 	local height = if owner then OWNER_HEADING else 24
 	return e("Frame", {
@@ -462,9 +509,10 @@ local function RowHeading(props: {
 			-- Your own: what the row is, at a glance.
 			Sub = if owner
 				then e(ShadowText, {
-					text = owner.sub,
+					text = if reordering then "Reordering: move them with the arrows" else owner.sub,
 					style = Tokens.type.meta,
-					transparency = Tokens.alpha.textDim,
+					transparency = if reordering then 0 else Tokens.alpha.textDim,
+					color = if reordering then Tokens.color.accentText else nil,
 					shadow = false,
 					layoutOrder = 2,
 				})
@@ -508,53 +556,6 @@ local function AddRowButton(props: { disabled: boolean, layoutOrder: number, onO
 					end
 				end,
 			}),
-		}),
-	})
-end
-
--- A row's first cell on your own store: add to this row.
-local function AddTile(props: { label: string, layoutOrder: number, onActivated: () -> () })
-	local skin = useSkin()
-	local interaction = useInteraction()
-	local function press()
-		Sounds.play("press")
-		props.onActivated()
-	end
-	return e("TextButton", {
-		Name = "AddTile",
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
-		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(press),
-		[React.Event.Activated] = Press.activated(press),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
-	}, {
-		Thumb = e(Parts.Thumb, {
-			colour = Tokens.color.accent,
-			hovered = interaction.hovered,
-		}, {
-			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
-			Icon = e(Icon, {
-				name = "add_circle",
-				size = 40,
-				anchorPoint = Vector2.new(0.5, 0.5),
-				position = UDim2.fromScale(0.5, 0.5),
-			}),
-		}),
-		Label = e("TextLabel", {
-			AnchorPoint = Vector2.new(0, 1),
-			Position = UDim2.fromScale(0, 1),
-			Size = UDim2.new(1, 0, 0, skin.px(36)),
-			BackgroundTransparency = 1,
-			Text = props.label,
-			TextColor3 = Tokens.color.white,
-			TextSize = skin.textPx(13),
-			FontFace = Tokens.font(800),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextYAlignment = Enum.TextYAlignment.Top,
 		}),
 	})
 end
@@ -985,26 +986,140 @@ local function useItemCards(look: any, nav: any, store: string)
 	end
 end
 
-local function Featured(props: { look: any, nav: any, items: { number }, layoutOrder: number })
+-- A Single row: one item (or outfit) at a time, with arrows. An item has
+-- its picture, name, price, Try on and Basket; an outfit its pictures,
+-- name, who shared it, Wear all items and View. Either's picture or name
+-- opens its page.
+local function Featured(props: { look: any, nav: any, items: { number }?, outfits: { CommunityOutfits.Card }?, layoutOrder: number })
 	local skin = useSkin()
 	local index, setIndex = React.useState(1)
-	local count = #props.items
-	local at = ((index - 1) % count) + 1
-	local id = props.items[at]
-	local item = PlaceholderData.item(id)
-	if not item then
+	local count = if props.outfits then #props.outfits else #(props.items or {})
+	if count == 0 then
 		return nil
 	end
-	local wearing = props.look.isWorn(id)
-	local inBasket = props.look.inBasket(id)
+	local at = ((index - 1) % count) + 1
 	local height = skin.px(HERO_HEIGHT)
-	local function view()
-		Sounds.play("press")
-		props.nav.push({ kind = "item", id = id, label = item.name })
-	end
 	local function step(delta: number)
 		setIndex(((at - 1 + delta) % count) + 1)
 	end
+
+	local picture: any, pictureWidth: number, title: string, line: any, buttons: { [string]: any }, view: () -> ()
+	if props.outfits then
+		local card = props.outfits[at]
+		local outfit = OutfitsScreen.sharedView(card)
+		local wearing = OutfitsScreen.wearingExactly(props.look, outfit.items)
+		local first = PlaceholderData.item(outfit.items[1])
+		pictureWidth = math.floor(height * 1.6)
+		title = card.name
+		view = function()
+			Sounds.play("press")
+			props.nav.push({ kind = "outfit", id = { source = "Shared", index = card.code }, label = card.name })
+		end
+		local cells = OutfitsScreen.mosaic(outfit.items, "wide")
+		picture = e(Parts.Thumb, {
+			colour = Parts.swatch(if first then first.colour else ""),
+			radius = 20,
+			selected = wearing,
+			caption = if next(cells) then nil else "outfit",
+			size = UDim2.fromScale(1, 1),
+		}, cells)
+		line = e(ShadowText, {
+			text = OutfitsScreen.communitySub(card),
+			style = { size = 15, weight = 800 },
+			transparency = Tokens.alpha.textSoft,
+			shadow = false,
+			layoutOrder = 3,
+		})
+		buttons = {
+			Wear = e(PillButton, {
+				variant = "pill",
+				size = Tokens.size.ctaHeight,
+				width = 170,
+				icon = "checkroom",
+				iconSize = 18,
+				label = if wearing then "Wearing" else "Wear all items",
+				active = not wearing,
+				disabled = #outfit.items == 0,
+				sound = false, -- the look change plays its own sound
+				layoutOrder = 1,
+				onActivated = function()
+					props.look.wearShared(card.code)
+					-- Counted at once (the server counts others' wears).
+					if not card.mine then
+						CommunityOutfits.noteWear(card.code, CommunityOutfits.wears(card.code, card.wears))
+					end
+				end,
+			}),
+			View = e(PillButton, {
+				variant = "pill",
+				size = Tokens.size.ctaHeight,
+				width = 110,
+				icon = "visibility",
+				iconSize = 18,
+				label = "View",
+				layoutOrder = 2,
+				sound = false, -- view plays it
+				onActivated = view,
+			}),
+		}
+	else
+		local id = (props.items :: { number })[at]
+		local item = PlaceholderData.item(id)
+		if not item then
+			return nil
+		end
+		local wearing = props.look.isWorn(id)
+		local inBasket = props.look.inBasket(id)
+		pictureWidth = height
+		title = item.name
+		view = function()
+			Sounds.play("press")
+			props.nav.push({ kind = "item", id = id, label = item.name })
+		end
+		picture = e(Parts.Thumb, {
+			colour = Parts.swatch(item.colour),
+			image = Parts.image(item),
+			radius = 20,
+			caption = string.lower(item.sub),
+			size = UDim2.fromScale(1, 1),
+		})
+		line = e(Parts.PriceTag, { item = item, size = 18, layoutOrder = 3 })
+		buttons = {
+			Try = e(PillButton, {
+				variant = "pill",
+				size = Tokens.size.ctaHeight,
+				width = 130,
+				icon = if wearing then "remove" else "checkroom",
+				iconSize = 18,
+				label = if wearing then "Take off" else "Try on",
+				active = not wearing,
+				sound = false, -- the look change plays its own sound
+				layoutOrder = 1,
+				onActivated = function()
+					props.look.toggleWear(id)
+				end,
+			}),
+			Basket = e(PillButton, {
+				variant = "pill",
+				size = Tokens.size.ctaHeight,
+				width = 140,
+				icon = if inBasket then "remove_shopping_cart" else "add_shopping_cart",
+				iconSize = 18,
+				label = if inBasket then "In basket" else "Basket",
+				sound = false, -- the look change plays its own sound
+				layoutOrder = 2,
+				onActivated = function()
+					props.look.toggleBasket(id)
+				end,
+			}),
+		}
+	end
+	buttons.Layout = e("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, skin.px(8)),
+	})
+
 	return e(Parts.Thumb, {
 		colour = Parts.swatch("Orange"),
 		radius = 20,
@@ -1012,24 +1127,18 @@ local function Featured(props: { look: any, nav: any, items: { number }, layoutO
 		layoutOrder = props.layoutOrder,
 	}, {
 		Picture = e("TextButton", {
-			Size = UDim2.fromOffset(height, height),
+			Size = UDim2.fromOffset(pictureWidth, height),
 			BackgroundTransparency = 1,
 			Text = "",
 			AutoButtonColor = false,
 			[React.Event.InputBegan] = Press.began(view),
 			[React.Event.Activated] = Press.activated(view),
 		}, {
-			Thumb = e(Parts.Thumb, {
-				colour = Parts.swatch(item.colour),
-				image = Parts.image(item),
-				radius = 20,
-				caption = string.lower(item.sub),
-				size = UDim2.fromScale(1, 1),
-			}),
+			Thumb = picture,
 		}),
 		Info = e("Frame", {
-			Position = UDim2.fromOffset(height + skin.px(24), 0),
-			Size = UDim2.new(1, -(height + skin.px(24) + skin.px(24)), 1, 0),
+			Position = UDim2.fromOffset(pictureWidth + skin.px(24), 0),
+			Size = UDim2.new(1, -(pictureWidth + skin.px(24) + skin.px(24)), 1, 0),
 			BackgroundTransparency = 1,
 		}, {
 			Layout = e("UIListLayout", {
@@ -1047,7 +1156,7 @@ local function Featured(props: { look: any, nav: any, items: { number }, layoutO
 			Name = e("TextButton", {
 				Size = UDim2.new(1, 0, 0, skin.textPx(28) + skin.px(4)),
 				BackgroundTransparency = 1,
-				Text = item.name,
+				Text = title,
 				TextColor3 = Tokens.color.white,
 				TextSize = skin.textPx(28),
 				FontFace = Tokens.font(900),
@@ -1058,45 +1167,12 @@ local function Featured(props: { look: any, nav: any, items: { number }, layoutO
 				[React.Event.InputBegan] = Press.began(view),
 				[React.Event.Activated] = Press.activated(view),
 			}),
-			Price = e(Parts.PriceTag, { item = item, size = 18, layoutOrder = 3 }),
+			Line = line,
 			Actions = e("Frame", {
 				Size = UDim2.new(1, 0, 0, skin.px(Tokens.size.ctaHeight)),
 				BackgroundTransparency = 1,
 				LayoutOrder = 4,
-			}, {
-				Layout = e("UIListLayout", {
-					FillDirection = Enum.FillDirection.Horizontal,
-					SortOrder = Enum.SortOrder.LayoutOrder,
-					Padding = UDim.new(0, skin.px(8)),
-				}),
-				Try = e(PillButton, {
-					variant = "pill",
-					size = Tokens.size.ctaHeight,
-					width = 130,
-					icon = if wearing then "remove" else "checkroom",
-					iconSize = 18,
-					label = if wearing then "Take off" else "Try on",
-					active = not wearing,
-					sound = false, -- the look change plays its own sound
-					layoutOrder = 1,
-					onActivated = function()
-						props.look.toggleWear(id)
-					end,
-				}),
-				Basket = e(PillButton, {
-					variant = "pill",
-					size = Tokens.size.ctaHeight,
-					width = 140,
-					icon = if inBasket then "remove_shopping_cart" else "add_shopping_cart",
-					iconSize = 18,
-					label = if inBasket then "In basket" else "Basket",
-					sound = false, -- the look change plays its own sound
-					layoutOrder = 2,
-					onActivated = function()
-						props.look.toggleBasket(id)
-					end,
-				}),
-			}),
+			}, buttons),
 		}),
 		Arrows = if count > 1
 			then e("Frame", {
@@ -1261,6 +1337,36 @@ local function rowSub(row: StoresClient.Row): string
 	return `{source} · {style} · {row.limit}`
 end
 
+-- Reorder mode's arrows on a card: move it one place left or right.
+local function MoveArrows(props: { first: boolean, last: boolean, onMove: (by: number) -> () })
+	local skin = useSkin()
+	local function arrow(icon: string, by: number, disabled: boolean, anchor: number): any
+		return e(PillButton, {
+			variant = "round",
+			size = CONTROL,
+			icon = icon,
+			iconSize = 20,
+			disabled = disabled,
+			glowRadius = 0,
+			sound = "tab",
+			anchorPoint = Vector2.new(anchor, 0),
+			position = UDim2.new(anchor, (if anchor == 0 then 1 else -1) * skin.px(6), 0, skin.px(6)),
+			zIndex = 5,
+			onActivated = function()
+				props.onMove(by)
+			end,
+		})
+	end
+	return e("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		ZIndex = 5,
+	}, {
+		Left = arrow("chevron_left", -1, props.first, 0),
+		Right = arrow("chevron_right", 1, props.last, 1),
+	})
+end
+
 -- One row of a store page, in its style.
 local function StoreRow(props: {
 	row: StoresClient.Row,
@@ -1271,9 +1377,9 @@ local function StoreRow(props: {
 	position: number,
 	rowCount: number,
 	busy: boolean,
-	width: number, -- local px across the page (for Grid / Tall cells)
+	width: number, -- local px across the page (for Grid / Hero cells)
 	itemCard: (id: number, order: number, fill: boolean?) -> any,
-	onAct: (action: string, payload: { [string]: any }) -> (),
+	onAct: (action: string, payload: { [string]: any }, after: (() -> ())?, failed: (() -> ())?) -> (),
 	onMenu: (row: StoresClient.Row, anchor: GuiObject) -> (),
 	layoutOrder: number,
 })
@@ -1285,7 +1391,73 @@ local function StoreRow(props: {
 	local manual = row.source == "manual"
 	local isItems = row.content == "items"
 	local style = row.style
-	local shownCount = if isItems then #ids else #outfits
+	-- Reordering your own hand-filled row: its order so far (item ids, or
+	-- outfit codes). Once saved it shows until the page has it.
+	local reorder, setReorder = React.useState(nil :: { order: { any }, saving: boolean }?)
+	React.useEffect(function()
+		setReorder(function(current: any)
+			return if current and current.saving then nil else current
+		end)
+		return nil
+	end, { row } :: { any })
+
+	-- A manual outfits row's cards by code (for its order).
+	local byCode: { [string]: any } = {}
+	for _, card in row.outfits or {} do
+		byCode[card.code] = card
+	end
+	if reorder then
+		local list = if reorder.saving then table.move(reorder.order, 1, math.min(#reorder.order, math.max(1, row.limit)), 1, {}) else reorder.order
+		if isItems then
+			ids = list
+		else
+			outfits = {}
+			for _, code in list do
+				if byCode[code] then
+					table.insert(outfits, byCode[code])
+				end
+			end
+		end
+	end
+	local editingOrder = reorder ~= nil and not reorder.saving
+
+	-- What it shows, as cards to make (a key, and how to make one: at a
+	-- place, filling its cell or square, its pictures in a shape).
+	local entries: { { key: string, make: (order: number, fill: boolean?, shape: string?) -> any } } = {}
+	if isItems then
+		for _, id in ids do
+			if PlaceholderData.item(id) then
+				table.insert(entries, {
+					key = "Item" .. id,
+					make = function(order: number, fill: boolean?)
+						return props.itemCard(id, order, fill)
+					end,
+				})
+			end
+		end
+	else
+		for _, card in outfits do
+			table.insert(entries, {
+				key = "Outfit" .. card.code,
+				make = function(order: number, fill: boolean?, shape: string?)
+					local view = OutfitsScreen.sharedView(card)
+					return e(OutfitsScreen.OutfitCard, {
+						outfit = view,
+						sub = OutfitsScreen.communitySub(card),
+						ring = OutfitsScreen.wearingExactly(props.look, view.items),
+						fill = fill,
+						shape = shape,
+						layoutOrder = order,
+						onActivated = function()
+							Sounds.play("press")
+							props.nav.push({ kind = "outfit", id = { source = "Shared", index = card.code }, label = card.name })
+						end,
+					})
+				end,
+			})
+		end
+	end
+	local shownCount = #entries
 
 	-- Visitors don't see empty rows.
 	if not mine and shownCount == 0 and not loading then
@@ -1305,14 +1477,74 @@ local function StoreRow(props: {
 	local function seeAll()
 		props.nav.push({ kind = "storeSection", id = { code = props.code, section = row.id }, label = row.name })
 	end
-	-- Your own hand-filled row's first cell adds to it (not Single or Tile:
-	-- their heading has Add items).
-	local withAdd = mine and manual and style ~= "single" and style ~= "tile"
+	local function startReorder()
+		local order = {}
+		if isItems then
+			order = table.clone(row.items or {})
+		else
+			for _, card in row.outfits or {} do
+				table.insert(order, card.code)
+			end
+		end
+		setReorder({ order = order, saving = false })
+	end
+	local function moveEntry(index: number, by: number)
+		setReorder(function(current: any)
+			if not current then
+				return current
+			end
+			local order = table.clone(current.order)
+			local target = index + by
+			if target < 1 or target > #order then
+				return current
+			end
+			order[index], order[target] = order[target], order[index]
+			return { order = order, saving = false }
+		end)
+	end
+	local function saveOrder()
+		if not reorder then
+			return
+		end
+		local payload: { [string]: any } = { code = props.code, row = row.id }
+		if isItems then
+			local keys = {}
+			for _, id in reorder.order do
+				local item = PlaceholderData.item(id)
+				if item and item.targetId then
+					table.insert(keys, item.kind .. ":" .. item.targetId)
+				end
+			end
+			if #keys ~= #reorder.order then
+				Sounds.play("error")
+				return -- (an item we can't name: don't drop it)
+			end
+			payload.items = keys
+		else
+			local codes = table.clone(reorder.order)
+			-- (Outfits no longer listed stay in the row, after the rest.)
+			for _, code in row.outfitCodes or {} do
+				if not table.find(codes, code) then
+					table.insert(codes, code)
+				end
+			end
+			payload.outfits = codes
+		end
+		setReorder({ order = reorder.order, saving = true })
+		props.onAct(Network.Actions.Stores.SetRowItems, payload, nil, function()
+			setReorder(function(current: any)
+				return if current then { order = current.order, saving = false } else nil
+			end)
+		end)
+	end
+
+	local addLabel = if isItems then "Add items" else "Add outfits"
 	local heading = e(RowHeading, {
 		text = if row.name ~= "" then row.name else "Row",
 		layoutOrder = 1,
-		onSeeAll = if manual and total > shownCount and style ~= "tile" then seeAll else nil,
-		onAdd = if mine and manual and (style == "single" or style == "tile") then addHere else nil,
+		onSeeAll = if manual and total > shownCount and style ~= "tile" and not reorder then seeAll else nil,
+		onAdd = if mine and manual then addHere else nil,
+		addLabel = addLabel,
 		owner = if mine
 			then {
 				sub = rowSub(row),
@@ -1328,46 +1560,27 @@ local function StoreRow(props: {
 				onRemove = function()
 					props.onAct(Network.Actions.Stores.RemoveRow, { code = props.code, row = row.id })
 				end,
+				onReorder = if manual and total >= 2 then startReorder else nil,
+				reordering = if editingOrder or (reorder and reorder.saving)
+					then {
+						saving = reorder ~= nil and reorder.saving,
+						onCancel = function()
+							setReorder(nil)
+						end,
+						onDone = saveOrder,
+					}
+					else nil,
 			}
 			else nil,
 	})
 	local headingHeight = skin.px(if mine then OWNER_HEADING else 24)
 
-	-- Cells: the Add tile (yours), then the items or outfits.
-	local function cells(fill: boolean?, max: number?): ({ [string]: any }, number)
+	-- The first `max` entries as cards, keyed for React.
+	local function cells(fill: boolean?, shape: string?, max: number?): ({ [string]: any }, number)
 		local list: { [string]: any } = {}
-		local count = 0
-		local cap = max or math.huge
-		if withAdd then
-			count += 1
-			list.Add = e(AddTile, { label = if isItems then "Add items" else "Add outfits", layoutOrder = 0, onActivated = addHere })
-		end
-		if isItems then
-			for _, id in ids do
-				if count >= cap then
-					break
-				end
-				local card = props.itemCard(id, count + 1, fill)
-				if card then
-					count += 1
-					list["Item" .. id] = card
-				end
-			end
-		else
-			for _, card in outfits do
-				count += 1
-				local view = OutfitsScreen.sharedView(card)
-				list["Outfit" .. card.code] = e(OutfitsScreen.OutfitCard, {
-					outfit = view,
-					sub = OutfitsScreen.communitySub(card),
-					ring = OutfitsScreen.wearingExactly(props.look, view.items),
-					layoutOrder = count,
-					onActivated = function()
-						Sounds.play("press")
-						props.nav.push({ kind = "outfit", id = { source = "Shared", index = card.code }, label = card.name })
-					end,
-				})
-			end
+		local count = math.min(#entries, max or math.huge)
+		for index = 1, count do
+			list[entries[index].key] = entries[index].make(index, fill, shape)
 		end
 		return list, count
 	end
@@ -1376,11 +1589,12 @@ local function StoreRow(props: {
 	local bodyHeight: number
 	local gap = skin.px(12)
 	local note: string? = nil
-	if shownCount == 0 and not withAdd then
+	if shownCount == 0 then
 		note = if loading then "Loading…"
-			elseif manual then "Empty: use Add items"
+			elseif manual then `Empty: use {addLabel}`
 			else "Nothing matches this search yet"
 	end
+	local cardWidth = if isItems then ITEM_CARD else STORE_CARD
 	if note then
 		bodyHeight = skin.px(24)
 		body = e("TextLabel", {
@@ -1394,9 +1608,37 @@ local function StoreRow(props: {
 			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = 2,
 		})
+	elseif editingOrder then
+		-- Reordering: all of it in a line (whatever its style), each with
+		-- arrows.
+		local list: { [string]: any } = {}
+		for index, entry in entries do
+			list[entry.key] = e("Frame", {
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+				LayoutOrder = index,
+			}, {
+				Card = entry.make(index),
+				Move = e(MoveArrows, {
+					first = index == 1,
+					last = index == #entries,
+					onMove = function(by: number)
+						moveEntry(index, by)
+					end,
+				}),
+			})
+		end
+		bodyHeight = Parts.cardRowHeight(skin, cardWidth)
+		body = e(Parts.CardRow, { cardWidth = cardWidth, count = #entries, layoutOrder = 2 }, list)
 	elseif style == "single" then
 		bodyHeight = skin.px(HERO_HEIGHT)
-		body = e(Featured, { look = props.look, nav = props.nav, items = ids, layoutOrder = 2 })
+		body = e(Featured, {
+			look = props.look,
+			nav = props.nav,
+			items = if isItems then ids else nil,
+			outfits = if isItems then nil else outfits,
+			layoutOrder = 2,
+		})
 	elseif style == "tile" then
 		bodyHeight = skin.px(TILE_HEIGHT)
 		body = e("Frame", {
@@ -1434,24 +1676,12 @@ local function StoreRow(props: {
 			BackgroundTransparency = 1,
 			LayoutOrder = 2,
 		}, list)
-	elseif style == "hero" and isItems then
+	elseif style == "hero" then
 		-- 2 to 6 portrait cards across the row, no scrolling. With few, some
 		-- are wide (two units): 1–2 all wide, 3–4 the first, 5–6 none. (One
-		-- alone is as wide as half the row.)
-		local entries: { any } = {}
-		if withAdd then
-			table.insert(entries, e(AddTile, { label = "Add items", layoutOrder = 0, onActivated = addHere }))
-		end
-		for _, id in ids do
-			if #entries >= HERO_MAX then
-				break
-			end
-			local card = props.itemCard(id, #entries + 1, true)
-			if card then
-				table.insert(entries, card)
-			end
-		end
-		local count = #entries
+		-- alone is as wide as half the row.) An outfit's pictures follow its
+		-- cell: wide, or tall.
+		local count = math.min(#entries, HERO_MAX)
 		local units, wide = 0, {}
 		for index = 1, count do
 			wide[index] = count <= 2 or (count <= 4 and index == 1)
@@ -1466,25 +1696,24 @@ local function StoreRow(props: {
 				Padding = UDim.new(0, gap),
 			}),
 		}
-		for index, entry in entries do
+		for index = 1, count do
 			list["Cell" .. index] = e("Frame", {
 				Size = UDim2.new(0, math.floor(unit * (if wide[index] then 2 else 1) + (if wide[index] then gap else 0)), 1, 0),
 				BackgroundTransparency = 1,
 				LayoutOrder = index,
-			}, { Card = entry })
+			}, { Card = entries[index].make(index, true, if wide[index] then "wide" else "tall") })
 		end
 		body = e("Frame", {
 			Size = UDim2.new(1, 0, 0, bodyHeight),
 			BackgroundTransparency = 1,
 			LayoutOrder = 2,
 		}, list)
-	elseif style == "wide" and isItems then
-		local list, count = cells(true)
+	elseif style == "wide" then
+		local list, count = cells(true, "wide")
 		bodyHeight = Parts.cardRowHeight(skin, WIDE_CARD, 40, WIDE_THUMB)
 		body = e(Parts.CardRow, { cardWidth = WIDE_CARD, thumbHeight = WIDE_THUMB, count = count, layoutOrder = 2 }, list)
 	else
 		local list, count = cells()
-		local cardWidth = if isItems then ITEM_CARD else STORE_CARD
 		bodyHeight = Parts.cardRowHeight(skin, cardWidth)
 		body = e(Parts.CardRow, { cardWidth = cardWidth, count = count, layoutOrder = 2 }, list)
 	end
@@ -1538,7 +1767,7 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 		return nil
 	end, { page and page.name })
 
-	local function act(action: string, payload: { [string]: any }, after: (() -> ())?)
+	local function act(action: string, payload: { [string]: any }, after: (() -> ())?, failed: (() -> ())?)
 		if working then
 			return
 		end
@@ -1555,6 +1784,9 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 			else
 				Sounds.play("error")
 				setOwnerProblem(StoreDialogs.message(err, "store"))
+				if failed then
+					failed()
+				end
 			end
 		end)
 	end
@@ -1841,9 +2073,7 @@ local function StoreScreen(props: { nav: any, look: any, code: string })
 			busy = working ~= nil,
 			width = rowWidth,
 			itemCard = itemCard,
-			onAct = function(action: string, payload: { [string]: any })
-				act(action, payload)
-			end,
+			onAct = act,
 			onMenu = function(target: StoresClient.Row, anchor: GuiObject)
 				Sounds.play("open")
 				setMenu({ mode = "edit", row = target, anchor = anchor })

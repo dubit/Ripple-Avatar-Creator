@@ -38,6 +38,7 @@ SkinAssets.icons = {
 	edit = 88379064804243,
 	expand_less = 123341703772881,
 	expand_more = 75001266556239,
+	swap_horiz = 115185155398662,
 	flag = 118640759523298,
 	flight = 71395858478083,
 	ios_share = 90787313571068,

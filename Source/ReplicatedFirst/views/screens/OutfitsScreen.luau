@@ -220,8 +220,51 @@ local function useRobloxOutfits(active: boolean)
 	end, { active })
 end
 
--- Up to four item thumbnails in a 2×2 grid (items with pictures first).
-local function mosaic(items: { number }): { [string]: any }
+-- An outfit's item thumbnails (items with pictures first), laid out for
+-- its card's shape:
+--   "square"  up to four, 2×2
+--   "wide"    the first big on the left, up to four more 2×2 beside it
+--   "tall"    the first big on top, up to three more in a line under it
+-- Wide and tall keep their proportions (2:1, 3:4) in the middle of the
+-- thumb, whatever its size.
+local SHAPES = {
+	square = { count = 4, aspect = 1 },
+	wide = { count = 5, aspect = 2 },
+	tall = { count = 4, aspect = 0.75 },
+}
+
+-- Where each picture goes, in scale of the shape's box: { x, y, w, h }.
+local function cellsFor(shape: string, n: number): { { number } }
+	if n == 1 then
+		return { { 0.05, 0.05, 0.9, 0.9 } }
+	end
+	local boxes = {}
+	if shape == "wide" then
+		table.insert(boxes, { 0.02, 0.04, 0.46, 0.92 })
+		for index = 1, n - 1 do
+			local column, row = (index - 1) % 2, (index - 1) // 2
+			table.insert(boxes, { 0.52 + column * 0.24, 0.04 + row * 0.48, 0.22, 0.44 })
+		end
+	elseif shape == "tall" then
+		table.insert(boxes, { 0.04, 0.03, 0.92, 0.69 })
+		local rest = n - 1
+		for index = 1, rest do
+			local width = 0.92 / 3
+			local start = 0.04 + (0.92 - width * rest) / 2
+			table.insert(boxes, { start + (index - 1) * width + 0.01, 0.74, width - 0.02, 0.23 })
+		end
+	else
+		for index = 1, n do
+			local column, row = (index - 1) % 2, (index - 1) // 2
+			table.insert(boxes, { 0.04 + column * 0.48, 0.04 + row * 0.48, 0.44, 0.44 })
+		end
+	end
+	return boxes
+end
+
+local function mosaic(items: { number }, shape: string?): { [string]: any }
+	local layout = SHAPES[shape or "square"] or SHAPES.square
+	local kind = if SHAPES[shape or ""] then shape :: string else "square"
 	local ordered = {}
 	for index, id in items do
 		local item = PlaceholderData.item(id)
@@ -248,25 +291,34 @@ local function mosaic(items: { number }): { [string]: any }
 		local image = Parts.image(entry.item)
 		if image then
 			table.insert(images, image)
-			if #images == 4 then
+			if #images == layout.count then
 				break
 			end
 		end
 	end
 	local cells: { [string]: any } = {}
-	for index, image in images do
-		local column, row = (index - 1) % 2, (index - 1) // 2
-		local single = #images == 1
+	for index, box in cellsFor(kind, #images) do
 		cells["Cell" .. index] = e("ImageLabel", {
-			AnchorPoint = if single then Vector2.new(0.5, 0.5) else Vector2.zero,
-			Position = if single then UDim2.fromScale(0.5, 0.5) else UDim2.fromScale(0.04 + column * 0.48, 0.04 + row * 0.48),
-			Size = if single then UDim2.fromScale(0.9, 0.9) else UDim2.fromScale(0.44, 0.44),
+			Position = UDim2.fromScale(box[1], box[2]),
+			Size = UDim2.fromScale(box[3], box[4]),
 			BackgroundTransparency = 1,
-			Image = image,
+			Image = images[index],
 			ScaleType = Enum.ScaleType.Fit,
 		})
 	end
-	return cells
+	if kind == "square" or not next(cells) then
+		return cells
+	end
+	-- (Its own proportions, centred in the thumb.)
+	cells.Aspect = e("UIAspectRatioConstraint", { AspectRatio = layout.aspect })
+	return {
+		Box = e("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+		}, cells),
+	}
 end
 
 local function OutfitCard(props: {
@@ -274,13 +326,17 @@ local function OutfitCard(props: {
 	sub: string,
 	ring: boolean,
 	badge: any?, -- top-left marker (your avatar / from Roblox)
+	-- The thumb fills the cell above the labels (a store's wide / hero
+	-- cells), its pictures laid out for `shape` ("wide" | "tall"); else square.
+	fill: boolean?,
+	shape: string?,
 	onActivated: () -> (),
 	layoutOrder: number,
 })
 	local skin = useSkin()
 	local interaction = useInteraction()
 	local first = PlaceholderData.item(props.outfit.items[1])
-	local cells = mosaic(props.outfit.items)
+	local cells = mosaic(props.outfit.items, if props.fill then props.shape else nil)
 	return e("TextButton", {
 		Name = "OutfitCard",
 		Size = UDim2.fromScale(1, 1),
@@ -299,8 +355,9 @@ local function OutfitCard(props: {
 			hovered = interaction.hovered,
 			selected = props.ring,
 			caption = if next(cells) then nil else "outfit",
+			size = if props.fill then UDim2.new(1, 0, 1, -skin.px(40)) else nil,
 		}, {
-			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
+			Aspect = if props.fill then nil else e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
 			Mosaic = e(React.Fragment, nil, cells),
 			Badge = if props.badge
 				then e("Frame", {
