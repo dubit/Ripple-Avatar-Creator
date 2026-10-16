@@ -8,11 +8,9 @@
 	then on every subsequent update. The returned function unsubscribes.
 
 	Usage:
-		local inventory = useBoltState(Network.State.Inventory, {
+		local basket = useBoltState(Network.State.Basket, {
 			ownerId = "",
-			gold = 0,
-			treasure = 0,
-			favourIds = {},
+			items = {},
 		})
 ]]
 

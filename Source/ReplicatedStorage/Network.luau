@@ -13,19 +13,19 @@
 
 	Usage in Controllers:
 		local Network = require(ReplicatedStorage.Network)
-		self.intentEvent = Network.registerIntent("CashMachine")
+		self.intentEvent = Network.registerIntent("Basket")
 
 	Usage in Models:
 		local Network = require(ReplicatedStorage.Network)
-		self._stateProperty = Network.registerState("Inventory", defaultState)
+		self._stateProperty = Network.registerState("Basket", defaultState)
 
 	Usage in Views:
 		local Network = require(ReplicatedStorage.Network)
-		local cashMachineIntent = Network.Intent.CashMachine
-		cashMachineIntent:FireServer(Network.Actions.CashMachine.Withdraw, amount)
+		local basketIntent = Network.Intent.Basket
+		basketIntent:FireServer(Network.Actions.Basket.Add, { targetId = 123, kind = "Asset" })
 
-		local inventoryState = Network.State.Inventory
-		inventoryState:Observe(function(data) ... end)
+		local basketState = Network.State.Basket
+		basketState:Observe(function(data) ... end)
 ]]
 
 -- WaitForChild, not direct indexing: Network is required very early from
@@ -44,13 +44,10 @@ local NetworkConfig = {
 	Controllers = {
 		Avatar = { "TryOn", "TakeOff", "TakeOffMany", "WearMany", "TakeOffAll", "Undo", "Reset", "WearRobloxOutfit", "WearUserLook", "SetSkin", "RefreshOwn", "SetScale", "MoveLayer" },
 		Basket = { "Add", "Remove", "AddMany", "RemoveMany", "Clear" },
-		Bazaar = { "BuyTreasure" },
-		CashMachine = { "Withdraw", "Deposit" },
 		Community = { "Favourite", "Report", "Open", "Moderate" },
 		Favourites = { "Toggle" },
 		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected", "Follow", "Share", "ShareCreation", "WearShared" },
 		Purchase = { "Buy", "Finished", "Check" },
-		Shrine = { "Donate" },
 		Stores = { "Create", "Rename", "AddItem", "RemoveItem", "AddOutfit", "RemoveOutfit", "SetRowItems", "AddRow", "EditRow", "SetRowSearch", "RenameRow", "RemoveRow", "MoveRow", "Publish", "Unpublish", "Delete", "Favourite", "Report", "Open", "Share", "Moderate" },
 		SlashCommand = {},  -- No actions, just the intent
 		WorldOptions = { "Set", "Reset" },
@@ -76,31 +73,11 @@ local NetworkConfig = {
 			ownerId = "",
 			items = {},
 		},
-		Candles = {
-			ownerId = "",
-			modelId = "",
-			creator = "",
-			positionX = 0,
-			positionY = 0,
-			positionZ = 0,
-			createdTime = 0,
-		},
 		-- The player's favourite catalogue items (persisted; FavouritesModel),
 		-- as "Asset:123" / "Bundle:45" keys, most recent last.
 		Favourites = {
 			ownerId = "",
 			items = {},
-		},
-		Favours = {
-			ownerId = "",
-			modelId = "",
-			favourType = "",
-		},
-		Inventory = {
-			ownerId = "",
-			gold = 0,
-			treasure = 0,
-			favourIds = {},
 		},
 		-- The player's saved outfits (persisted; OutfitsModel), oldest first:
 		-- { id, name, items = { { targetId, kind, typeName, name } } }.
@@ -121,11 +98,6 @@ local NetworkConfig = {
 			ownerId = "",
 			owned = {},
 			purchase = { id = 0, state = "idle", reason = "", bought = {} },
-		},
-		Shrine = {
-			ownerId = "",
-			treasure = 0,
-			userId = "",
 		},
 		SlashCommand = {
 			ownerId = "",
@@ -170,13 +142,10 @@ local Network = NetworkBuilder.build(NetworkConfig, Bolt)
 -- Action Type Exports (manually defined for type safety)
 export type AvatarAction = "TryOn" | "TakeOff" | "TakeOffMany" | "WearMany" | "TakeOffAll" | "Undo" | "Reset" | "WearRobloxOutfit" | "WearUserLook" | "SetSkin" | "RefreshOwn" | "SetScale" | "MoveLayer"
 export type BasketAction = "Add" | "Remove" | "AddMany" | "RemoveMany" | "Clear"
-export type BazaarAction = "BuyTreasure"
-export type CashMachineAction = "Withdraw" | "Deposit"
 export type CommunityAction = "Favourite" | "Report" | "Open" | "Moderate"
 export type FavouritesAction = "Toggle"
 export type PurchaseAction = "Buy" | "Finished" | "Check"
 export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected" | "Follow" | "Share" | "ShareCreation" | "WearShared"
-export type ShrineAction = "Donate"
 export type StoresAction = "Create" | "Rename" | "AddItem" | "RemoveItem" | "AddOutfit" | "RemoveOutfit" | "SetRowItems" | "AddRow" | "EditRow" | "SetRowSearch" | "RenameRow" | "RemoveRow" | "MoveRow" | "Publish" | "Unpublish" | "Delete" | "Favourite" | "Report" | "Open" | "Share" | "Moderate"
 export type WorldOptionsAction = "Set" | "Reset"
 
@@ -204,16 +173,6 @@ export type AvatarState = {
 export type BasketState = {
 	ownerId: string,
 	items: { WornItem }, -- oldest first (`owned` is never set)
-}
-
-export type CandlesState = {
-	ownerId: string,
-	modelId: string,
-	creator: string,
-	positionX: number,
-	positionY: number,
-	positionZ: number,
-	createdTime: number,
 }
 
 export type FavouritesState = {
@@ -254,30 +213,11 @@ export type OwnershipState = {
 	purchase: PurchaseResult,
 }
 
-export type FavoursState = {
-	ownerId: string,
-	modelId: string,
-	favourType: string,
-}
-
-export type InventoryState = {
-	ownerId: string,
-	gold: number,
-	treasure: number,
-	favourIds: {string},
-}
-
 export type StoresState = {
 	ownerId: string,
 	mine: { string }, -- codes of the player's own stores (drafts too), newest first
 	favourites: { string }, -- codes of stores starred, newest first
 	visited: { [string]: number }, -- code -> day (days since 1970) last visited
-}
-
-export type ShrineState = {
-	ownerId: string,
-	treasure: number,
-	userId: string,
 }
 
 export type WorldOptionsState = {
