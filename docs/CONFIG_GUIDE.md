@@ -43,6 +43,8 @@ Config modules are created directly in Roblox Studio under ReplicatedStorage > C
 - Values like prices, rates, and thresholds change frequently
 - Rojo's `$ignoreUnknownInstances: true` on the Config folder protects these from deletion
 
+This repo's shared configs are `AvatarConfig`, `CatalogueConfig`, `StoresConfig`, `WorldOptionsConfig` and `ExperimentsConfig`. For all but `ExperimentsConfig`, a **reference copy** of the Studio module is kept in `Source/ReplicatedStorage/Config/{Name}Config.luau` (outside the Rojo tree, so it never syncs). Edit the Studio module, then keep the reference copy in step.
+
 ### Server-Side Configs (ServerScriptService)
 
 Use server-side configs when the config contains secrets (API keys, tokens) or when only server code needs the values and clients should never see them.
@@ -89,8 +91,8 @@ local config: AnalyticsConfig = {
 
     -- Absolute model values stamped as params onto (almost) every event, so any
     -- metric can be segmented by player progression in BigQuery. Each key needs a
-    -- resolver registered in services/game/AnalyticsDimensions (ships with "gold").
-    globalParams = { "gold" },
+    -- resolver registered in services/game/AnalyticsDimensions (ours are list counts).
+    globalParams = { "basket_count", "worn_count", "outfits_count", "stores_count" },
 
     heatmap = {
         enabled = false,
@@ -222,23 +224,29 @@ return config
 - Value is implementation detail (buffer sizes, internal IDs)
 - Value is only used in one module
 
-## Example: FavoursConfig
+## Example: StoresConfig
 
-### Types File (FavoursConfigTypes.luau)
+The limits on player stores. Shared, because the server enforces them and the views show them.
+
+### Types File (StoresConfigTypes.luau)
 
 ```lua
 --!strict
 --[[
-    FavoursConfigTypes
-    Type definitions for divine favours configuration
+    StoresConfigTypes
+    Type definitions for player stores: limits on stores and their rows.
+    Shared: the server validates against it, the client shows the limits.
 ]]
 
-export type FavoursTable = {
-    [string]: number,
-}
-
-export type FavoursConfig = {
-    favours: FavoursTable,
+export type StoresConfig = {
+    maxStores: number, -- stores one player can own
+    minItems: number, -- items a store needs before it can be published
+    maxItems: number, -- catalogue items in one store
+    maxOutfits: number, -- outfits in one store
+    nameLength: { min: number, max: number }, -- characters, after trimming
+    maxRows: number, -- rows on a store page (Featured and the automatic ones count)
+    rowNameLength: { min: number, max: number }, -- an owner's row name, characters
+    rowLimit: { default: number, max: number }, -- items / outfits a row shows
 }
 
 return nil
@@ -250,17 +258,19 @@ return nil
 --!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ConfigTypes = ReplicatedStorage:WaitForChild("Config"):WaitForChild("ConfigTypes")
-local FavoursConfigTypes = require(ConfigTypes:WaitForChild("FavoursConfigTypes"))
+local StoresConfigTypes = require(ConfigTypes:WaitForChild("StoresConfigTypes"))
 
-type FavoursConfig = FavoursConfigTypes.FavoursConfig
+type StoresConfig = StoresConfigTypes.StoresConfig
 
-local config: FavoursConfig = {
-    favours = {
-        Blessing = 100,
-        Fortune = 250,
-        Miracle = 500,
-        Divinity = 1000,
-    },
+local config: StoresConfig = {
+    maxStores = 3,
+    minItems = 4,
+    maxItems = 100,
+    maxOutfits = 20,
+    nameLength = { min = 3, max = 30 },
+    maxRows = 12,
+    rowNameLength = { min = 1, max = 24 },
+    rowLimit = { default = 20, max = 60 },
 }
 
 return config
@@ -271,28 +281,25 @@ return config
 ### In Controllers/Models (Server)
 
 ```lua
+-- StoresController.luau
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local FavoursConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("FavoursConfig"))
+local StoresConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("StoresConfig"))
 
--- Access config values
-local blessingCost = FavoursConfig.favours.Blessing
-
--- Iterate over config data
-for favourName, cost in FavoursConfig.favours do
-    print(favourName, cost)
+-- Validate a create request against the limit
+if #model.mine >= StoresConfig.maxStores then
+    return fail("full")
 end
 ```
 
 ### In Views (Client)
 
 ```lua
+-- StoreDialogs.luau
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local FavoursConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("FavoursConfig"))
+local StoresConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("StoresConfig"))
 
--- Display config values in UI
-for favourName, cost in FavoursConfig.favours do
-    createFavourButton(favourName, cost)
-end
+-- Show the same limit in UI copy
+local message = `You can have up to {StoresConfig.maxStores} stores`
 ```
 
 ## Best Practices
@@ -370,10 +377,10 @@ export type RewardsConfig = {
 -- Usage:
 local config: RewardsConfig = {
     tiers = {
-        Bronze = 10,
-        Silver = 25,
-        Gold = 50,
-        Platinum = 100,
+        Common = 10,
+        Rare = 25,
+        Epic = 50,
+        Legendary = 100,
     },
 }
 ```
@@ -414,7 +421,7 @@ export type LootConfig = {
 1. Open Roblox Studio
 2. Navigate to ReplicatedStorage > Config
 3. Right-click Config folder > Insert Object > ModuleScript
-4. Name it `{Name}Config` (e.g., `FavoursConfig`)
+4. Name it `{Name}Config` (e.g., `StoresConfig`)
 5. Paste the config module template
 6. Fill in your data values
 7. Test by requiring it in the command bar:
@@ -462,7 +469,7 @@ After creating a config, verify it matches the types:
 
 - Rojo only syncs ConfigTypes, not config modules
 - Edit config modules directly in Studio
-- Config modules are NOT in version control
+- Config modules are NOT synced; the `Source/ReplicatedStorage/Config/*.luau` reference copies are for review only and must be updated by hand
 
 ## Next Steps
 

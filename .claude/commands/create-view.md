@@ -25,7 +25,7 @@ This project has **two types of views**:
 - **Architecture**: Imperative scripts using CollectionService to find tagged instances
 - **State observation**: `Network.State.{Model}:Observe()` directly (no React)
 - **Interactions**: ProximityPrompt.Triggered, ClickDetector, etc.
-- **Examples**: BazaarView, CandleView, CashMachineView, ShrineView
+- **In-repo non-React views**: `PurchaseView.client.luau` (Pattern B — relays `PromptBulkPurchaseFinished` to PurchaseController), `FlightView.client.luau` / `SprintView.client.luau` (Pattern A — character movement, no server). None targets a tagged Workspace interactable yet; the nearest tag consumer is `WorldRenderer.luau`, a render-nothing React component that recolours every part tagged `"WorldFloor"`. The tagged-interactable examples below use a hypothetical `MonolithView` / tag `"Monolith"` for illustration (e.g. a diegetic monolith the player walks up to)
 
 ### Three interaction patterns (apply to both types):
 - **Pattern A**: Pure client-side feedback (particles, sounds, animations) — no server communication
@@ -52,14 +52,14 @@ Let's begin creating your view step by step!
 What should your view be named?
 
 **Requirements**:
-- Must end with "View" (e.g., ShopView, HealthBarView) — or "Screen" for a full-panel screen (e.g., StoresScreen)
-- Must use PascalCase (e.g., TreasureChestView)
+- Must end with "View" (e.g., MonolithView, WorldOptionsView) — or "Screen" for a full-panel screen (e.g., StoresScreen)
+- Must use PascalCase (e.g., AuctionLotView)
 - No underscores or special characters
 
 **Examples**:
-- ShopView — Manages shop UI interactions
-- HealthBarView — Displays player health
-- TreasureChestView — Handles treasure chest interactions
+- StoresScreen — The Stores panel pages (root list + a store)
+- FlightView — Double-jump flight (client only)
+- MonolithView — Handles a tagged in-world monolith (illustrative)
 
 ### Step 1.5: View Type
 
@@ -71,7 +71,7 @@ What should your view be named?
 | Rendered in PlayerGui overlay | Exists in Workspace |
 | React component (ModuleScript `.luau`) | Imperative LocalScript (`.client.luau`) |
 | Rendered under Hud.luau (FullPanel screen or WorldHud element) | Runs standalone via CollectionService |
-| Examples: WorldHud, screens/StoresScreen, screens/ListScreens | Examples: BazaarView, ShrineView, CandleView |
+| Examples: WorldHud, screens/StoresScreen, screens/ListScreens | Examples: PurchaseView, FlightView, SprintView (untagged); illustrative MonolithView |
 
 **View type** (HUD / Workspace):
 
@@ -95,8 +95,8 @@ Is this a **panel screen** (a page shown inside the full-screen panel, reached t
 Does this view need to send user actions to the server?
 
 **Examples that send actions**:
-- Shop UI with purchase buttons — Sends "BuyItem" to ShopController
-- Equipment menu with equip buttons — Sends "EquipItem" to InventoryController
+- Item page with a Buy button — Sends "Buy" to PurchaseController
+- Item card's basket toggle — Sends "Add" / "Remove" to BasketController
 
 **Examples that DON'T send actions**:
 - Basket badge showing the Robux total — Read-only display
@@ -147,11 +147,11 @@ I will read Network.luau to validate this state exists and show you available op
 **What is the model's scope?**
 
 **IMPORTANT**: The state format depends on the model scope AND its syncScope:
-- **User, syncScope="owner"** (default, e.g., InventoryModel) — Single state object, sent to owner only
-- **User, syncScope="all"** (e.g., PowerUpModel) — Dictionary `{ [ownerId]: State }`, broadcast to all players. Index by `tostring(localPlayer.UserId)` to get the local player's state.
-- **Server** (e.g., ShrineModel) — Single state object, broadcast to all
-- **UserEntity** (e.g., FavoursModel) — Dictionary `{ [entityId]: State }`, sent to owner only
-- **ServerEntity** (e.g., CandlesModel) — Dictionary `{ [entityId]: State }`, broadcast to all
+- **User / UserSession, syncScope="owner"** (default, e.g., BasketModel, OwnershipModel) — Single state object, sent to owner only
+- **User, syncScope="all"** (none in-repo; hypothetical PowerUpModel) — Dictionary `{ [ownerId]: State }`, broadcast to all players. Index by `tostring(localPlayer.UserId)` to get the local player's state.
+- **Server** (none in-repo; hypothetical LeaderboardModel) — Single state object, broadcast to all
+- **UserEntity** (none in-repo; hypothetical PetsModel) — Dictionary `{ [entityId]: State }`, sent to owner only
+- **ServerEntity** (none in-repo; hypothetical AuctionLotsModel) — Dictionary `{ [entityId]: State }`, broadcast to all
 
 **Model scope** (User/Server/UserEntity/ServerEntity):
 
@@ -182,7 +182,7 @@ Which animation hooks does this view need?
 | Hook | Use case |
 |---|---|
 | `useSpring` | Animate properties (Position, Size, Transparency) toward targets with spring physics |
-| `useSpringNumber` | Animate numeric displays (gold, health, score) — re-renders only when displayed digit changes |
+| `useSpringNumber` | Animate numeric displays (Robux total, counts, score) — re-renders only when displayed digit changes |
 | `useTransition` | Enter/exit animations for items appearing/disappearing, supports stagger via `trail` |
 | `useDrag` | Make an element draggable with momentum and spring-back |
 
@@ -227,9 +227,8 @@ What CollectionService tag will this view target?
 **Important**: This tag will be applied to instances in Roblox Studio. Tags are **case-sensitive**!
 
 **Examples**:
-- BazaarView — Tag: "Bazaar"
-- ShrineView — Tag: "Shrine"
-- CashMachineView — Tag: "CashMachine"
+- MonolithView — Tag: "Monolith" (illustrative)
+- WorldRenderer — Tag: "WorldFloor" (real; the floor parts it recolours)
 
 **Tag name**:
 
@@ -249,11 +248,12 @@ What type of instance will be tagged?
 Does this view need to send user actions to the server?
 
 **Examples that send actions**:
-- Bazaar with proximity prompt — Sends "BuyTreasure" to BazaarController
-- Shrine with donate prompt — Sends "Donate" to ShrineController
+- Monolith with proximity prompt (illustrative) — Sends "AddMany" to BasketController with the monolith's featured items
+- PurchaseView (real, untagged) — Sends "Finished" to PurchaseController when the purchase prompt closes
 
 **Examples that DON'T send actions**:
-- Candle spawner — Only observes state, spawns visuals
+- FlightView / SprintView — Client-only movement
+- WorldRenderer — Only applies state to tagged floor parts
 
 **Send user actions to server?** (Yes/No):
 
@@ -281,9 +281,9 @@ How many actions will this view send? (1-5):
 Does this view need to display or react to server state changes?
 
 **Examples that observe state**:
-- Bazaar — Observes Inventory to enable/disable prompt based on gold
-- CandleView — Observes Candles (ServerEntity) to spawn/remove models
-- Shrine — Observes Shrine state for donation feedback AND Inventory for afford check
+- Monolith (illustrative) — Observes Basket to hide its prompt once its items are in
+- WorldRenderer (real) — Applies WorldOptions state to every `"WorldFloor"` part
+- Auction plinth (illustrative) — Observes a ServerEntity lots dictionary to spawn/remove display models
 
 **Examples that DON'T observe state**:
 - One-shot particle effect — Just plays particles, no state to track
@@ -301,11 +301,11 @@ I will read Network.luau to validate this state exists and show you available op
 **What is the model's scope?**
 
 **IMPORTANT**: The state format depends on the model scope AND its syncScope:
-- **User, syncScope="owner"** (default, e.g., InventoryModel) — Single state object, sent to owner only
-- **User, syncScope="all"** (e.g., PowerUpModel) — Dictionary `{ [ownerId]: State }`, broadcast to all
-- **Server** (e.g., ShrineModel) — Single state object, broadcast to all
-- **UserEntity** (e.g., FavoursModel) — Dictionary `{ [entityId]: State }`, sent to owner only
-- **ServerEntity** (e.g., CandlesModel) — Dictionary `{ [entityId]: State }`, broadcast to all
+- **User / UserSession, syncScope="owner"** (default, e.g., BasketModel, OwnershipModel) — Single state object, sent to owner only
+- **User, syncScope="all"** (none in-repo; hypothetical PowerUpModel) — Dictionary `{ [ownerId]: State }`, broadcast to all
+- **Server** (none in-repo; hypothetical LeaderboardModel) — Single state object, broadcast to all
+- **UserEntity** (none in-repo; hypothetical PetsModel) — Dictionary `{ [entityId]: State }`, sent to owner only
+- **ServerEntity** (none in-repo; hypothetical AuctionLotsModel) — Dictionary `{ [entityId]: State }`, broadcast to all
 
 **Model scope** (User/Server/UserEntity/ServerEntity):
 
@@ -322,7 +322,7 @@ Does this view need immediate visual or audio feedback (particles, sounds, anima
 **Examples**:
 - Particle burst when clicking a button
 - Sound effect on proximity prompt trigger
-- Tween animation on shrine surface GUI
+- Tween animation on a monolith's SurfaceGui
 
 **Immediate feedback?** (Yes/No):
 
@@ -510,13 +510,13 @@ return e("Frame", {
 local useSpringNumber = require(hooks:WaitForChild("useSpringNumber"))
 
 -- In the component body:
-local displayGold = useSpringNumber(props.gold, {
+local displayTotal = useSpringNumber(props.robuxTotal, {
     force = 120,
     dampening = 14,
 })
 
 return e("TextLabel", {
-    Text = `Gold: {displayGold}`,
+    Text = `{displayTotal} Robux`,
 })
 ```
 
@@ -639,20 +639,20 @@ end
 **HUD Pattern B — Intent-Based:**
 ```lua
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
-local shopIntent = Network.Intent.Shop
+local basketIntent = Network.Intent.Basket
 
-local function ShopView(props: Props)
-    local function onPurchase()
-        shopIntent:FireServer(Network.Actions.Shop.BuyItem, itemId)
+local function AddToBasketButton(props: Props)
+    local function onAdd()
+        basketIntent:FireServer(Network.Actions.Basket.Add, { targetId = props.targetId, kind = props.kind })
     end
 
     return e("Frame", {
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
     }, {
-        BuyButton = e("TextButton", {
-            Text = "Buy",
-            [React.Event.Activated] = onPurchase,
+        AddButton = e("TextButton", {
+            Text = "Add to basket",
+            [React.Event.Activated] = onAdd,
         }),
     })
 end
@@ -663,12 +663,11 @@ end
 local useBoltState = require(script.Parent:WaitForChild("hooks"):WaitForChild("useBoltState"))
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
-local function HealthView(props: Props)
-    local health = useBoltState(Network.State.Health, { current = 100, max = 100 })
+local function BasketCount(props: Props)
+    local basket = useBoltState(Network.State.Basket, { ownerId = "", items = {} })
 
-    return e("Frame", {
-        Size = UDim2.new(health.current / health.max, 0, 1, 0),
-        BackgroundColor3 = Color3.fromRGB(0, 200, 0),
+    return e("TextLabel", {
+        Text = `{#basket.items} in basket`,
     })
 end
 ```
@@ -677,25 +676,25 @@ end
 ```lua
 local useBoltState = require(script.Parent:WaitForChild("hooks"):WaitForChild("useBoltState"))
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
-local shopIntent = Network.Intent.Shop
+local basketIntent = Network.Intent.Basket
 
-local function ShopView(props: Props)
-    local inventory = useBoltState(Network.State.Inventory, { gold = 0 })
+local function BasketBar(props: Props)
+    local basket = useBoltState(Network.State.Basket, { ownerId = "", items = {} })
 
-    local function onPurchase()
-        shopIntent:FireServer(Network.Actions.Shop.BuyItem, itemId)
+    local function onClear()
+        basketIntent:FireServer(Network.Actions.Basket.Clear)
     end
 
     return e("Frame", {
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
     }, {
-        GoldLabel = e("TextLabel", {
-            Text = `Gold: {inventory.gold}`,
+        CountLabel = e("TextLabel", {
+            Text = `{#basket.items} in basket`,
         }),
-        BuyButton = e("TextButton", {
-            Text = "Buy",
-            [React.Event.Activated] = onPurchase,
+        ClearButton = e("TextButton", {
+            Text = "Clear",
+            [React.Event.Activated] = onClear,
         }),
     })
 end
@@ -758,44 +757,45 @@ end
 
 **Workspace Pattern B — Intent-Based:**
 ```lua
-local function setupMachine(machine: Instance)
-    local prompt = machine:WaitForChild("ProximityPrompt") :: ProximityPrompt
+-- Illustrative: a "Monolith"-tagged model; featuredItemsOf reads its { targetId, kind } list
+local function setupMonolith(monolith: Instance)
+    local prompt = monolith:WaitForChild("ProximityPrompt") :: ProximityPrompt
 
     prompt.Triggered:Connect(function(player: Player)
         if player ~= localPlayer then
             return
         end
-        machineIntent:FireServer(Network.Actions.Machine.Activate)
+        basketIntent:FireServer(Network.Actions.Basket.AddMany, featuredItemsOf(monolith))
     end)
 end
 ```
 
-**Workspace Pattern C — State Observation (ServerEntity Spawner):**
+**Workspace Pattern C — State Observation (ServerEntity Spawner; illustrative — no ServerEntity model in-repo yet):**
 ```lua
-local candlesState = Network.State.Candles
-local candleTemplate = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Candle")
-local spawnedCandles: { [string]: Model } = {}
+local lotsState = Network.State.AuctionLots
+local lotTemplate = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("AuctionLot")
+local spawnedLots: { [string]: Model } = {}
 
-type CandlesStateDictionary = { [string]: Network.CandlesState }
+type AuctionLotsStateDictionary = { [string]: Network.AuctionLotsState }
 
-local function spawnCandle(entityId: string, data: Network.CandlesState)
-    if spawnedCandles[entityId] then
+local function spawnLot(entityId: string, data: Network.AuctionLotsState)
+    if spawnedLots[entityId] then
         return
     end
-    local candle = candleTemplate:Clone() :: Model
-    candle:PivotTo(CFrame.new(data.positionX, data.positionY, data.positionZ))
-    candle.Parent = Workspace
-    spawnedCandles[entityId] = candle
+    local lot = lotTemplate:Clone() :: Model
+    lot:PivotTo(CFrame.new(data.positionX, data.positionY, data.positionZ))
+    lot.Parent = Workspace
+    spawnedLots[entityId] = lot
 end
 
-candlesState:Observe(function(allCandles: CandlesStateDictionary)
-    for entityId, candleData in allCandles do
-        spawnCandle(entityId, candleData)
+lotsState:Observe(function(allLots: AuctionLotsStateDictionary)
+    for entityId, lotData in allLots do
+        spawnLot(entityId, lotData)
     end
-    for entityId, _ in spawnedCandles do
-        if not allCandles[entityId] then
-            spawnedCandles[entityId]:Destroy()
-            spawnedCandles[entityId] = nil
+    for entityId, _ in spawnedLots do
+        if not allLots[entityId] then
+            spawnedLots[entityId]:Destroy()
+            spawnedLots[entityId] = nil
         end
     end
 end)
@@ -803,21 +803,33 @@ end)
 
 **Workspace Pattern B+C — Combination:**
 ```lua
-local function setupBazaar(bazaar: Instance)
-    local base = bazaar:WaitForChild("Base")
+-- Illustrative: the Pattern B monolith, hiding its prompt once its items are in the basket
+local function setupMonolith(monolith: Instance)
+    local base = monolith:WaitForChild("Base")
     local proximityPrompt = base:WaitForChild("ProximityPrompt") :: ProximityPrompt
     local sound = base:WaitForChild("Sound") :: Sound
+    local featured = featuredItemsOf(monolith) -- { { targetId: number, kind: "Asset" | "Bundle" } }
 
     proximityPrompt.Triggered:Connect(function(player: Player)
         if player ~= localPlayer then
             return
         end
         sound:Play()
-        bazaarIntent:FireServer(Network.Actions.Bazaar.BuyTreasure)
+        basketIntent:FireServer(Network.Actions.Basket.AddMany, featured)
     end)
 
-    inventoryState:Observe(function(data: Network.InventoryState)
-        proximityPrompt.Enabled = data.gold >= 200
+    basketState:Observe(function(data: Network.BasketState)
+        local inBasket = {}
+        for _, item in data.items do
+            inBasket[item.kind .. ":" .. item.targetId] = true
+        end
+        local missing = false
+        for _, ref in featured do
+            if not inBasket[ref.kind .. ":" .. ref.targetId] then
+                missing = true
+            end
+        end
+        proximityPrompt.Enabled = missing
     end)
 end
 ```

@@ -71,7 +71,7 @@ This template implements a strict Model-View-Controller pattern with automatic s
 │  │                 │    │                 │    │  ├───────────────────┤  │ │
 │  │  ↓ syncState()  │    └─────────────────┘    │  │    game/          │  │ │
 │  │  ↓              │                           │  │  (auto-discover)  │  │ │
-│  │  ↓ DataStore ───┼──────────────────────────►│  │  - CandleService  │  │ │
+│  │  ↓ DataStore ───┼──────────────────────────►│  │  - HeatmapService │  │ │
 │  │                 │                           │  │  - YourService    │  │ │
 │  └────────┬────────┘                           │  └───────────────────┘  │ │
 │           │                                    └─────────────────────────┘ │
@@ -129,7 +129,7 @@ This template implements a strict Model-View-Controller pattern with automatic s
 
 ## MVC Components
 
-### Models (src/server/)
+### Models (Source/ServerScriptService/models/)
 
 Models represent authoritative game state and live exclusively on the server:
 
@@ -137,15 +137,16 @@ Models represent authoritative game state and live exclusively on the server:
 - Automatically load from DataStore when player joins (via PersistenceService)
 - Automatically persist to DataStore when state changes (via PersistenceService)
 - Broadcast state changes to clients
-- Three scopes available:
-  - **User-scoped**: One per player, persistent (e.g., inventory, progress)
-  - **Server-scoped**: Shared by all, ephemeral (e.g., match timer, shrine)
-  - **UserEntity-scoped**: Multiple per player, persistent (e.g., pets, bases, character slots)
-- Examples: InventoryModel (User), ShrineModel (Server), PetModel (UserEntity)
+- Five scopes available:
+  - **User-scoped**: One per player, persistent (e.g., `BasketModel`, `AvatarModel`, `OutfitsModel`, `StoresModel`)
+  - **UserSession-scoped**: One per player, ephemeral (e.g., `OwnershipModel`)
+  - **Server-scoped**: Shared by all, ephemeral (e.g., a match timer — none in the repo yet)
+  - **UserEntity-scoped**: Multiple per player, persistent (e.g., pets, character slots — none yet)
+  - **ServerEntity-scoped**: Multiple per server, ephemeral (e.g., auction lots — none yet)
 
-**[📖 See the Model Development Guide](docs/MODEL_GUIDE.md)** for step-by-step instructions on creating models. The guide includes a complete example using `InventoryModel`.
+**[📖 See the Model Development Guide](docs/MODEL_GUIDE.md)** for step-by-step instructions on creating models, with a complete worked example.
 
-### Controllers (src/server/)
+### Controllers (Source/ServerScriptService/controllers/)
 
 Controllers handle business logic and orchestrate Model updates:
 
@@ -153,11 +154,11 @@ Controllers handle business logic and orchestrate Model updates:
 - Validate requests (permissions, game rules, anti-cheat)
 - Update Models based on validated intents
 - Never directly manipulate Views
-- Examples: InventoryController, CombatController, ShopController
+- Examples: BasketController (basket changes), PurchaseController (Roblox purchase prompts), StoresController, AvatarController, OutfitsController
 
-**[📖 See the Controller Development Guide](docs/CONTROLLER_GUIDE.md)** for step-by-step instructions on creating controllers. The guide includes a complete example using `CashMachineController`.
+**[📖 See the Controller Development Guide](docs/CONTROLLER_GUIDE.md)** for step-by-step instructions on creating controllers, with a complete worked example.
 
-### Services (src/server/)
+### Services (Source/ServerScriptService/services/)
 
 Services are server-side modules that run automatically to handle background tasks:
 
@@ -167,11 +168,11 @@ Services are server-side modules that run automatically to handle background tas
 - Organized into two categories:
   - **Framework services** (`services/framework/`): Explicit initialization order (PersistenceService, AnalyticsService, SlashCommandService)
   - **Game services** (`services/game/`): Auto-discovered by ServiceRunner - just add an `init()` function
-- Examples: AnalyticsService (GA4 events), HeatmapService (spatial tracking), CandleService (candle expiry)
+- Examples: AnalyticsService (GA4 events), HeatmapService (spatial tracking, loop), CommunityService (shared outfits, periodic count flush), StoresService, SharedContentService
 
 **[📖 See the Services Guide](docs/SERVICES_GUIDE.md)** for step-by-step instructions on creating services. The guide includes patterns, decision trees, and complete examples.
 
-### Views (src/client/)
+### Views (Source/ReplicatedFirst/views/)
 
 Views come in two flavours depending on what they control:
 
@@ -185,15 +186,15 @@ Views come in two flavours depending on what they control:
 - Panel content is a screen from `views/screens/` (Catalogue, Item, Stores, Outfits, Basket, Wearing), chosen by `currentScreen` in `FullPanel` and navigated with `nav.push` / `nav.toggleTab` / `nav.openRoot`
 - Built from the skin kit (`Tokens.luau`, `components/`, `hooks/useSkin`) -- see [docs/VIEW_GUIDE.md](docs/VIEW_GUIDE.md)
 
-**Workspace views (3D parts / models)** -- imperative LocalScripts:
+**Workspace / non-React views** -- imperative LocalScripts:
 - Written as `.client.luau` LocalScripts in `Source/ReplicatedFirst/views/`
 - Use CollectionService to target tagged objects in Workspace
 - Observe state changes via Bolt RemoteProperty (Network.State.*) using Observe() callback
 - Observe() fires immediately with current state -- no need to request initial state
 - Provide immediate feedback for user interactions (particles, sounds, tweens)
-- Examples: CashMachineView, ShrineView, BazaarView
+- In the repo: `PurchaseView` (relays purchase-prompt results to PurchaseController), `FlightView` / `SprintView` (client-only movement). The world itself is restyled by `WorldRenderer` (a render-nothing React component that recolours every part tagged `WorldFloor`). No tagged interactables yet — the diegetic monoliths will be the first
 
-**[📖 See the View Development Guide](docs/VIEW_GUIDE.md)** for step-by-step instructions on creating views. The guide includes a complete example using `CashMachineView`.
+**[📖 See the View Development Guide](docs/VIEW_GUIDE.md)** for step-by-step instructions on creating views, with complete worked examples.
 
 ### Configs (ReplicatedStorage)
 
@@ -202,10 +203,10 @@ Configs are static game data modules that hold tunable values:
 - Separate from code - easy to adjust during playtesting
 - Two-part pattern: type definitions (synced via Rojo) + data modules (created in Studio)
 - Type definitions live in `Source/ReplicatedStorage/Config/ConfigTypes/`
-- Config modules are created manually in Studio under `ReplicatedStorage.Config`
-- Examples: item prices, spawn rates, level thresholds, damage values
+- Config modules are created manually in Studio under `ReplicatedStorage.Config` (server-only ones, like `AnalyticsConfig`, under `ServerScriptService.Config`); reference copies of the shared ones live in `Source/ReplicatedStorage/Config/` — keep the two in step
+- Examples: `AvatarConfig` (basket limits, request budgets), `CatalogueConfig`, `StoresConfig` (store/row limits), `WorldOptionsConfig` (world defaults, flight, sprint)
 
-**[📖 See the Config Development Guide](docs/CONFIG_GUIDE.md)** for step-by-step instructions on creating configs. The guide includes a complete example using `FavoursConfig`.
+**[📖 See the Config Development Guide](docs/CONFIG_GUIDE.md)** for step-by-step instructions on creating configs, with a complete worked example.
 
 ### Claude Slash Commands
 
@@ -231,7 +232,7 @@ Slash commands provide a quick way for high-rank users to execute model methods 
 - Convention-based: Any model method automatically becomes a slash command
 - Permission-controlled: Only rank 200+ users in the owning group
 - Zero configuration: Commands auto-discovered at server startup
-- Examples: `/inventorymodel addGold 100`, `/shrinemodel donate 123 50`
+- Examples: `/basketmodel clear`, `/favouritesmodel toggle Asset:123`, `/avatarcontroller Undo`
 
 **[📖 See the Slash Commands Guide](docs/SLASH_COMMANDS.md)** for complete documentation on using and customizing slash commands.
 
@@ -251,13 +252,13 @@ Bolt is a high-performance networking library included with this template that p
 ### 1. Intents, Not Commands
 
 Bolt ReliableEvents express **what the user wants to do**, not direct commands:
-- Good: `RequestPurchaseItem`, `AttemptEquipWeapon`
-- Bad: `SetInventory`, `UpdatePlayerGold`
+- Good: `TryOn`, `Buy`, `AddItem`, `Publish`
+- Bad: `SetBasket`, `UpdatePlayerItems`
 
 ### 2. Optimistic UI with Server Authority
 
 - **Immediate feedback**: Button animations, sound effects, loading states
-- **Wait for confirmation**: Inventory updates, score changes, state transitions
+- **Wait for confirmation**: Basket updates, purchases, state transitions
 - **Visual feedback**: Show loading/pending states while waiting for server
 
 ### 3. How Views Connect
@@ -269,7 +270,7 @@ Bolt ReliableEvents express **what the user wants to do**, not direct commands:
 - No CollectionService tags or Studio-authored ScreenGuis needed
 
 **Workspace views** use CollectionService tags:
-- `game:GetService("CollectionService"):GetTagged("CashMachine")` finds tagged parts/models
+- `game:GetService("CollectionService"):GetTagged("WorldFloor")` finds tagged parts/models (that's the floor tag `WorldRenderer` uses)
 - Supports both server-created and client-only objects
 
 ### 4. Separation of Concerns
@@ -410,19 +411,19 @@ Always start in this order:
 
 ### Building an MVC Feature
 
-1. **Create the Model** (`src/server/models/`)
+1. **Create the Model** (`Source/ServerScriptService/models/`)
    - Define the data structure as a ModuleScript (`.luau`)
    - Call `syncState()` after state changes to trigger persistence and state sync
    - DataStore persistence is automatic via PersistenceService
-   - Example: `PlayerInventory.luau`
+   - Example: `models/user/BasketModel.luau`
 
-2. **Create the Controller** (`src/server/controllers/`)
-   - Create a Script (`.server.luau`) that listens to Bolt ReliableEvents
+2. **Create the Controller** (`Source/ServerScriptService/controllers/`)
+   - Create a ModuleScript (`.luau`) that listens to Bolt ReliableEvents (ControllerRunner discovers it)
    - Validate incoming requests
    - Call Model methods to update state
-   - Example: `InventoryController.server.luau`
+   - Example: `BasketController.luau`
 
-3. **Create the View** (`src/client/views/`)
+3. **Create the View** (`Source/ReplicatedFirst/views/`)
 
    **For HUD / ScreenGui features** (react-luau):
    - Create a `.luau` ModuleScript that returns a React component
@@ -434,12 +435,12 @@ Always start in this order:
    - Create a `.client.luau` LocalScript
    - Use CollectionService to find tagged parts/models in Workspace
    - Observe state changes via Network.State.* and update visuals
-   - Example: `CashMachineView.client.luau`
+   - Example: a `MonolithView.client.luau` for a tagged monolith (illustrative — `PurchaseView.client.luau` is the in-repo non-React view, but it isn't tag-based)
 
 4. **Create Visual Elements in Studio** (workspace views only)
    - Build parts/models in Workspace
    - Add CollectionService tags to elements the View will target
-   - Example: Tag a part with "CashMachine"
+   - Example: Tag a model with "Monolith" (illustrative), or a floor part with "WorldFloor" (real)
 
 5. **Define Network Events** (`Network.luau`)
    - Add entries to NetworkConfig for controllers and states
@@ -454,35 +455,35 @@ These checklists provide step-by-step guidance for adding new components to your
 
 ### Adding a New Model
 
-1. ✓ **Choose scope**: User (per-player, single instance, persistent), Server (shared, ephemeral), or UserEntity (per-player, multiple instances, persistent). See [MODEL_GUIDE.md](docs/MODEL_GUIDE.md) for decision tree.
-2. ✓ **Create model file** in `src/server/models/user/`, `src/server/models/server/`, or `src/server/models/userEntities/`
+1. ✓ **Choose scope**: User (per-player, persistent), UserSession (per-player, ephemeral), Server (shared, ephemeral), UserEntity (per-player, multiple, persistent) or ServerEntity (shared, multiple, ephemeral). See [MODEL_GUIDE.md](docs/MODEL_GUIDE.md) for decision tree.
+2. ✓ **Create model file** in the matching `Source/ServerScriptService/models/` folder (`user/`, `userSession/`, `server/`, `userEntities/`, `serverEntities/`)
 3. ✓ **Extend AbstractModel** with proper inheritance pattern (`setmetatable`)
 4. ✓ **Define properties** in the exported type (using `typeof(setmetatable(...))`)
 5. ✓ **Implement `.new()`** method with AbstractModel.new("ModelName", ownerId, scope)
-6. ✓ **Implement `.get()`** method using AbstractModel.getOrCreate()
+6. ✓ **Implement `.get()`** method using AbstractModel.getOrWait() for User scope (returns nil if the player leaves first), AbstractModel.getOrCreate() otherwise
 7. ✓ **Implement `.remove()`** method using AbstractModel.removeInstance()
 8. ✓ **Add business logic methods** that modify properties and call `self:syncState()`
 9. ✓ **Register state in Network.luau**:
    - Add entry to NetworkConfig.States with default values (NetworkBuilder auto-generates Bolt RemoteProperty)
    - Add exported data type (e.g., `export type YourModelData = { ownerId: string, ... }`)
-10. ✓ **Test with ModelRunner** - Models are auto-discovered by PersistenceService
+10. ✓ **Test with ModelRunner** - Models are auto-discovered by ModelRunner
 
 **See [MODEL_GUIDE.md](docs/MODEL_GUIDE.md) for detailed examples.**
 
 ### Adding a New Controller
 
-1. ✓ **Decide what user intents** this controller will handle (e.g., "Purchase", "Equip", "Donate")
+1. ✓ **Decide what user intents** this controller will handle (e.g., "Buy", "TryOn", "Publish")
 2. ✓ **Add action constants to Network.luau** FIRST:
    - Add entry to NetworkConfig.Controllers with action list (NetworkBuilder auto-generates Intent and Actions)
    - Example: `YourFeature = { "Action1", "Action2" }` in NetworkConfig.Controllers
-3. ✓ **Create controller file** in `src/server/controllers/`
+3. ✓ **Create controller file** in `Source/ServerScriptService/controllers/`
 4. ✓ **Extend AbstractController** with proper inheritance pattern
 5. ✓ **Define action handler functions** (if using lookup table pattern)
 6. ✓ **Create ACTIONS lookup table** mapping Network.Actions constants to handler functions
 7. ✓ **Set up OnServerEvent listener** with typed action parameter (e.g., `action: string`)
-8. ✓ **Add validation logic** (amount checks, permissions, anti-cheat)
+8. ✓ **Add validation logic** (shape checks on client data, permissions, rate budgets)
 9. ✓ **Get model instance** using Model.get(ownerId)
-10. ✓ **Dispatch actions** using `self:dispatchAction(ACTIONS, action, player, model, ...)`
+10. ✓ **Dispatch actions** using `self:dispatchAction(ACTIONS, action, player, ...handlerArgs)` (in-repo controllers pass `player, player, model, raw` — the first `player` is for logging/analytics)
 11. ✓ **Test with ControllerRunner** - Controllers are auto-discovered
 
 **See [CONTROLLER_GUIDE.md](docs/CONTROLLER_GUIDE.md) for detailed examples.**
@@ -496,12 +497,12 @@ These checklists provide step-by-step guidance for adding new components to your
 #### HUD view (react-luau)
 
 1. ✓ **Verify Network.State.* exists** (if observing state)
-2. ✓ **Create view file** in `src/client/views/` as a `.luau` ModuleScript (e.g., `YourView.luau`)
+2. ✓ **Create view file** as a `.luau` ModuleScript — `Source/ReplicatedFirst/views/screens/` for a panel screen, `views/` for a world-HUD element
 3. ✓ **Write a React function component** that returns UI elements via `React.createElement`
 4. ✓ **Use `useBoltState` hook** to subscribe to Bolt state: `local data = useBoltState(Network.State.YourModel, defaultValue)`
-5. ✓ **Accept props** for data, callbacks, and modal state from HudApp
+5. ✓ **Accept props** for data and callbacks (`nav`, `look`, ...) from `FullPanel` / `WorldHud`
 6. ✓ **Fire intents** using `Network.Intent.YourFeature:FireServer(Network.Actions.YourFeature.Action, ...)`
-7. ✓ **Wire into HudApp.client.luau**: require the component and add it to the render tree
+7. ✓ **Wire it in**: route a screen in `currentScreen` in `panel/FullPanel.luau`, or render a world-HUD element in `WorldHud.luau`
 8. ✓ **Test in Play mode** (F5 in Studio)
 
 #### Workspace view (imperative)
@@ -509,7 +510,7 @@ These checklists provide step-by-step guidance for adding new components to your
 1. ✓ **Decide which pattern**: A (pure client), B (intent-based), or C (state observation). See [VIEW_GUIDE.md](docs/VIEW_GUIDE.md) for decision tree.
 2. ✓ **Verify Network.Actions constants exist** (if sending intents - Pattern B)
 3. ✓ **Verify Network.State.* exists** (if observing state - Pattern C)
-4. ✓ **Create view file** in `src/client/views/` (name it `YourView.client.luau`)
+4. ✓ **Create view file** in `Source/ReplicatedFirst/views/` (name it `YourView.client.luau`)
 5. ✓ **Use CollectionService** to find tagged instances and set up each one
 6. ✓ **Connect to user interactions** (proximity prompts, click detectors, etc.)
 7. ✓ **Use Network.Actions constants** when firing intents (e.g., `Network.Intent.YourFeature:FireServer(Network.Actions.YourFeature.Action)`)
@@ -525,7 +526,7 @@ These checklists provide step-by-step guidance for adding new components to your
 
 1. ✓ **Decide if you need a config** - Use for tunable values (prices, rates, thresholds). See [CONFIG_GUIDE.md](docs/CONFIG_GUIDE.md) for decision tree.
 2. ✓ **Create types file** in `Source/ReplicatedStorage/Config/ConfigTypes/{Name}ConfigTypes.luau`
-3. ✓ **Define table types** for any structured data (e.g., `export type PricesTable = { [string]: number }`)
+3. ✓ **Define table types** for any structured data (e.g., `nameLength: { min: number, max: number }` in `StoresConfigTypes`)
 4. ✓ **Define main config type** (e.g., `export type {Name}Config = { ... }`)
 5. ✓ **Return nil** from types file (types-only module)
 6. ✓ **Create config module in Studio** under `ReplicatedStorage.Config`
@@ -568,8 +569,8 @@ These checklists provide step-by-step guidance for adding new components to your
 5. ✓ **Update view** to use Network.Intent.YourFeature and Network.Actions constants
 
 **Naming conventions:**
-- ✅ Good: `PurchaseWeapon`, `EquipItem`, `Donate`, `BuyTreasure` (verb-based, intent-focused)
-- ❌ Bad: `SetInventory`, `Update`, `Click`, `Execute` (commands or too vague)
+- ✅ Good: `TryOn`, `Buy`, `AddItem`, `Publish` (verb-based, intent-focused)
+- ❌ Bad: `SetBasket`, `Update`, `Click`, `Execute` (commands or too vague)
 
 **See [CONTROLLER_GUIDE.md](docs/CONTROLLER_GUIDE.md) for more details on working with Network.Actions.**
 
@@ -597,7 +598,7 @@ These checklists provide step-by-step guidance for adding new components to your
        property2: type,
    }
    ```
-4. ✓ **Use in model** - Call `Network.registerState("YourModel")` in AbstractModel.new()
+4. ✓ **Nothing to do in the model** - `AbstractModel.new()` calls `Network.registerState` for you ("YourModel" → `Network.State.Your`)
 5. ✓ **Update views** to use Network.State.YourModel:Observe() when observing state
 
 **What to include in data type:**
@@ -611,203 +612,223 @@ These checklists provide step-by-step guidance for adding new components to your
 
 ## Tutorial: Adding a Complete Feature
 
-This tutorial walks through adding a complete "Weapon Shop" feature from scratch, demonstrating the full MVC flow and how Network.luau ties everything together with Bolt networking.
+This tutorial walks through adding a small "Featured Picks" feature from scratch, demonstrating the full MVC flow and how Network.luau ties everything together with Bolt networking. It builds on the real `BasketModel` (`Source/ServerScriptService/models/user/BasketModel.luau`) and adds one new Server-scoped model.
 
 ### Feature Requirements
 
-- Players can view available weapons in a shop UI
-- Each weapon has a name and gold cost
-- Players can purchase weapons with their gold
-- Purchase validates player has enough gold
-- UI shows updated gold after purchase
-- Shop broadcasts purchases to all players (for demonstration)
+- Players see a short list of featured catalogue items on a panel screen
+- Players can add a featured item to their basket
+- The server looks the item up itself, so a client can't add made-up items
+- Adding an item that's already in the basket does nothing
+- The server broadcasts the latest pick to all players (for demonstration)
 
 ### Step 1: Plan Your Architecture
 
 Before writing code, decide:
 
 **Models:**
-- Use existing `InventoryModel` (already tracks gold, will deduct cost)
-- Create new `WeaponShopModel` (Server-scoped, tracks last purchase for broadcast)
+- Use existing `BasketModel` (User-scoped, persisted; `add(items)` returns the items it actually added)
+- Create new `FeaturedModel` (Server-scoped, tracks the last pick for broadcast)
 
 **Controller:**
-- Create `WeaponShopController` to validate purchases and update models
+- Create `FeaturedController` to validate requests and update both models
 
 **Views:**
-- Create `WeaponShopView` (a full-panel screen) to show weapons and handle purchase clicks
-- (Optional) show gold in the HUD by subscribing to `Network.State.Inventory` in `Hud.luau` and passing it down as a prop
+- Create `FeaturedScreen` (a full-panel screen) to list the featured items and handle clicks
+- The basket already shows up in the HUD (`Network.State.Basket`) — nothing to add there
 
 **Network Events:**
-- Add `Network.Intent.WeaponShop` - Bolt ReliableEvent for purchase actions
-- Add `Network.Actions.WeaponShop.PurchaseWeapon` - Action constant
-- Add `Network.State.WeaponShop` - Bolt RemoteProperty to broadcast purchases to all players
-- Use existing `Network.State.Inventory` (for gold updates)
+- Add `Featured = { "AddToBasket" }` to `NetworkConfig.Controllers` → `Network.Intent.Featured` + `Network.Actions.Featured.AddToBasket`
+- Add `Featured` to `NetworkConfig.States` → `Network.State.Featured` (broadcast to all players)
+- Use existing `Network.State.Basket` (for basket updates)
 
 ### Step 2: Add Network Events
 
 **File:** `Source/ReplicatedStorage/Network.luau`
 
-Add the Bolt ReliableEvent and action constants:
+Add entries to `NetworkConfig` (alphabetically); NetworkBuilder generates the Bolt events from them:
 
 ```lua
--- Add to Network.Intent section
-Network.Intent.WeaponShop = Bolt.ReliableEvent("WeaponShopIntent")
-
--- Add to Network.Actions section
-Network.Actions.WeaponShop = {
-    PurchaseWeapon = "PurchaseWeapon",
+local NetworkConfig = {
+    Controllers = {
+        -- ...
+        Featured = { "AddToBasket" },
+        -- ...
+    },
+    States = {
+        -- ...
+        Featured = {
+            ownerId = "",
+            lastPick = "",
+            pickerName = "",
+        },
+        -- ...
+    },
 }
-
--- Add to Network.State section (for broadcasting purchases)
-Network.State.WeaponShop = Bolt.RemoteProperty({
-    ownerId = "SERVER",
-    lastPurchase = "",
-    buyerName = "",
-})
 ```
 
-### Step 3: Create the WeaponShopModel
+And the type exports:
 
-**File:** `src/server/models/server/WeaponShopModel.luau`
+```lua
+export type FeaturedAction = "AddToBasket"
+
+export type FeaturedState = {
+    ownerId: string,
+    lastPick: string,
+    pickerName: string,
+}
+```
+
+### Step 3: Create the FeaturedModel
+
+**File:** `Source/ServerScriptService/models/server/FeaturedModel.luau`
 
 ```lua
 --!strict
 
 local AbstractModel = require(script.Parent.Parent.AbstractModel)
 
-local WeaponShopModel = {}
-WeaponShopModel.__index = WeaponShopModel
-setmetatable(WeaponShopModel, AbstractModel)
+local FeaturedModel = {}
+FeaturedModel.__index = FeaturedModel
+setmetatable(FeaturedModel, AbstractModel)
 
-export type WeaponShopModel = typeof(setmetatable({} :: {
-    lastPurchase: string,
-    buyerName: string,
-}, WeaponShopModel)) & AbstractModel.AbstractModel
+export type FeaturedModel = typeof(setmetatable({} :: {
+    lastPick: string,
+    pickerName: string,
+}, FeaturedModel)) & AbstractModel.AbstractModel
 
-function WeaponShopModel.new(ownerId: string): WeaponShopModel
-    local self = AbstractModel.new("WeaponShopModel", ownerId, "Server") :: any
-    setmetatable(self, WeaponShopModel)
+function FeaturedModel.new(ownerId: string): FeaturedModel
+    local self = AbstractModel.new("FeaturedModel", ownerId, "Server") :: any
+    setmetatable(self, FeaturedModel)
 
-    self.lastPurchase = ""
-    self.buyerName = ""
+    self.lastPick = ""
+    self.pickerName = ""
 
-    return self :: WeaponShopModel
+    return self :: FeaturedModel
 end
 
-function WeaponShopModel.get(ownerId: string): WeaponShopModel
-    return AbstractModel.getOrCreate("WeaponShopModel", ownerId, function()
-        return WeaponShopModel.new(ownerId)
-    end) :: WeaponShopModel
+function FeaturedModel.get(ownerId: string): FeaturedModel
+    return AbstractModel.getOrCreate("FeaturedModel", ownerId, function()
+        return FeaturedModel.new(ownerId)
+    end) :: FeaturedModel
 end
 
-function WeaponShopModel.remove(ownerId: string): ()
-    AbstractModel.removeInstance("WeaponShopModel", ownerId)
+function FeaturedModel.remove(ownerId: string): ()
+    AbstractModel.removeInstance("FeaturedModel", ownerId)
 end
 
-function WeaponShopModel:recordPurchase(weaponName: string, playerName: string): ()
-    self.lastPurchase = weaponName
-    self.buyerName = playerName
+function FeaturedModel:recordPick(itemName: string, playerName: string): ()
+    self.lastPick = itemName
+    self.pickerName = playerName
     self:syncState()  -- Broadcast to all players (Server-scoped)
 end
 
-return WeaponShopModel
+return FeaturedModel
 ```
 
 **Key points:**
-- Server-scoped model (accessed via `WeaponShopModel.get("SERVER")`)
+- Server-scoped model (accessed via `FeaturedModel.get("SERVER")`), so `.get()` uses `getOrCreate` and never returns nil
 - `syncState()` automatically broadcasts to all players for Server-scoped models
-- Tracks last purchase for demonstration purposes
+- `AbstractModel.new()` registers the `Featured` state for you — nothing else to wire
 
-### Step 5: Create the WeaponShopController
+### Step 4: Create the FeaturedController
 
-**File:** `src/server/controllers/WeaponShopController.luau`
+**File:** `Source/ServerScriptService/controllers/FeaturedController.luau`
 
 ```lua
 --!strict
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local AbstractController = require(script.Parent.AbstractController)
-local InventoryModel = require(script.Parent.Parent.models.user.InventoryModel)
-local WeaponShopModel = require(script.Parent.Parent.models.server.WeaponShopModel)
+local BasketModel = require(script.Parent.Parent.models.user.BasketModel)
+local FeaturedModel = require(script.Parent.Parent.models.server.FeaturedModel)
+local AvatarService = require(ServerScriptService.services.game.AvatarService)
 local Network = require(ReplicatedStorage.Network)
 
-local WeaponShopController = {}
-WeaponShopController.__index = WeaponShopController
-setmetatable(WeaponShopController, AbstractController)
+local FeaturedController = {}
+FeaturedController.__index = FeaturedController
+setmetatable(FeaturedController, AbstractController)
 
-export type WeaponShopController = typeof(setmetatable({}, WeaponShopController)) & AbstractController.AbstractController
+export type FeaturedController = typeof(setmetatable({}, FeaturedController)) & AbstractController.AbstractController
 
--- Weapon catalog (in real game, might come from configuration)
-local WEAPON_PRICES = {
-    Sword = 100,
-    Bow = 150,
-    Staff = 200,
+-- Featured items (in a real feature these would live in a Studio-authored config).
+-- Replace the ids with real catalogue asset / bundle ids.
+local FEATURED: { { targetId: number, kind: "Asset" | "Bundle" } } = {
+    { targetId = 1111111, kind = "Asset" },
+    { targetId = 2222222, kind = "Asset" },
+    { targetId = 333, kind = "Bundle" },
 }
 
-local function purchaseWeapon(player: Player, inventory: any, weaponShop: any, weaponName: string)
-    local price = WEAPON_PRICES[weaponName]
+local function addToBasket(player: Player, basket: any, featured: any, index: number)
+    local ref = FEATURED[index]
 
-    if not price then
-        warn("Invalid weapon requested by " .. player.Name .. ": " .. weaponName)
+    -- The server looks the item up itself (cached); nil if it isn't a real catalogue item
+    local item = AvatarService.resolve(ref.targetId, ref.kind)
+    if not item then
+        warn("Featured item " .. index .. " didn't resolve")
         return
     end
 
-    -- Try to spend gold (returns true if successful)
-    if inventory:spendGold(price) then
-        print(player.Name .. " purchased " .. weaponName .. " for " .. price .. " gold")
-        weaponShop:recordPurchase(weaponName, player.Name)
-    else
-        print(player.Name .. " doesn't have enough gold for " .. weaponName)
+    -- add() returns the items it actually added (none if it was already there)
+    if #basket:add({ item }) == 0 then
+        print(player.Name .. " already has " .. item.name .. " in their basket")
+        return
     end
+
+    print(player.Name .. " added " .. item.name .. " to their basket")
+    featured:recordPick(item.name, player.Name)
 end
 
 local ACTIONS = {
-    [Network.Actions.WeaponShop.PurchaseWeapon] = purchaseWeapon,
+    [Network.Actions.Featured.AddToBasket] = addToBasket,
 }
 
-function WeaponShopController.new(): WeaponShopController
-    local self = AbstractController.new("WeaponShopController") :: any
-    setmetatable(self, WeaponShopController)
+function FeaturedController:executeAction(player: Player, action: Network.FeaturedAction, index: any)
+    -- Validate the client's input
+    if type(index) ~= "number" or not FEATURED[index] then
+        warn("Invalid featured index from " .. player.Name .. ": " .. tostring(index))
+        return
+    end
 
-    -- Set up event listener
-    self.intentEvent.OnServerEvent:Connect(function(
-        player: Player,
-        action: string,
-        weaponName: string
-    )
-        -- Validate weapon name
-        if type(weaponName) ~= "string" or weaponName == "" then
-            warn("Invalid weapon name from " .. player.Name)
-            return
-        end
+    -- User-scoped get() waits for the player's saved data; nil if they left first
+    local basket = BasketModel.get(tostring(player.UserId))
+    if not basket then
+        return
+    end
+    local featured = FeaturedModel.get("SERVER")
 
-        -- Get models
-        local inventory = InventoryModel.get(tostring(player.UserId))
-        local weaponShop = WeaponShopModel.get("SERVER")
-
-        -- Dispatch action
-        self:dispatchAction(ACTIONS, action, player, inventory, weaponShop, weaponName)
-    end)
-
-    return self :: WeaponShopController
+    -- The first `player` is for dispatchAction's logging/analytics; the rest go to the handler
+    self:dispatchAction(ACTIONS, action, player, player, basket, featured, index)
 end
 
-return WeaponShopController
+function FeaturedController.new(): FeaturedController
+    local self = AbstractController.new("FeaturedController") :: any
+    setmetatable(self, FeaturedController)
+
+    self.intentEvent.OnServerEvent:Connect(function(player: Player, action: Network.FeaturedAction, index: any)
+        self:executeAction(player, action, index)
+    end)
+
+    return self :: FeaturedController
+end
+
+return FeaturedController
 ```
 
 **Key points:**
 - Uses Network.Actions constants for type-safe action handling
-- Validates weapon name and price lookup
-- Gets both user-scoped (inventory) and server-scoped (shop) models
-- `spendGold()` returns boolean, so validation is built into model
-- Broadcasts purchase via weaponShop:recordPurchase()
+- Validates the index, and never trusts the client for item details (`AvatarService.resolve`, as `BasketController` does)
+- Gets both a user-scoped (basket) and a server-scoped (featured) model
+- Model-level rules (no duplicates, the `AvatarConfig.basketLimit` cap) stay in `BasketModel`
+- `executeAction` is also what slash commands call, so `/featuredcontroller AddToBasket 1` works for testing
 
-### Step 6: Create the WeaponShopView
+### Step 5: Create the FeaturedScreen
 
 Because this is a ScreenGui / HUD feature, it is built as a react-luau component and shown as a screen in the full panel.
 
-**File:** `src/client/views/screens/WeaponShopView.luau`
+**File:** `Source/ReplicatedFirst/views/screens/FeaturedScreen.luau`
 
 ```lua
 --!strict
@@ -823,38 +844,33 @@ local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
 local e = React.createElement
 
-local SHOP_DEFAULT = {
-    ownerId = "SERVER",
-    lastPurchase = "",
-    buyerName = "",
+local FEATURED_DEFAULT = {
+    ownerId = "",
+    lastPick = "",
+    pickerName = "",
 }
 
-local WEAPONS = {
-    { name = "Sword", price = 100 },
-    { name = "Bow",   price = 150 },
-    { name = "Staff", price = 200 },
-}
+local FEATURED_COUNT = 3 -- matches FEATURED in FeaturedController
 
-local function WeaponShopView()
-    local shopData = useBoltState(Network.State.WeaponShop, SHOP_DEFAULT)
+local function FeaturedScreen()
+    local featured = useBoltState(Network.State.Featured, FEATURED_DEFAULT)
 
-    -- Show broadcast when someone buys something
-    if shopData.lastPurchase ~= "" then
-        print("SHOP: " .. shopData.buyerName .. " just bought a " .. shopData.lastPurchase .. "!")
-    end
+    -- Show broadcast when someone picks something
+    React.useEffect(function()
+        if featured.lastPick ~= "" then
+            print("FEATURED: " .. featured.pickerName .. " just added " .. featured.lastPick .. "!")
+        end
+    end, { featured.lastPick, featured.pickerName })
 
     local buttons = {}
-    for i, weapon in WEAPONS do
-        buttons["Weapon" .. i] = e("TextButton", {
-            Text = weapon.name .. " (" .. weapon.price .. "g)",
+    for i = 1, FEATURED_COUNT do
+        buttons["Featured" .. i] = e("TextButton", {
+            Text = "Add featured item " .. i,
             Size = UDim2.fromOffset(200, 50),
             LayoutOrder = i,
             [React.Event.Activated] = function()
-                print("Requesting to purchase " .. weapon.name .. "...")
-                Network.Intent.WeaponShop:FireServer(
-                    Network.Actions.WeaponShop.PurchaseWeapon,
-                    weapon.name
-                )
+                print("Requesting featured item " .. i .. "...")
+                Network.Intent.Featured:FireServer(Network.Actions.Featured.AddToBasket, i)
             end,
         })
     end
@@ -870,78 +886,77 @@ local function WeaponShopView()
     }, buttons)
 end
 
-return WeaponShopView
+return FeaturedScreen
 ```
+
+(A real screen would use the skin kit — `screens/Parts.luau`'s `ItemCard` / `CardGrid`, `PillButton`, `useSkin().px` — see [docs/VIEW_GUIDE.md](docs/VIEW_GUIDE.md). Plain `TextButton`s keep the tutorial short.)
 
 **Then route it in `panel/FullPanel.luau` and navigate to it:**
 
 ```lua
 -- In panel/FullPanel.luau, add require:
-local WeaponShopView = require(screens:WaitForChild("WeaponShopView"))
+local FeaturedScreen = require(screens:WaitForChild("FeaturedScreen"))
 
 -- In currentScreen, alongside the other stack-entry kinds:
-elseif top.kind == "weaponShop" then
-    return e(WeaponShopView)
+elseif top.kind == "featured" then
+    return e(FeaturedScreen)
 
 -- From any screen (or a button) with the nav prop:
-nav.push({ kind = "weaponShop", id = 0, label = "Weapon Shop" })
+nav.push({ kind = "featured", id = 0, label = "Featured" })
 ```
 
 **Key points:**
 - React component -- no AbstractView, no CollectionService tags
-- Uses `useBoltState` hook to subscribe to shop state reactively
-- Uses Network.Actions.WeaponShop.PurchaseWeapon for type-safe intent
+- Uses `useBoltState` hook to subscribe to the featured state reactively
+- Uses Network.Actions.Featured.AddToBasket for type-safe intent
 - Fires intents via `React.Event.Activated` callback on buttons
 - Shown in the full panel via `FullPanel`'s screen routing and `useNavigation`
 - No Studio-authored ScreenGui needed -- UI is entirely code-driven
 
-### Step 7: Test Setup
+### Step 6: Test the Complete Flow
 
 No Studio UI authoring is needed for HUD views. The react-luau component renders inside the full panel, in HudApp's ScreenGui, automatically.
 
-### Step 8: Test the Complete Flow
-
 1. **Start Play mode** (F5 in Studio)
 2. **Open Output window** to see print statements
-3. **Open the Weapon Shop screen and click a weapon button** (e.g., "Sword")
+3. **Open the Featured screen and click a button** (e.g., "Add featured item 1")
 4. **Observe the flow:**
    ```
    Output:
-   Requesting to purchase Sword...
-   [Player Name] purchased Sword for 100 gold
-   SHOP: [Player Name] just bought a Sword!
+   Requesting featured item 1...
+   [Player Name] added [Item Name] to their basket
+   FEATURED: [Player Name] just added [Item Name]!
    ```
-5. **Check gold**: the player's `Network.State.Inventory` gold should decrease by 100 (shown in the HUD if you wired the optional gold prop)
-6. **Try purchasing without enough gold**: Should see "doesn't have enough gold" message
+5. **Check the basket**: the item appears in the Basket (`Network.State.Basket`), and `/state basketmodel` shows it
+6. **Click the same button again**: Should see "already has ... in their basket"
 
-### Step 9: Test with Multiple Players (Optional)
+### Step 7: Test with Multiple Players (Optional)
 
 1. **Start Server Test** (Test tab → Server in Studio)
 2. **Start 2+ player clients**
-3. **Purchase weapon on one client**
-4. **Observe broadcast on all clients**: "SHOP: PlayerName just bought a Sword!"
+3. **Add a featured item on one client**
+4. **Observe broadcast on all clients**: "FEATURED: PlayerName just added ...!"
 
 ### What You Learned
 
 ✓ **Network.Actions connects views to controllers** - Type-safe action constants prevent typos
 ✓ **Network.State with Observe() connects models to views** - Reactive state synchronization via Bolt
-✓ **Model scopes matter** - User-scoped (Inventory) vs Server-scoped (WeaponShop)
+✓ **Model scopes matter** - User-scoped (Basket) vs Server-scoped (Featured)
 ✓ **Automatic scope detection** - syncState() automatically detects scope from model type
 ✓ **MVC separation** - Views don't validate, Controllers validate, Models are authoritative
-✓ **Optimistic UI** - Immediate feedback (print) + wait for confirmation (gold update)
+✓ **Optimistic UI** - Immediate feedback (print) + wait for confirmation (basket update)
 ✓ **Complete data flow** - User click → Bolt ReliableEvent → Controller validation → Model update → Bolt RemoteProperty sync → useBoltState / Observe() → View update
 
 ### Next Steps
 
-- Add weapon inventory to InventoryModel
-- Show owned weapons in UI
-- Add weapon equipping system
-- Persist weapon purchases to DataStore (automatic via PersistenceService!)
-- Add sell-back functionality
+- Move the featured list into a Studio-authored config (see [CONFIG_GUIDE.md](docs/CONFIG_GUIDE.md))
+- Show the items with `Parts.ItemCard` and mark ones already in the basket
+- Add a per-player request budget like `BasketController`'s
+- Surface it diegetically: a tagged monolith in the world that opens the screen
 
 ### General Workflow
 
-1. Write code in your preferred editor in the `src/` directories
+1. Write code in your preferred editor in the `Source/` directories
 2. Rojo will automatically sync your code changes to Studio
 3. Create workspace objects (parts, models) directly in Studio
 4. Tag workspace objects with CollectionService for workspace views to find them
@@ -950,38 +965,48 @@ No Studio UI authoring is needed for HUD views. The react-luau component renders
 
 ### File Naming Conventions
 
-- `.server.luau` - Creates a Script (server-side) - Use for Controllers
+- `.server.luau` - Creates a Script (server-side) - Use for server entry points (`ModelRunner`, `ControllerRunner`); controllers and models are ModuleScripts
 - `.client.luau` - Creates a LocalScript (client-side) - Use for workspace views and client entry points (e.g., `HudApp.client.luau`)
-- `.luau` - Creates a ModuleScript - Use for Models, shared utilities, and react-luau HUD view components
+- `.luau` - Creates a ModuleScript - Use for Models, Controllers, Services, shared utilities, and react-luau HUD view components
 - Folders become Folder instances in Roblox
 
-### Directory Structure Recommendation
+### Directory Structure
+
+What's in `Source/` today:
 
 ```
 Source/
 ├── ServerScriptService/
-│   ├── models/              # Game state (ModuleScripts)
-│   │   ├── user/            # Per-player, persistent
-│   │   ├── server/          # Global, ephemeral
-│   │   ├── userEntities/    # Multiple per player
-│   │   └── serverEntities/  # Multiple per server
-│   ├── controllers/         # Business logic (Scripts)
-│   └── services/            # Background tasks
-│       ├── framework/       # Explicit order (Persistence, SlashCommand)
-│       └── game/            # Auto-discovered (drop in & run)
+│   ├── models/              # Game state (ModuleScripts) — ModelRunner.server.luau discovers them
+│   │   ├── user/            # Per-player, persistent: Avatar, Basket, Favourites, Outfits, Stores, WorldOptions
+│   │   ├── userSession/     # Per-player, ephemeral: Ownership
+│   │   ├── server/          # Global, ephemeral (empty for now)
+│   │   ├── userEntities/    # Multiple per player (empty for now)
+│   │   └── serverEntities/  # Multiple per server (empty for now)
+│   ├── controllers/         # Intent handlers (ModuleScripts) — ControllerRunner.server.luau discovers them
+│   │                        # Avatar, Basket, Community, Favourites, Outfits, Purchase, Stores, WorldOptions
+│   ├── services/            # Background tasks
+│   │   ├── framework/       # Explicit order: Persistence, Analytics, SlashCommand (+ Experiment)
+│   │   └── game/            # Auto-discovered: Avatar, Community, DeepLink, Heatmap, Ownership,
+│   │                        # RobloxAvatarLookup, SharedContent, Stores, AnalyticsDimensions (+ RankedPages helper)
+│   └── Config/ConfigTypes/  # Server-only config types (AnalyticsConfigTypes)
 ├── ReplicatedFirst/
-│   └── views/               # HUD (react-luau .luau) + workspace (.client.luau)
-│       ├── components/      # Shared React UI components
-│       └── hooks/           # Custom React hooks
-│           ├── useBoltState.luau
-│           ├── SpringSolver.luau
-│           ├── useSpring.luau
-│           ├── useSpringNumber.luau
-│           ├── useTransition.luau
-│           └── useDrag.luau
+│   ├── SlashCommandClient.client.luau, ChatMessageClient.client.luau
+│   └── views/
+│       ├── HudApp.client.luau   # Mounts Hud.luau into its own ScreenGui
+│       ├── Hud.luau, WorldHud.luau, WorldOptionsView.luau, WorldRenderer.luau
+│       ├── PurchaseView / FlightView / SprintView (.client.luau, non-React)
+│       ├── panel/           # FullPanel, AvatarPreview, Breadcrumbs, AnimationBar
+│       ├── screens/         # Catalogue, Item, Stores, Outfits, List (Basket/Wearing), SkinTone, ...
+│       ├── catalogue/       # Client-side catalogue / stores / outfits data access
+│       ├── components/      # Skin-kit React components (PillButton, GlassPanel, Badge, ...)
+│       └── hooks/           # useBoltState, useNavigation, useSkin, useSpring, useTransition, useDrag, ...
 └── ReplicatedStorage/
-    ├── Network.luau         # Intent/State/Actions definitions
-    └── Config/              # Static game data (prices, rates, etc.)
+    ├── Network.luau, NetworkBuilder.luau, Bolt.luau, ViewState.luau
+    ├── Utils/               # BodyScale, LaunchData, QRCode, SkinColours
+    └── Config/
+        ├── ConfigTypes/     # Avatar, Catalogue, Experiments, Stores, WorldOptions
+        └── *.luau           # Reference copies of the Studio-authored configs (keep in step)
 ```
 
 ## Testing and Development Workflow
@@ -1023,7 +1048,7 @@ Source/
 
 #### Pattern 2: Client Behavior Testing (Use Play Mode)
 ```
-1. Write client code in src/client/
+1. Write client code in Source/ReplicatedFirst/
 2. Press F5 in Studio to enter Play mode
 3. Check Output window for print statements
 4. Verify UI rendering and interactions
@@ -1061,7 +1086,7 @@ Source/
 ## Development Rules
 
 ### DO:
-- Write all code in `src/` directories and sync via Rojo
+- Write all code in `Source/` directories and sync via Rojo
 - Create all UI and Workspace objects in Studio
 - Commit code changes to git regularly
 
@@ -1099,8 +1124,8 @@ Source/
 
 1. **State property not registered**
    - Check: Is Network.State.YourModel registered in Network.luau?
-   - Fix: Add `Network.State.YourModel = Bolt.RemoteProperty(defaultState)` in Network.luau
-   - Example: Model name "Inventory" → `Network.State.Inventory`
+   - Fix: Add a `YourModel = { ownerId = "", ... }` entry to `NetworkConfig.States` in Network.luau
+   - Example: `BasketModel` → `NetworkConfig.States.Basket` → `Network.State.Basket`
 
 2. **Observe() not called**
    - Check: Are you using Network.State.YourModel:Observe(callback)?
@@ -1111,7 +1136,7 @@ Source/
 3. **Wrong ownerId filtering**
    - Check: Are you filtering by ownerId when you shouldn't?
    - Fix: Bolt handles per-player filtering automatically for User-scoped models
-   - See: BazaarView.client.luau for example (observes Inventory, no ownerId filtering needed)
+   - See: `hooks/useWorldOptions.luau` for example (observes WorldOptions with `useBoltState`, no ownerId filtering needed)
 
 4. **Model not syncing after changes**
    - Check: Do your model methods call `self:syncState()`?
@@ -1129,13 +1154,13 @@ Source/
 
 1. **Intent event not registered**
    - Check: Is Network.Intent.YourFeature registered in Network.luau?
-   - Fix: Add `Network.Intent.YourFeature = Bolt.ReliableEvent("YourFeatureIntent")` in Network.luau
+   - Fix: Add a `YourFeature = { "Action1", ... }` entry to `NetworkConfig.Controllers` in Network.luau (NetworkBuilder creates the `YourFeatureIntent` event)
    - View should use: `Network.Intent.YourFeature:FireServer(...)`
 
 2. **Network.Actions constant typo**
    - Check: Is the action string exactly matching?
    - Fix: Use Network.Actions constants in BOTH view and controller
-   - Example: `Network.Actions.WeaponShop.PurchaseWeapon`
+   - Example: `Network.Actions.Basket.Add`
 
 3. **Action not in ACTIONS table**
    - Check: Is the action constant mapped to a handler function?
@@ -1143,7 +1168,7 @@ Source/
 
 4. **Controller not initialized**
    - Check: Is ControllerRunner creating your controller?
-   - Fix: Ensure controller file is in `src/server/controllers/` and has proper structure
+   - Fix: Ensure controller file is in `Source/ServerScriptService/controllers/` and has proper structure
 
 5. **Validation failing silently**
    - Check: Look for warn() statements in Output window
@@ -1161,7 +1186,7 @@ Source/
 
 2. **Server-scoped model expecting persistence**
    - Check: Is your model using "Server" scope?
-   - Fix: Only "User" scope models are persisted to DataStore
+   - Fix: Only "User" and "UserEntity" scope models are persisted to DataStore
    - Server-scoped models are ephemeral by design
 
 3. **DataStore not enabled in Studio**
@@ -1206,7 +1231,7 @@ Source/
 
 2. **Tag name typo**
    - Check: Does TAG constant match Studio tag exactly?
-   - Fix: Tags are case-sensitive: "CashMachine" ≠ "cashmachine"
+   - Fix: Tags are case-sensitive: "WorldFloor" ≠ "worldfloor"
 
 3. **Instance not replicated to client**
    - Check: Is the tagged object in a client-visible location?
@@ -1218,9 +1243,9 @@ Source/
 
 **Common causes:**
 
-1. **Component not added to HudApp**
-   - Check: Is the component required and rendered in `HudApp.client.luau`?
-   - Fix: Add `require()` for your component and include it in the `React.createElement` tree
+1. **Component not wired into the HUD**
+   - Check: Is a screen routed in `currentScreen` in `panel/FullPanel.luau`, or a world-HUD element rendered in `WorldHud.luau`?
+   - Fix: Add `require()` for your component and include it in that tree (`HudApp.client.luau` only mounts `Hud`)
 
 2. **useBoltState returns default value**
    - Check: Is Network.State.YourModel registered in Network.luau?
@@ -1243,7 +1268,7 @@ Source/
 1. **WaitForChild on wrong path**
    - Check: Print the parent to verify it exists first
    - Fix: Verify exact path in Explorer
-   - Example: `ReplicatedStorage:WaitForChild("IntentActions")`
+   - Example: `ReplicatedStorage:WaitForChild("Config"):WaitForChild("StoresConfig")`
 
 2. **Model.get() returning nil**
    - Check: Is the model initialized?

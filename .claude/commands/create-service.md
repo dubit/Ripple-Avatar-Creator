@@ -17,7 +17,7 @@ Before generating code, I will read:
 What should your service be named?
 
 **Requirements**:
-- Must end with "Service" (e.g., CleanupService, SpawnService)
+- Must end with "Service" (e.g., AuctionService, RecommendationService)
 - Must use PascalCase
 - Should describe its responsibility
 
@@ -28,12 +28,12 @@ Which pattern does this service follow?
 **Loop-Based** (periodic tasks):
 - Runs on a timer interval
 - Use for: cleanup, scheduled updates, regeneration
-- Example: CandleService checks for expired candles every second
+- Examples: HeatmapService samples player positions every `sampleIntervalSeconds`; CommunityService flushes wear/favourite counts to DataStores every `FLUSH_SECONDS`
 
 **Event-Driven** (responds to events):
 - Reacts to system events
 - Use for: player join/leave, game lifecycle, chat commands
-- Example: SlashCommandService listens for PlayerAdded
+- Examples: DeepLinkService handles launch data on PlayerAdded; SlashCommandService (framework) listens for PlayerAdded
 
 See docs/SERVICES_GUIDE.md "Decision Tree" for pattern selection guidance.
 
@@ -52,8 +52,8 @@ See docs/SERVICES_GUIDE.md "Decision Tree" for pattern selection guidance.
 What models/configs does this service need?
 
 For each dependency:
-- Module name (e.g., CandlesModel, CandlesConfig)
-- Location hint (models/server/, Config/, etc.)
+- Module name (e.g., StoresModel, StoresConfig, SharedContentService)
+- Location hint (models/user/, Config/, services/game/, etc.)
 
 ### Step 5: Generation
 

@@ -25,8 +25,8 @@ Before generating code, I will read these stable reference files to ensure accur
 - `Source/ServerScriptService/controllers/AbstractController.luau` - Base class pattern and required methods
 - `docs/CONTROLLER_GUIDE.md` - Complete controller documentation with examples and patterns
 - `Source/ReplicatedStorage/Network.luau` - Network configuration structure and action constants
-- `Source/ServerScriptService/controllers/CashMachineController.luau` - Example of ACTIONS pattern
-- `Source/ServerScriptService/controllers/ShrineController.luau` - Example of multiple model interactions
+- `Source/ServerScriptService/controllers/BasketController.luau` - Example of ACTIONS pattern, shape-checking client refs, and a per-player request budget
+- `Source/ServerScriptService/controllers/PurchaseController.luau` - Example of multiple model interactions (OwnershipModel + BasketModel)
 
 These core files contain the exact patterns, type definitions, and conventions to follow.
 
@@ -39,15 +39,15 @@ Let's begin creating your controller step by step!
 What should your controller be named?
 
 **Requirements**:
-- Must end with "Controller" (e.g., ShopController, QuestController, InventoryController)
+- Must end with "Controller" (e.g., BasketController, StoresController, AuctionController)
 - Must use PascalCase (e.g., PlayerTradeController)
 - No underscores or special characters
 - Should describe the feature/system it manages
 
 **Examples**:
-- ✅ ShopController - Manages shop purchases and sales
-- ✅ InventoryController - Handles inventory actions (equip, drop, use)
-- ✅ QuestController - Manages quest progression
+- ✅ BasketController - Adds and removes items in the player's basket
+- ✅ StoresController - Creates, edits and publishes player stores
+- ✅ AuctionController - Places bids on UGC auction lots
 - ❌ shop_controller - Wrong case, has underscore
 - ❌ Controller - Too generic, missing feature name
 - ❌ ShopControl - Must end with "Controller"
@@ -59,8 +59,8 @@ What actions will this controller handle?
 **Action Naming Philosophy**:
 - ✅ **Describe user INTENT**, not system commands
 - ✅ Use verb-based PascalCase names
-- ✅ Examples: PurchaseWeapon, EquipItem, Donate, AcceptQuest, SellItem
-- ❌ Bad examples: SetInventory, Update, Process, Handle, Execute
+- ✅ Examples: TryOn, Buy, AddItem, Publish, Favourite
+- ❌ Bad examples: SetBasket, Update, Process, Handle, Execute
 
 **How many actions will this controller handle?** (1-10)
 
@@ -89,9 +89,9 @@ Which models will this controller interact with?
 
 **Guidance**:
 - Controllers bridge user intents to model state changes
-- **User-scoped models**: Per-player data that persists (like InventoryModel, QuestModel) - use `player.UserId`
-- **Server-scoped models**: Shared data all players see (like ShrineModel, LeaderboardModel) - use `"SERVER"`
-- **UserEntity-scoped models**: Multiple instances per player (like FavoursModel, PetsModel) - use `player.UserId` + `entityId`
+- **User-scoped models**: Per-player data that persists (like BasketModel, OutfitsModel) - use `player.UserId`
+- **Server-scoped models**: Shared data all players see (none in-repo yet; hypothetical LeaderboardModel) - use `"SERVER"`
+- **UserEntity-scoped models**: Multiple instances per player (none in-repo yet; hypothetical PetsModel) - use `player.UserId` + `entityId`
 
 **Primary model to update**:
 - Model name (must end with "Model")
@@ -127,7 +127,7 @@ For each action, what validation is needed?
 
 **Common validation checks**:
 1. **Parameter validation** - Type and range checks (e.g., amount > 0, itemId non-empty)
-2. **Resource check** - Player has enough gold/items/etc.
+2. **Resource check** - Player has room/budget (e.g. basket not full, outfit slots left)
 3. **Existence check** - Item/target exists in the game
 4. **Ownership check** - Player owns the item
 5. **Distance check** - Player is near the interaction point
@@ -146,26 +146,26 @@ I'll generate appropriate validation code for your selections.
 **Why**: The `dispatchAction` method passes the same arguments to all action handlers. If handlers have different signatures, parameters will be misaligned.
 
 **Example:**
-If Action A needs `(inventory, player)` and Action B needs `(inventory, shrine, player)`:
+If Action A needs `(outfits, player)` and Action B needs `(outfits, avatar, player)`:
 - ❌ WRONG: Different signatures cause misalignment
-- ✅ CORRECT: Both must accept `(inventory, shrine, player)` even if Action A doesn't use `shrine`
+- ✅ CORRECT: Both must accept `(outfits, avatar, player)` even if Action A doesn't use `avatar`
 
 **Pattern:**
 ```lua
 -- Both actions accept ALL parameters
-local function actionA(inventory: any, shrine: any, player: Player)
-    -- shrine is unused here, but MUST be in signature
-    inventory:doSomething()
+local function actionA(outfits: any, avatar: any, player: Player)
+    -- avatar is unused here, but MUST be in signature
+    outfits:doSomething()
 end
 
-local function actionB(inventory: any, shrine: any, player: Player)
+local function actionB(outfits: any, avatar: any, player: Player)
     -- Uses all parameters
-    shrine:doSomething()
-    inventory:doSomethingElse()
+    avatar:doSomething()
+    outfits:doSomethingElse()
 end
 
 -- dispatchAction passes same args to both
-self:dispatchAction(ACTIONS, action, player, inventory, shrine, player)
+self:dispatchAction(ACTIONS, action, player, outfits, avatar, player)
 ```
 
 I will ensure all action handlers accept the union of ALL parameters needed by ANY action in the controller.
@@ -203,7 +203,7 @@ Use Read tool on:
 - **AbstractController.luau** to understand base class API (intentEvent, dispatchAction)
 - **docs/CONTROLLER_GUIDE.md** for complete pattern examples and conventions
 - **Network.luau** to understand current configuration and alphabetical ordering
-- **Example controllers** to see patterns in practice (CashMachineController, ShrineController)
+- **Example controllers** to see patterns in practice (BasketController, PurchaseController)
 
 Key patterns to extract:
 - Inheritance setup via setmetatable
@@ -575,7 +575,7 @@ Next Steps:
 
 5. **Test Edge Cases**
    - Invalid parameters (wrong type, out of range)
-   - Missing resources (not enough gold, items, etc.)
+   - Missing resources / limits (basket full, budget used up, etc.)
    - Rapid-fire actions (test rate limiting if implemented)
    - Permission violations (if permission checks implemented)
 

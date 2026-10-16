@@ -70,9 +70,11 @@ CAC's public feature set, as a starting checklist to keep / change / cut:
 ## Decisions
 
 - **Template example features** (Candles, Shrine, Cash Machine, Bazaar, Favours,
-  gold/treasure Inventory) stay for now and are replaced as our own features land.
-  They're the worked examples in `docs/` and `.claude/commands/`, so when one is
-  removed, update those references in the same change.
+  gold/treasure Inventory) were all removed in phase 1, Task 20 (2026-10-16). The
+  guides and skills now cite our own models, controllers, services, configs and
+  views. Patterns we don't use yet (Server, UserEntity and ServerEntity scopes,
+  views on tagged Workspace interactables) are kept as short illustrative samples
+  in the guides, and the monoliths can become their first real examples.
 - **Workstream 1 kicks off from a design** made in Claude Design, which seeds the
   phase 1 spec.
 
