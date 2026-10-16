@@ -7,7 +7,7 @@ This guide explains how to create Views in this Roblox MVC project.
 Views are client-side scripts that handle visual feedback, audio, and user interactions. There are two types:
 
 - **HUD views** (ScreenGui/UI): React-luau components that render 2D interface elements. Built as ModuleScripts (`.luau`) and composed under the root component `Hud.luau`, which `HudApp.client.luau` mounts into its own ScreenGui via ReactRoblox.
-- **Workspace views** (3D parts/models): Imperative LocalScripts (`.client.luau`) that use CollectionService to find tagged instances in the 3D world and wire up interactions, tweens, and particle effects.
+- **Client scripts / workspace views**: Imperative LocalScripts (`.client.luau`) for things outside the React tree — Roblox callbacks and the player's own character (`PurchaseView`, `FlightView`, `SprintView`). A workspace view of this kind uses CollectionService to find tagged instances in the 3D world and wire up interactions, tweens, and particle effects (the planned diegetic "monoliths", see `docs/PROJECT_BRIEF.md`; no view in the repo does this yet).
 
 Both types observe game state and provide immediate user feedback while the server remains the authority for state changes.
 
@@ -22,9 +22,9 @@ HUD views are React function components. A single entry point (`HudApp.client.lu
 - **Navigation**: `hooks/useNavigation` in `Hud` decides whether the world HUD or the full-screen panel is shown, and which screen the panel displays (one panel, a breadcrumb stack of screens — no modals)
 - **View-to-view communication**: React props and callbacks (no BindableEvents)
 
-### Workspace Views (Imperative)
+### Client Scripts and Workspace Views (Imperative)
 
-Workspace views are standalone LocalScripts. Each script uses CollectionService to find tagged 3D instances and set up interactions directly:
+These are standalone LocalScripts. A workspace view uses CollectionService to find tagged 3D instances and set up interactions directly:
 
 - **State**: `Network.State.*:Observe()` callbacks update local variables
 - **Interactions**: ProximityPrompts, tweens, particle emitters
@@ -38,14 +38,14 @@ Views follow one of three patterns (or a combination). The decision tree applies
 - No server communication
 - Immediate visual/audio response only
 - Example: Particle effects, sound effects, camera shake, tween animations
+- In repo: FlightView and SprintView (client scripts moving the player's own character, which replicates on its own)
 
 ### Pattern B: Intent-Based with Server Validation
 - Send intent to Controller via Bolt ReliableEvent (`Network.Intent.*`)
 - Provide immediate feedback (particles, sounds)
 - Wait for server confirmation before showing final state
 - Examples:
-  - **Workspace**: CashMachineView (ProximityPrompt triggers withdraw intent)
-  - **Workspace**: ShrineView (ProximityPrompt triggers donate intent)
+  - **Client script**: PurchaseView (hears `MarketplaceService.PromptBulkPurchaseFinished` and passes the outcome to PurchaseController's `Finished` intent)
 
 ### Pattern C: State Observation and UI Updates
 - Observe Model state changes via Bolt RemoteProperty (`Network.State.*:Observe()`)
@@ -55,13 +55,13 @@ Views follow one of three patterns (or a combination). The decision tree applies
 - Examples:
   - **HUD**: WorldHud (renders the Basket button's Robux badge from the `look` prop that `Hud` owns — placeholder state today, a `useBoltState` subscription in `Hud` once the server models land)
   - **HUD**: the full-panel screens (`screens/*`) receive `nav` and `look` as props from `FullPanel`, never subscribing themselves
-  - **Workspace**: CandleView (observes Candles state, spawns/removes 3D models)
+  - **World**: WorldRenderer (a React component that renders nothing: it applies the World options state to Lighting and to the parts tagged `WorldFloor`)
 
 ### Pattern B + C: Combination
 - User actions (Pattern B) plus state observation (Pattern C) in the same feature
 - Examples:
-  - **Workspace**: BazaarView (ProximityPrompt sends buy intent + observes gold to toggle availability)
-  - **Workspace**: ShrineView (ProximityPrompt sends donate intent + observes inventory and shrine state)
+  - **HUD**: `hooks/useWorldOptions` + WorldOptionsView (observes `Network.State.WorldOptions`, sends `Set` / `Reset` intents)
+  - **HUD**: `screens/usePlaceholderLook` (observes Basket / Favourites / Ownership state, sends Basket, Favourites and Purchase intents)
 
 ### Decision Tree
 
@@ -90,7 +90,8 @@ Source/ReplicatedFirst/views/
 +-- HudApp.client.luau           -- Entry point: creates its own "HudApp" ScreenGui, mounts Hud into it
 +-- Hud.luau                     -- Root component: SkinRoot, navigation, look state; WorldHud or FullPanel
 +-- WorldHud.luau                -- HUD over the world: tab bar, Basket (+ Robux badge), Create / Save / Reset, World options toggle
-+-- WorldOptionsView.luau        -- World options side panel (static for now)
++-- WorldOptionsView.luau        -- World options side panel
++-- WorldRenderer.luau           -- Applies World options to Lighting + "WorldFloor"-tagged parts (renders nothing)
 +-- panel/
 |   +-- FullPanel.luau           -- The one full-screen panel: tabs, close, left column, content area, screen routing
 |   +-- Breadcrumbs.luau         -- Back button + crumb row for the navigation stack
@@ -111,7 +112,7 @@ Source/ReplicatedFirst/views/
     +-- useSpring / useTransition / ... -- Animation hooks (see "Animation")
 ```
 
-The workspace views (`BazaarView`, `CandleView`, `CashMachineView`, `ShrineView` `.client.luau`) live in the same folder and are unaffected by the HUD structure.
+The non-React client scripts (`PurchaseView`, `FlightView`, `SprintView` `.client.luau`) live in the same folder and are unaffected by the HUD structure.
 
 ### Skin kit (Ripple Avatar Creator)
 
@@ -226,13 +227,12 @@ When real server state arrives, `Hud` is where the `useBoltState` subscriptions 
 
 ```lua
 -- API: useBoltState(remoteProperty, initialValue) -> currentValue
--- Illustrative: call it in Hud (the root) and pass the value down as props.
-local inventory = useBoltState(Network.State.Inventory, {
-    ownerId = "",
-    gold = 0,
-    treasure = 0,
-    favourIds = {},
-})
+-- From screens/usePlaceholderLook.luau (called by Hud; the values go down as the `look` prop):
+local DEFAULT_BASKET = { items = {} }
+local basketState = useBoltState(Network.State.Basket, DEFAULT_BASKET :: any)
+
+-- From hooks/useWorldOptions.luau:
+local saved = useBoltState(Network.State.WorldOptions, DEFAULT)
 ```
 
 Implementation (`Source/ReplicatedFirst/views/hooks/useBoltState.luau`):
@@ -531,6 +531,8 @@ Panel = if nav.isOpen then e(FullPanel, { nav = nav, look = look, yourData = you
 
 ## Creating a Workspace View
 
+A workspace view wires up CollectionService-tagged interactables in the world — the planned diegetic "monoliths" (`docs/PROJECT_BRIEF.md`). **Illustrative — no view in this repo uses this pattern yet**; the `Monolith` tag and `Network.Intent.YourFeature` below are hypothetical.
+
 ### Step 1: Create the LocalScript
 
 Create a new LocalScript in `Source/ReplicatedFirst/views/YourView.client.luau`:
@@ -543,10 +545,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
-local YOUR_TAG = "YourTag"
+local MONOLITH_TAG = "Monolith"
 
-local function setupInstance(instance: Instance)
-    local base = instance:WaitForChild("Base")
+local function setupMonolith(monolith: Instance)
+    -- WaitForChild: Studio-authored children may not have replicated yet
+    local base = monolith:WaitForChild("Base")
     local proximityPrompt = base:WaitForChild("ProximityPrompt") :: ProximityPrompt
     local sound = base:WaitForChild("Sound") :: Sound
 
@@ -560,17 +563,13 @@ local function setupInstance(instance: Instance)
 end
 
 -- Handle existing tagged instances
-for _, instance in ipairs(CollectionService:GetTagged(YOUR_TAG)) do
-    task.spawn(function()
-        setupInstance(instance)
-    end)
+for _, monolith in CollectionService:GetTagged(MONOLITH_TAG) do
+    task.spawn(setupMonolith, monolith)
 end
 
--- Handle dynamically added instances
-CollectionService:GetInstanceAddedSignal(YOUR_TAG):Connect(function(instance: Instance)
-    task.spawn(function()
-        setupInstance(instance)
-    end)
+-- Handle instances added (or streamed in) later
+CollectionService:GetInstanceAddedSignal(MONOLITH_TAG):Connect(function(monolith: Instance)
+    task.spawn(setupMonolith, monolith)
 end)
 ```
 
@@ -589,58 +588,63 @@ Network.State.YourModel:Observe(function(data: Network.YourModelState)
 end)
 ```
 
-## Example: CashMachineView (Workspace, Pattern B)
+### Real tagged-instance code: WorldRenderer
 
-`Source/ReplicatedFirst/views/CashMachineView.client.luau` -- Intent-based with immediate feedback:
+The closest real example is `WorldRenderer.luau`, which recolours every part tagged `WorldFloor` and catches floor parts that stream in later (trimmed):
+
+```lua
+local FLOOR_TAG = "WorldFloor"
+
+-- applyFloor:
+for _, part in CollectionService:GetTagged(FLOOR_TAG) do
+	if part:IsA("BasePart") then
+		part.Color = colour
+		-- ... top-face Texture for the pattern
+	end
+end
+
+-- In the component's effect, once the game has loaded:
+local added = CollectionService:GetInstanceAddedSignal(FLOOR_TAG):Connect(function()
+	applyFloor(latest.current.options, latest.current.config, original.current :: Snapshot)
+end)
+return function()
+	added:Disconnect()
+end
+```
+
+## Example: PurchaseView (Client Script, Pattern B)
+
+`Source/ReplicatedFirst/views/PurchaseView.client.luau` -- Roblox tells only the client how a bulk purchase prompt ended, so this passes the outcome on to PurchaseController (trimmed):
 
 ```lua
 --!strict
 
-local CollectionService = game:GetService("CollectionService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
-local cashMachineIntent = Network.Intent.CashMachine
-
-local CASH_MACHINE_TAG = "CashMachine"
-local WITHDRAW_AMOUNT = 50
-
-local function setupCashMachine(cashMachine: Instance)
-    local base = cashMachine:WaitForChild("Base")
-
-    local proximityPrompt = base:WaitForChild("ProximityPrompt") :: ProximityPrompt
-    local particleEmitter = base:WaitForChild("ParticleEmitter") :: ParticleEmitter
-    local sound = base:WaitForChild("Sound") :: Sound
-
-    proximityPrompt.Triggered:Connect(function(player: Player)
-        local particleCount = particleEmitter.Rate
-        particleEmitter:Emit(particleCount)
-
-        sound:Play()
-
-        cashMachineIntent:FireServer(Network.Actions.CashMachine.Withdraw, WITHDRAW_AMOUNT)
-    end)
-end
-
-for _, cashMachine in ipairs(CollectionService:GetTagged(CASH_MACHINE_TAG)) do
-    task.spawn(function()
-        setupCashMachine(cashMachine)
-    end)
-end
-
-CollectionService:GetInstanceAddedSignal(CASH_MACHINE_TAG):Connect(function(cashMachine: Instance)
-    task.spawn(function()
-        setupCashMachine(cashMachine)
-    end)
+MarketplaceService.PromptBulkPurchaseFinished:Connect(function(...: any)
+	-- (player, status, results); tolerate the player being left off.
+	local status, results = ...
+	if typeof(status) == "Instance" then
+		status, results = select(2, ...)
+	end
+	local items = {}
+	local robuxSpent = nil
+	-- ... copy each result's id / type / status into items
+	Network.Intent.Purchase:FireServer(Network.Actions.Purchase.Finished, {
+		status = nameOf(status),
+		robuxSpent = robuxSpent,
+		items = items,
+	})
 end)
 ```
 
 Key points:
-- Uses CollectionService directly to find tagged "CashMachine" instances
-- Provides immediate visual/audio feedback (particles + sound)
+- `WaitForChild("Network")`: ReplicatedFirst scripts run before ReplicatedStorage is guaranteed to have replicated
 - Sends intent to server via Bolt ReliableEvent
-- Handles both existing and dynamically added instances via `task.spawn`
+- The server doesn't take the client's word: PurchaseController re-checks ownership with Roblox, and the statuses only pick the wording of the result (which arrives back through `Network.State.Ownership`)
 
 ## Example: WorldHud Basket Badge (HUD, Pattern C)
 
@@ -693,30 +697,25 @@ Key points:
 
 ## Model Scopes and State Formats
 
-The state format you receive in `Observe()` depends on the model's scope. Entity-scoped models send aggregated dictionaries, not single objects.
+The state format you receive in `Observe()` depends on the model's scope. Entity-scoped models send aggregated dictionaries, not single objects. Only User and UserSession models exist in the repo today; the other samples are illustrative.
 
-### User Scope (e.g., InventoryModel)
+### User Scope (e.g., BasketModel)
 
-One instance per player. Default (`syncScope = "owner"`): state sent only to the owner as a single object.
+One instance per player. Default (`syncScope = "owner"`): state sent only to the owner as a single object. UserSession models (OwnershipModel: per player, not saved) arrive the same way.
 
 ```lua
--- In a workspace view (direct Observe):
-inventoryState:Observe(function(data: Network.InventoryState)
-    -- data is a single object: { ownerId, gold, treasure, ... }
-    updateLabels(data.gold, data.treasure)
+-- Direct Observe (in a client script):
+Network.State.Basket:Observe(function(data: Network.BasketState)
+    -- data is a single object: { ownerId, items = { { targetId, kind, typeName, name } } }
+    updateCount(#data.items)
 end)
 
--- In a HUD view (via useBoltState in Hud, the root component):
-local inventory = useBoltState(Network.State.Inventory, {
-    ownerId = "",
-    gold = 0,
-    treasure = 0,
-    favourIds = {},
-})
--- inventory.gold, inventory.treasure available as React state
+-- In the HUD (screens/usePlaceholderLook.luau, called by Hud):
+local basketState = useBoltState(Network.State.Basket, DEFAULT_BASKET :: any)
+-- basketState.items available as React state
 ```
 
-Broadcast variant (`syncScope = "all"`): all users' states aggregated into a dictionary keyed by `ownerId`:
+Broadcast variant (`syncScope = "all"`): all users' states aggregated into a dictionary keyed by `ownerId` (illustrative — `PowerUp` is hypothetical):
 
 ```lua
 local Players = game:GetService("Players")
@@ -733,59 +732,59 @@ powerUpState:Observe(function(allPowerUps: PowerUpStateDictionary)
 end)
 ```
 
-### Server Scope (e.g., ShrineModel)
+### Server Scope (illustrative)
 
-One instance for the entire server. State broadcast to all players as a single object.
+One instance for the entire server. State broadcast to all players as a single object (`Leaderboard` is hypothetical):
 
 ```lua
-shrineState:Observe(function(data: Network.ShrineState)
-    -- data is a single object: { ownerId = "SERVER", treasure, ... }
-    updateShrineDisplay(data.treasure)
+leaderboardState:Observe(function(data: Network.LeaderboardState)
+    -- data is a single object: { ownerId = "SERVER", entries, ... }
+    updateBoard(data.entries)
 end)
 ```
 
-### UserEntity Scope (e.g., FavoursModel)
+### UserEntity Scope (illustrative)
 
-Multiple instances per player (one per entity). State sent only to the owner as a dictionary keyed by entityId.
+Multiple instances per player (one per entity). State sent only to the owner as a dictionary keyed by entityId (`Pets` is hypothetical):
 
 ```lua
--- In a workspace view (direct Observe):
-type FavoursStateDictionary = { [string]: Network.FavoursState }
+type PetsStateDictionary = { [string]: Network.PetsState }
 
-favoursState:Observe(function(allFavours: FavoursStateDictionary)
+-- Direct Observe:
+petsState:Observe(function(allPets: PetsStateDictionary)
     clearList()
-    for entityId, favourData in allFavours do
-        addToList(entityId, favourData.favourType)
+    for entityId, pet in allPets do
+        addToList(entityId, pet.name)
     end
 end)
 
--- In a HUD view (via useBoltState in Hud, the root component):
-local favoursDict = useBoltState(Network.State.Favours, {} :: { [string]: Network.FavoursState })
--- favoursDict is the full dictionary, passed down as props to the screen that lists it
+-- In the HUD (useBoltState, from the hook Hud calls):
+local petsDict = useBoltState(Network.State.Pets, {} :: PetsStateDictionary)
+-- petsDict is the full dictionary, passed down as props to the screen that lists it
 ```
 
-### ServerEntity Scope (e.g., CandlesModel)
+### ServerEntity Scope (illustrative)
 
-Multiple instances shared across all players (one per entity). State broadcast to all players as a dictionary keyed by entityId. Must handle both spawning new entities and removing entities no longer in state.
+Multiple instances shared across all players (one per entity). State broadcast to all players as a dictionary keyed by entityId. A view rendering them into the world must handle both spawning new entities and removing entities no longer in state. **Illustrative — no view in this repo uses this pattern yet** (`Drop` is a hypothetical timed world object):
 
 ```lua
-type CandlesStateDictionary = { [string]: Network.CandlesState }
+type DropsStateDictionary = { [string]: Network.DropState }
 
-local spawnedCandles: { [string]: Model } = {}
+local spawned: { [string]: Model } = {}
 
-candlesState:Observe(function(allCandles: CandlesStateDictionary)
+dropsState:Observe(function(allDrops: DropsStateDictionary)
     -- Spawn new entities
-    for entityId, candleData in allCandles do
-        if not spawnedCandles[entityId] then
-            spawnCandle(entityId, candleData)
+    for entityId, drop in allDrops do
+        if not spawned[entityId] then
+            spawned[entityId] = spawnDrop(entityId, drop)
         end
     end
 
     -- Remove entities no longer in state
-    for entityId, model in spawnedCandles do
-        if not allCandles[entityId] then
+    for entityId, model in spawned do
+        if not allDrops[entityId] then
             model:Destroy()
-            spawnedCandles[entityId] = nil
+            spawned[entityId] = nil
         end
     end
 end)
@@ -795,17 +794,18 @@ end)
 
 | Scope | syncScope | Recipients | State Format | Example |
 |-------|-----------|-----------|--------------|---------|
-| User | `"owner"` (default) | Owner only | Single object | InventoryModel |
-| User | `"all"` (override) | All players | `{ [ownerId]: State }` | PowerUpModel |
-| Server | `"all"` (default) | All players | Single object | ShrineModel |
-| UserEntity | `"owner"` (default) | Owner only | `{ [entityId]: State }` | FavoursModel |
-| ServerEntity | `"all"` (default) | All players | `{ [entityId]: State }` | CandlesModel |
+| User | `"owner"` (default) | Owner only | Single object | BasketModel |
+| UserSession | `"owner"` (default) | Owner only | Single object | OwnershipModel |
+| User | `"all"` (override) | All players | `{ [ownerId]: State }` | (hypothetical PowerUpModel) |
+| Server | `"all"` (default) | All players | Single object | (hypothetical LeaderboardModel) |
+| UserEntity | `"owner"` (default) | Owner only | `{ [entityId]: State }` | (hypothetical PetsModel) |
+| ServerEntity | `"all"` (default) | All players | `{ [entityId]: State }` | (hypothetical DropsModel) |
 
 **Common Mistakes with Entity-Scoped Models**:
 
 1. **Treating entity-scoped state as a single object** -- If your Observe callback receives data but nothing happens, check if the model is entity-scoped and iterate the dictionary.
 
-2. **Only handling additions, not removals** -- When entities can be removed (like candles expiring), your view must compare the incoming state with tracked entities and remove any that are no longer present. Either:
+2. **Only handling additions, not removals** -- When entities can be removed (like timed world objects expiring), your view must compare the incoming state with tracked entities and remove any that are no longer present. Either:
    - Clear and rebuild: `clearList()` then iterate (simple but may cause flicker)
    - Diff and update: Spawn new, remove missing (smoother for visual objects)
 
@@ -820,11 +820,11 @@ end)
 - **Skin kit**: `Source/ReplicatedFirst/views/Tokens.luau`, `SkinAssets.luau`, `SkinContext.luau`
 - **Shared UI components**: `Source/ReplicatedFirst/views/components/`
 - **React hooks**: `Source/ReplicatedFirst/views/hooks/`
-- **Workspace views**: `Source/ReplicatedFirst/views/*.client.luau` (BazaarView, CandleView, CashMachineView, ShrineView)
+- **Client scripts**: `Source/ReplicatedFirst/views/*.client.luau` (PurchaseView, FlightView, SprintView; workspace views go here too)
 - **Network module**: `ReplicatedStorage/Network.luau`
 
 The naming convention distinguishes the two types:
-- `.client.luau` -- LocalScript (workspace view or HudApp entry point)
+- `.client.luau` -- LocalScript (client script / workspace view, or the HudApp entry point)
 - `.luau` -- ModuleScript (React component or hook)
 
 ## Best Practices
@@ -932,11 +932,11 @@ Use `task.spawn` to avoid one failing setup blocking the rest.
 
 ```
 1. User clicks button (View provides immediate feedback)
-2. View fires intent: Network.Intent.CashMachine:FireServer(Network.Actions.CashMachine.Withdraw, 50)
+2. View fires intent: Network.Intent.Basket:FireServer(Network.Actions.Basket.Add, { targetId = 123, kind = "Asset" })
 3. Controller validates and updates Model
 4. Model broadcasts state change to clients via Bolt RemoteProperty
 5. HUD: useBoltState triggers React re-render with new state
-   Workspace: Observe() callback fires with new state
+   Client script: Observe() callback fires with new state
 6. View updates display with authoritative server state
 ```
 

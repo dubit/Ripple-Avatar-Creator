@@ -11,7 +11,7 @@ Controllers handle user intents from the client, validate them, and update Model
 All controllers in this project follow an inheritance pattern based on `AbstractController`:
 
 - **AbstractController**: Base class that registers Bolt ReliableEvents via Network module and provides inheritance infrastructure
-- **Concrete Controllers** (e.g., CashMachineController): Extend AbstractController and implement specific business logic
+- **Concrete Controllers** (e.g., BasketController): Extend AbstractController and implement specific business logic
 
 ## Data Flow
 
@@ -39,14 +39,14 @@ All controllers inherit from `AbstractController.luau` which provides:
 **Automatic Bolt Event Registration:**
 - All controller intents are eagerly registered in Network.luau at module load
 - AbstractController.new() gets the pre-existing event via Network.registerIntent()
-- Takes the controller name (e.g., "CashMachineController")
+- Takes the controller name (e.g., "BasketController")
 - Removes "Controller" suffix
 - Returns the Bolt ReliableEvent from Network.Intent.[Name]
-- Example: `CashMachineController` → `Network.Intent.CashMachine`
+- Example: `BasketController` → `Network.Intent.Basket`
 
 ### Step 2: Create Your Controller File
 
-Create a new ModuleScript in `src/server/controllers/YourController.luau`:
+Create a new ModuleScript in `Source/ServerScriptService/controllers/YourController.luau`:
 
 ```lua
 --!strict
@@ -163,40 +163,43 @@ print("ControllerRunner: All " .. #controllers .. " controller(s) initialized")
 
 **Important**: You don't need to manually add your controller to ControllerRunner. Simply create it in the `controllers/` folder and it will be automatically discovered and initialized.
 
-## Example: CashMachineController
+## Example: BasketController
 
-The `CashMachineController.luau` file demonstrates a complete controller implementation:
+`Source/ServerScriptService/controllers/BasketController.luau` is a small, complete controller:
 
 ### Features:
 - Extends AbstractController
-- Handles two actions: "Withdraw" and "Deposit"
-- Validates action type and amount
-- Updates InventoryModel based on validated requests
-- Prints transaction results for debugging
+- Handles five actions through an ACTIONS table: `Add`, `Remove`, `AddMany`, `RemoveMany`, `Clear`
+- Shape-checks every item the client sends (`refOf`: a positive integer `targetId`, `kind` of `"Asset"` or `"Bundle"`), then looks it up server-side (`AvatarService.resolve`) so a client can't put made-up items or names in the basket
+- Caps list sizes (`AvatarConfig.maxWearMany`) and rate-limits each player (`AvatarConfig.basketBudget` requests per window; over budget, requests are dropped)
+- Updates BasketModel (User scope) with the validated items
+
+Other real controllers worth reading: `StoresController` (budgeted edits, and a Bolt RemoteFunction that answers `{ ok, error }` so the UI can say why a request failed), `PurchaseController` (MarketplaceService bulk purchases, one at a time per player), `WorldOptionsController` (clamping and snapping numeric settings to config).
 
 ### Bolt ReliableEvent Used:
-- Name: `Network.Intent.CashMachine`
+- Name: `Network.Intent.Basket`
 - Registered eagerly in Network.luau at module load
 - Accessed via `Network.registerIntent()` in AbstractController
 
 ### Event Signature:
 ```lua
-Network.Intent.CashMachine:FireServer(action: string, amount: number)
+Network.Intent.Basket:FireServer(action: Network.BasketAction, raw: any)
+-- e.g. Network.Intent.Basket:FireServer(Network.Actions.Basket.Add, { targetId = 123, kind = "Asset" })
 ```
 
 ### Testing:
 Client-side code can immediately use the Bolt event:
-- Network.Intent.CashMachine is available as soon as Network module loads
+- Network.Intent.Basket is available as soon as Network module loads
 - No need to wait for event creation - it's eagerly registered
 - Fire requests with proper parameters
 - Test different actions
 
 ## File Locations
 
-- **AbstractController**: `src/server/controllers/AbstractController.luau`
-- **Your Controllers**: `src/server/controllers/YourController.luau`
-- **Controller Initialization**: `src/server/controllers/ControllerRunner.server.luau`
-- **Network Module**: `src/ReplicatedStorage/Network.luau` (Bolt events eagerly registered here)
+- **AbstractController**: `Source/ServerScriptService/controllers/AbstractController.luau`
+- **Your Controllers**: `Source/ServerScriptService/controllers/YourController.luau`
+- **Controller Initialization**: `Source/ServerScriptService/controllers/ControllerRunner.server.luau`
+- **Network Module**: `Source/ReplicatedStorage/Network.luau` (Bolt events eagerly registered here)
 
 ## Client-Side Usage
 
@@ -222,7 +225,7 @@ Network.Intent.YourController:FireServer(Network.Actions.YourFeature.ActionName,
 Use intent-based names that describe what the player is **trying** to do, not commands:
 
 ✅ **Good**: `RequestPurchase`, `AttemptEquip`, `TryCollect`
-❌ **Bad**: `SetInventory`, `UpdateGold`, `ChangeWeapon`
+❌ **Bad**: `SetBasketItems`, `UpdatePoints`, `ChangeWeapon`
 
 ### 2. Always Validate
 
@@ -253,13 +256,15 @@ end
 Controllers enforce server authority:
 
 ```lua
--- ❌ DON'T: Trust client-provided data directly
-local goldAmount = clientProvidedAmount
+-- ❌ DON'T: Save what the client sent (it could carry any name, type or price)
+model:add({ raw })
 
--- ✅ DO: Validate and use server-authoritative data
-if type(clientProvidedAmount) == "number" and clientProvidedAmount > 0 then
-	local model = InventoryModel.get()
-	model:addGold(clientProvidedAmount)
+-- ✅ DO: Shape-check it, then build the record from server-side data
+-- (BasketController's add: refOf checks the shape, resolveAll looks each
+-- item up with AvatarService.resolve and keeps only real catalogue items)
+local ref = refOf(raw)
+if ref then
+	model:add(resolveAll(model, { ref }))
 end
 ```
 
@@ -300,14 +305,13 @@ Use action-based patterns for multiple operations with Network.Actions constants
 
 ```lua
 -- Use Network.Actions constants instead of magic strings
-if action == Network.Actions.CashMachine.Withdraw then
-	model:addGold(amount)
-elseif action == Network.Actions.CashMachine.Deposit then
-	model:addGold(-amount)
-elseif action == Network.Actions.CashMachine.Transfer then
-	model:transferGold(targetPlayer, amount)
+-- (illustrative if/else form; WorldOptionsController does this via an ACTIONS table)
+if action == Network.Actions.WorldOptions.Set then
+	model:apply(validate(raw))
+elseif action == Network.Actions.WorldOptions.Reset then
+	model:reset()
 else
-	warn("Unknown action: " .. action)
+	warn("Unknown action: " .. tostring(action))
 end
 ```
 
@@ -315,109 +319,60 @@ end
 
 ### Parameter Order Rule
 
-**ALL action handler functions MUST follow this parameter order:**
+**Action handlers receive exactly the arguments that follow the first `player` in the `dispatchAction` call.** AbstractController.dispatchAction is:
 
-```lua
-local function actionName({allModels}, {allActionParams}, player: Player)
-    -- player is ALWAYS the last parameter
-end
-```
-
-**Why**: AbstractController.dispatchAction signature is:
 ```lua
 function AbstractController:dispatchAction(actionsTable, action, player, ...)
+    local actionFunc = actionsTable[action]
+    -- (warns and returns if action isn't a key)
     actionFunc(...)  -- passes everything AFTER player
 end
 ```
 
-When you call:
+The repo's convention is **player first, then the model, then the client's payload**. BasketController:
+
 ```lua
-self:dispatchAction(ACTIONS, action, player, inventory, amount, player)
-                                      ^       ^^^^^^^^^^^^^^^^^^^^^^^^^
-                                      |              These become ...
-                                  For validation    Passed to action handler
+local function add(player: Player, model: any, raw: any) ... end
+local function clear(player: Player, model: any, _raw: any) ... end
+
+self:dispatchAction(ACTIONS, action, player, player, model, raw)
+                                     ^       ^^^^^^^^^^^^^^^^^^
+                                     |        These become ...
+                                 For validation   Passed to action handler
+                                 and analytics
 ```
 
-The variadic `...` is `inventory, amount, player` - so action handlers receive these in order.
+The variadic `...` is `player, model, raw` - so every handler receives these in that order. A controller whose handlers don't need the player can leave it out of `...` (WorldOptionsController: `set(model, raw)`, dispatched with `self:dispatchAction(ACTIONS, action, player, model, raw)`).
 
 ### Parameter Alignment Rule
 
-**ALL action handlers in a controller MUST accept the SAME parameters in the SAME order.**
+**ALL action handlers in a controller MUST accept the SAME parameters in the SAME positions.** One `dispatchAction` call serves every action, so a handler can't get a different argument list from its neighbours.
 
-❌ **WRONG** (misaligned parameters):
+Extra trailing arguments are harmless in Luau (a handler that declares fewer parameters just ignores them), so the union of everything any action needs goes on the end. AvatarController passes an `extra` that only some actions use:
+
 ```lua
--- Action A expects 2 params
-local function withdraw(inventory: any, player: Player)
-    -- ...
-end
+local function tryOn(player: Player, model: any, raw: any) ... end                    -- ignores extra
+local function moveLayer(player: Player, model: any, raw: any, direction: any) ... end -- uses it
 
--- Action B expects 3 params
-local function transfer(inventory: any, targetId: string, player: Player)
-    -- ...
-end
-
--- dispatchAction call tries to be clever
-self:dispatchAction(ACTIONS, action, player, inventory, player)  -- Wrong!
+self:dispatchAction(ACTIONS, action, player, player, model, raw, extra)
 ```
 
-**Problem**: You can't pass different parameters to different actions with one dispatchAction call.
-
-✅ **CORRECT** (aligned parameters):
+❌ **WRONG** (a handler with its parameters in a different order):
 ```lua
--- ALL actions accept ALL parameters (union of all params)
-local function withdraw(inventory: any, targetId: string, player: Player)
-    -- targetId is unused here, but MUST be in signature for alignment
-    inventory:addGold(amount)
+-- Every other handler is (player, model, raw); this one isn't
+local function clear(model: any, player: Player)
+    model:clear()  -- model is actually the Player here: runtime error
 end
 
-local function transfer(inventory: any, targetId: string, player: Player)
-    -- Uses all parameters
-    inventory:transferGold(targetId, amount)
-end
-
--- Single dispatchAction call works for both
-self:dispatchAction(ACTIONS, action, player, inventory, targetId, player)
+self:dispatchAction(ACTIONS, action, player, player, model, raw)
 ```
 
-### Example from ThiefController
-
-**Initial (BROKEN) implementation:**
+✅ **CORRECT** (same positions; unused ones are prefixed `_`):
 ```lua
--- Different signatures = misalignment
-local function stealFromBazaar(player: Player, inventory: any)
-    inventory:addTreasure(1)
+local function clear(player: Player, model: any, _raw: any)
+    trackAll(player, "basket_remove", model.items)
+    model:clear()
 end
-
-local function stealFromShrine(player: Player, inventory: any, shrine: any)
-    shrine:removeTreasure(1)
-    inventory:addTreasure(1)
-end
-
--- This call passes: inventory, shrine, player
-self:dispatchAction(ACTIONS, action, player, inventory, shrine, player)
-
--- stealFromBazaar receives: inventory, shrine
--- So inventory → first param, shrine → second param (assigned to player!)
--- Result: player.Name is nil because it's actually the shrine object
-```
-
-**Fixed implementation:**
-```lua
--- Same signature = proper alignment
-local function stealFromBazaar(inventory: any, shrine: any, player: Player)
-    -- shrine is unused, but MUST be present for alignment
-    inventory:addTreasure(1)
-    print(player.Name .. " stole from bazaar")  -- Now works!
-end
-
-local function stealFromShrine(inventory: any, shrine: any, player: Player)
-    shrine:removeTreasure(1)
-    inventory:addTreasure(1)
-    print(player.Name .. " stole from shrine")
-end
-
--- All handlers receive: inventory, shrine, player
-self:dispatchAction(ACTIONS, action, player, inventory, shrine, player)
 ```
 
 ### Quick Reference
@@ -425,11 +380,10 @@ self:dispatchAction(ACTIONS, action, player, inventory, shrine, player)
 **Action Handler Signature Pattern:**
 ```lua
 local function actionName(
-    model1: any,      -- All models used by ANY action
-    model2: any,      -- (even if this action doesn't use them)
-    param1: string,   -- All parameters from ANY action
-    param2: number,   -- (even if this action doesn't use them)
-    player: Player    -- ALWAYS last
+    player: Player,   -- first (the repo's convention)
+    model: any,       -- the model(s) the controller fetched
+    raw: any,         -- the client's payload (validate it!)
+    extra: any        -- optional trailing args only some actions use
 )
 ```
 
@@ -438,20 +392,36 @@ local function actionName(
 self:dispatchAction(
     ACTIONS,          -- Action lookup table
     action,           -- Action string (from Network.Actions)
-    player,           -- For validation in dispatchAction
-    model1,           -- All models
-    model2,
-    param1,           -- All parameters
-    param2,
-    player            -- MUST appear twice! Once for validation, once for handlers
+    player,           -- For validation warnings + analytics in dispatchAction
+    player,           -- Handler args start here
+    model,
+    raw,
+    extra
 )
 ```
 
 **Remember:**
-1. Player is ALWAYS the last parameter in action handlers
-2. All action handlers accept the SAME parameters (union of all needs)
-3. Player appears TWICE in dispatchAction call
-4. Unused parameters are okay - alignment is critical
+1. Handlers receive everything after the first `player`
+2. All action handlers take the SAME parameters in the SAME positions
+3. Player usually appears TWICE in the dispatchAction call (once for dispatch, once for handlers)
+4. Unused parameters are okay (prefix them `_`) - alignment is critical
+
+### The `executeAction` method
+
+Every controller in the repo puts its per-request work (rate limit, fetch the model, dispatch) in a `Controller:executeAction(player, action, ...)` method, and `OnServerEvent` just calls it. `SlashCommandService` calls the same method for slash commands, so keep that shape:
+
+```lua
+function BasketController:executeAction(player: Player, action: Network.BasketAction, raw: any)
+	if not allowed(player) then
+		return
+	end
+	local model = BasketModel.get(tostring(player.UserId))
+	if not model then
+		return
+	end
+	self:dispatchAction(ACTIONS, action, player, player, model, raw)
+end
+```
 
 ## Common Patterns
 
@@ -485,121 +455,125 @@ Use this decision tree to determine which pattern to use for your controller:
 - Easier to test individual actions
 - Better for code reviews
 
-**Examples:**
+**Examples (real controllers in this repo):**
 
 **Single action:**
-- ShopController → handles "PurchaseItem" only
-- DonateController → handles "Donate" only
+- FavouritesController → `Toggle` only (still dispatched through a one-entry ACTIONS table, so it gets validation and analytics for free)
 
-**2-3 actions (either pattern works):**
-- EquipmentController → "Equip", "Unequip" (2 actions)
-- TradeController → "SendOffer", "Accept", "Decline" (3 actions)
+**2-3 actions:**
+- WorldOptionsController → `Set`, `Reset` (2 actions)
+- PurchaseController → `Buy`, `Finished`, `Check` (3 actions)
 
 **4+ actions (use lookup table):**
-- InventoryController → "Equip", "Unequip", "Drop", "Use", "Stack", "Split" (6 actions)
-- SocialController → "SendFriendRequest", "AcceptRequest", "Block", "Unblock", "Mute" (5 actions)
+- BasketController → `Add`, `Remove`, `AddMany`, `RemoveMany`, `Clear` (5 actions)
+- AvatarController (13 actions), StoresController (21 actions)
+
+Every controller in the repo uses the lookup table pattern, whatever its size; the other two patterns below are illustrative.
 
 ### Single Action Controller
 
-For controllers with one primary action:
+For controllers with one primary action (illustrative — `YourModel` and `performAction` are hypothetical):
 
 ```lua
-function PurchaseController.new(): PurchaseController
-	local self = AbstractController.new("PurchaseController") :: any
-	setmetatable(self, PurchaseController)
+function YourController.new(): YourController
+	local self = AbstractController.new("YourController") :: any
+	setmetatable(self, YourController)
 
-	self.intentEvent.OnServerEvent:Connect(function(player: Player, itemId: string)
-		-- Validate and process purchase
-		local shop = ShopModel.get(tostring(player.UserId))
-		shop:purchaseItem(player, itemId)
+	self.intentEvent.OnServerEvent:Connect(function(player: Player, raw: any)
+		-- Validate raw, then process
+		local model = YourModel.get(tostring(player.UserId))
+		if not model then return end
+		model:performAction(raw)
 	end)
 
-	return self :: PurchaseController
+	return self :: YourController
 end
 ```
 
 ### Multi-Action Controller (if/else pattern)
 
-For controllers handling multiple related actions:
+For controllers handling a few related actions (illustrative — `EquipmentController` and its model are hypothetical):
 
 ```lua
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Network = require(ReplicatedStorage.Network)
 
-function InventoryController.new(): InventoryController
-	local self = AbstractController.new("InventoryController") :: any
-	setmetatable(self, InventoryController)
+function EquipmentController.new(): EquipmentController
+	local self = AbstractController.new("EquipmentController") :: any
+	setmetatable(self, EquipmentController)
 
-	-- Use Network.Actions constants for type-safe validation
-	self.intentEvent.OnServerEvent:Connect(function(player: Player, action: string, ...)
-		local inventory = InventoryModel.get(tostring(player.UserId))
+	self.intentEvent.OnServerEvent:Connect(function(player: Player, action: string, raw: any)
+		local equipment = EquipmentModel.get(tostring(player.UserId))
+		if not equipment then return end
 
 		-- Use Network.Actions constants
-		if action == Network.Actions.Inventory.Equip then
-			local itemId = ...
-			inventory:equipItem(player, itemId)
-		elseif action == Network.Actions.Inventory.Unequip then
-			local slot = ...
-			inventory:unequipSlot(player, slot)
-		elseif action == Network.Actions.Inventory.Drop then
-			local itemId = ...
-			inventory:dropItem(player, itemId)
+		if action == Network.Actions.Equipment.Equip then
+			equipment:equip(raw)
+		elseif action == Network.Actions.Equipment.Unequip then
+			equipment:unequip(raw)
 		else
-			warn("Unknown action: " .. action)
+			warn("Unknown action: " .. tostring(action))
 		end
 	end)
 
-	return self :: InventoryController
+	return self :: EquipmentController
 end
 ```
 
 ### Multi-Action Controller (lookup table pattern - RECOMMENDED)
 
-For better scalability and maintainability, use named functions with a lookup table and Network.Actions constants:
+For better scalability and maintainability, use named functions with a lookup table and Network.Actions constants. From `BasketController.luau` (trimmed — the full file adds the `refOf` / `resolveAll` validation helpers, the `allowed` rate limit and analytics):
 
 ```lua
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local AbstractController = require(script.Parent.AbstractController)
-local InventoryModel = require(script.Parent.Parent.models.user.InventoryModel)
+local BasketModel = require(script.Parent.Parent.models.user.BasketModel)
 local Network = require(ReplicatedStorage.Network)
 
--- Define action functions at module level
-local function withdraw(inventory: any, amount: number, player: Player)
-	inventory:addGold(amount)
-	print(player.Name .. " withdrew " .. amount .. " gold. New balance: " .. inventory.gold)
+-- Define action functions at module level: (player, model, raw)
+local function add(player: Player, model: any, raw: any)
+	local ref = refOf(raw)
+	if ref then
+		trackAll(player, "basket_add", model:add(resolveAll(model, { ref })))
+	end
 end
 
-local function deposit(inventory: any, amount: number, player: Player)
-	inventory:addGold(-amount)
-	print(player.Name .. " deposited " .. amount .. " gold. New balance: " .. inventory.gold)
+local function clear(player: Player, model: any, _raw: any)
+	trackAll(player, "basket_remove", model.items)
+	model:clear()
 end
 
 -- Map Network.Actions constants to functions
 local ACTIONS = {
-	[Network.Actions.CashMachine.Withdraw] = withdraw,
-	[Network.Actions.CashMachine.Deposit] = deposit,
+	[Network.Actions.Basket.Add] = add,
+	[Network.Actions.Basket.Remove] = remove,
+	[Network.Actions.Basket.AddMany] = addMany,
+	[Network.Actions.Basket.RemoveMany] = removeMany,
+	[Network.Actions.Basket.Clear] = clear,
 }
 
-function CashMachineController.new(): CashMachineController
-	local self = AbstractController.new("CashMachineController") :: any
-	setmetatable(self, CashMachineController)
+function BasketController:executeAction(player: Player, action: Network.BasketAction, raw: any)
+	if not allowed(player) then
+		return
+	end
+	local model = BasketModel.get(tostring(player.UserId))
+	if not model then
+		return
+	end
+	-- Dispatch action (AbstractController handles validation and execution)
+	self:dispatchAction(ACTIONS, action, player, player, model, raw)
+end
 
-	-- Use Network.Actions constants for validation
-	self.intentEvent.OnServerEvent:Connect(function(player: Player, action: string, amount: number)
-		-- Validate amount
-		if amount <= 0 then
-			warn("Invalid amount received from " .. player.Name .. ": " .. tostring(amount))
-			return
-		end
+function BasketController.new(): BasketController
+	local self = AbstractController.new("BasketController") :: any
+	setmetatable(self, BasketController)
 
-		-- Get model
-		local inventory = InventoryModel.get(tostring(player.UserId))
-
-		-- Dispatch action (AbstractController handles validation and execution)
-		self:dispatchAction(ACTIONS, action, player, inventory, amount, player)
+	self.intentEvent.OnServerEvent:Connect(function(player: Player, action: Network.BasketAction, raw: any)
+		self:executeAction(player, action, raw)
 	end)
 
-	return self :: CashMachineController
+	return self :: BasketController
 end
 ```
 
@@ -645,53 +619,20 @@ end)
 
 ## Testing Your Controller
 
-### Server-Side Test (Optional)
+Test in a Studio Play session (stop and start Play after each edit, since Play runs the source synced when it started):
 
-Create a test script in `src/server/` for unit testing:
+- **Drive it for real:** use the UI that sends the intent, or a slash command (`/basketcontroller Clear`; see `docs/SLASH_COMMANDS.md`), then read the model's state from the client with `Network.State.<Name>:Get()`.
+- **Test pure logic on the server:** keep validation and list-editing in plain functions (as `StoresService.setRowItems` and `BasketController`'s `refOf` are) so a Server-side command-bar script can `require` the module and call them with made-up input.
+- **Watch the Output** for the controller's warnings and the `controller_action` analytics events (with `AnalyticsConfig.debug = true`).
 
-```lua
---!strict
-
-local YourController = require(script.Parent.controllers.YourController)
-
-print("\n--- Testing YourController ---")
-
--- Initialize controller
-local controller = YourController.new()
-
--- Verify RemoteEvent was created
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local events = ReplicatedStorage:WaitForChild("Events")
-local intent = events:WaitForChild("YourIntent")
-
-print("✓ RemoteEvent created successfully: " .. intent.Name)
-```
-
-### Client-Side Test
-
-Create a LocalScript in `src/client/` to test the full flow:
-
-```lua
---!strict
-
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local eventsFolder = ReplicatedStorage:WaitForChild("Events")
-local yourIntent = eventsFolder:WaitForChild("YourIntent") :: RemoteEvent
-
--- Test after delay
-task.wait(2)
-
-print("Testing YourController...")
-yourIntent:FireServer("TestAction", testData)
-```
+Firing an intent from the command bar doesn't reach the real controller: command-bar `require`s get their own copies of `Network` and Bolt.
 
 ## Adding New Controllers
 
-1. **Create** `YourController.luau` in `src/server/controllers/`
+1. **Create** `YourController.luau` in `Source/ServerScriptService/controllers/`
 2. **Extend** AbstractController using the pattern above
 3. **That's it!** ControllerRunner will automatically discover and initialize your controller
-4. **Test** from client using the auto-created RemoteEvent
+4. **Test** it in Play (see Testing Your Controller)
 
 **Note**: Controllers are auto-discovered by ControllerRunner. Any ModuleScript in the `controllers/` folder (except those starting with "Abstract") will be automatically required and initialized.
 
@@ -699,43 +640,51 @@ yourIntent:FireServer("TestAction", testData)
 
 ### Controllers → Models
 - Controllers **update** models
-- Controllers **never read** from models for validation (use server authority)
+- Controllers may **read** a model to validate (e.g. `BasketController` checks `model:indexOf`), but only the model changes its own state
 - Models handle their own state and broadcasting
 
 ### Model Scopes
 
-Controllers interact with three types of model scopes:
+Controllers interact with these model scopes (see AbstractModel's `ModelScope`). Only User and UserSession models exist in the repo today; the Server and UserEntity samples below are illustrative.
 
 **1. User-Scoped Models** (`models/user/`)
-- One instance per player (e.g., InventoryModel, QuestModel)
+- One instance per player (e.g., BasketModel, AvatarModel, OutfitsModel, StoresModel)
 - Identified by `ownerId` (player.UserId as string)
 - Data persists per player
 - `.get()` returns `T?` (nullable) — yields until DataStore data is loaded, returns `nil` if player leaves first
 
 ```lua
 -- Always nil-check: returns nil if player left before their data finished loading
-local inventory = InventoryModel.get(tostring(player.UserId))
-if not inventory then return end
+local model = BasketModel.get(tostring(player.UserId))
+if not model then
+	return
+end
 ```
 
-**2. Server-Scoped Models** (`models/server/`)
-- Single shared instance for all players (e.g., ShrineModel, LeaderboardModel)
+**2. UserSession-Scoped Models** (`models/userSession/`)
+- One instance per player, **not** saved (e.g., OwnershipModel: what the player owns and their latest purchase, checked afresh each session)
+- Fetched the same way: `OwnershipModel.get(tostring(player.UserId))` (PurchaseController nil-checks it too)
+
+**3. Server-Scoped Models** (`models/server/`)
+- Single shared instance for all players (none in the repo yet; e.g. a hypothetical LeaderboardModel)
 - Identified by `"SERVER"` constant
 - Data shared across all players
 
 ```lua
-local shrine = ShrineModel.get("SERVER")
+-- Illustrative: LeaderboardModel is hypothetical
+local leaderboard = LeaderboardModel.get("SERVER")
 ```
 
-**3. UserEntity-Scoped Models** (`models/userEntities/`)
-- Multiple instances per player (e.g., FavoursModel, PetsModel)
+**4. UserEntity-Scoped Models** (`models/userEntities/`)
+- Multiple instances per player (none in the repo yet; e.g. a hypothetical PetsModel)
 - Identified by BOTH `ownerId` AND `modelId`
 - Used for collections of player-owned entities
 
 ```lua
+-- Illustrative: PetsModel is hypothetical
 -- IMPORTANT: Always use .get(), never .new()
 -- .get() ensures registry registration for proper state sync
-local favour = FavoursModel.get(tostring(player.UserId), favourId)
+local pet = PetsModel.get(tostring(player.UserId), petId)
 ```
 
 **⚠️ Critical: UserEntity `.get()` vs `.new()`**
@@ -748,10 +697,10 @@ When creating new UserEntity instances, **always use `.get()`**:
 
 ```lua
 -- ❌ WRONG: Creates orphan instance, won't sync
-local favour = FavoursModel.new(ownerId, favourId)
+local pet = PetsModel.new(ownerId, petId)
 
 -- ✅ CORRECT: Registers instance, syncs properly
-local favour = FavoursModel.get(ownerId, favourId)
+local pet = PetsModel.get(ownerId, petId)
 ```
 
 ### Controllers ← Views
@@ -762,12 +711,12 @@ local favour = FavoursModel.get(ownerId, favourId)
 ### Complete Flow Example
 
 ```
-1. Player clicks button (View)
-2. View fires RemoteEvent: PurchaseIntent:FireServer(IntentActions.Shop.BuySword, "FireSword")
-3. Controller receives intent, validates player can afford it
-4. Controller updates InventoryModel: inventory:addItem(player, "FireSword")
-5. Model updates its state and broadcasts to all clients
-6. Views receive broadcast and update UI
+1. Player taps "Add to basket" on an item page (View)
+2. View fires intent: Network.Intent.Basket:FireServer(Network.Actions.Basket.Add, { targetId = 123, kind = "Asset" })
+3. BasketController checks the budget and the payload's shape, then looks the item up (AvatarService.resolve)
+4. Controller updates BasketModel: model:add(items)
+5. Model updates its state and syncs it to the owning client (Network.State.Basket)
+6. Views receive the new state (useBoltState) and update UI
 ```
 
 ### Shared Constants (Network.Actions)
@@ -777,7 +726,7 @@ All intent action strings are centralized in `Network.luau`:
 **In Views (Client):**
 ```lua
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
-Network.Intent.CashMachine:FireServer(Network.Actions.CashMachine.Withdraw, amount)
+Network.Intent.Basket:FireServer(Network.Actions.Basket.Add, { targetId = 123, kind = "Asset" })
 ```
 
 **In Controllers (Server):**
@@ -786,23 +735,23 @@ local Network = require(ReplicatedStorage.Network)
 
 -- Use Network.Actions constants for validation
 local ACTIONS = {
-	[Network.Actions.CashMachine.Withdraw] = withdraw,
-	[Network.Actions.CashMachine.Deposit] = deposit,
+	[Network.Actions.Basket.Add] = add,
+	[Network.Actions.Basket.Remove] = remove,
 }
 
 -- Type the action parameter
-self.intentEvent.OnServerEvent:Connect(function(player: Player, action: string, ...)
+self.intentEvent.OnServerEvent:Connect(function(player: Player, action: Network.BasketAction, raw: any)
 	-- Runtime validation via ACTIONS table ensures security
 end)
 ```
 
 **Action Constants:**
-Network.Actions provides constants for each feature:
+Network.Actions provides constants for each feature (generated from `NetworkConfig.Controllers`):
 ```lua
-Network.Actions.CashMachine.Withdraw = "Withdraw"
-Network.Actions.CashMachine.Deposit = "Deposit"
-Network.Actions.Bazaar.BuyTreasure = "BuyTreasure"
-Network.Actions.Shrine.Donate = "Donate"
+Network.Actions.Basket.Add = "Add"
+Network.Actions.Basket.Clear = "Clear"
+Network.Actions.Purchase.Buy = "Buy"
+Network.Actions.WorldOptions.Reset = "Reset"
 ```
 
 **Benefits:**
@@ -819,7 +768,7 @@ When creating a new controller, you need to add action constants to the Network 
 
 ### What is Network.Actions?
 
-Network.Actions is part of the centralized Network module (`src/ReplicatedStorage/Network.luau`) that provides:
+Network.Actions is part of the centralized Network module (`Source/ReplicatedStorage/Network.luau`) that provides:
 - **Action constants** - Single source of truth for all user intent strings
 - **Intent events** - Bolt ReliableEvents for client-server communication
 - **State synchronization** - Bolt RemoteProperties for model state
@@ -835,7 +784,7 @@ Add new actions to Network.Actions when:
 
 ### Step-by-Step: Adding New Actions
 
-**1. Open `src/ReplicatedStorage/Network.luau`**
+**1. Open `Source/ReplicatedStorage/Network.luau`**
 
 **2. Add entry to NetworkConfig.Controllers:**
 
@@ -872,116 +821,73 @@ Actions should describe **what the user wants to do** (their intent), not what w
 ✅ **Good action names** (intent-focused, verb-based):
 - `PurchaseWeapon` - User wants to buy a weapon
 - `EquipItem` - User wants to equip an item
-- `Donate` - User wants to donate
-- `BuyTreasure` - User wants to purchase treasure
-- `WithdrawGold` - User wants to withdraw from bank
-- `AcceptQuest` - User wants to accept a quest
+- `TryOn` - User wants to try an item on (Avatar)
+- `Buy` - User wants to buy what's in their basket (Purchase)
+- `Follow` - User wants to follow a creator's outfits (Outfits)
+- `Publish` - User wants to publish their store (Stores)
 
 ❌ **Bad action names** (command-like or too vague):
-- `SetInventory` - Sounds like a command, not an intent
+- `SetBasketItems` - Sounds like a command, not an intent
 - `Update` - Too vague, update what?
 - `Click` - Describes UI interaction, not intent
 - `Execute` - Generic and unclear
 - `Process` - Implementation detail, not user intent
 - `Handle` - Developer jargon, not user-facing
 
-### Example: Adding CashMachine Actions
+### Example: The Basket Actions
 
-**In IntentActions.luau:**
+**In `Network.luau`** (NetworkConfig entry plus the exported type):
 
 ```lua
-local IntentActions = {
-    CashMachine = {
-        Withdraw = "Withdraw",
-        Deposit = "Deposit",
-    },
-    -- ... other features ...
+local NetworkConfig = {
+	Controllers = {
+		Basket = { "Add", "Remove", "AddMany", "RemoveMany", "Clear" },
+		-- ... other controllers ...
+	},
 }
 
-export type CashMachineAction = "Withdraw" | "Deposit"
-
-return IntentActions
+export type BasketAction = "Add" | "Remove" | "AddMany" | "RemoveMany" | "Clear"
 ```
 
-**In Controller:**
+**In the Controller** (`BasketController.luau`):
 
 ```lua
-local IntentActions = require(ReplicatedStorage.IntentActions)
+local Network = require(ReplicatedStorage.Network)
 
-local function withdraw(inventory: any, amount: number, player: Player)
-    inventory:addGold(amount)
-end
-
-local function deposit(inventory: any, amount: number, player: Player)
-    inventory:addGold(-amount)
-end
-
--- Map IntentActions constants to handler functions
+-- Map Network.Actions constants to handler functions
 local ACTIONS = {
-    [IntentActions.CashMachine.Withdraw] = withdraw,
-    [IntentActions.CashMachine.Deposit] = deposit,
+	[Network.Actions.Basket.Add] = add,
+	[Network.Actions.Basket.Remove] = remove,
+	[Network.Actions.Basket.AddMany] = addMany,
+	[Network.Actions.Basket.RemoveMany] = removeMany,
+	[Network.Actions.Basket.Clear] = clear,
 }
 
 -- Use typed action parameter
-self.remoteEvent.OnServerEvent:Connect(function(
-    player: Player,
-    action: IntentActions.CashMachineAction,  -- Type-safe!
-    amount: number
-)
-    -- Validate and dispatch
-    self:dispatchAction(ACTIONS, action, player, inventory, amount, player)
+self.intentEvent.OnServerEvent:Connect(function(player: Player, action: Network.BasketAction, raw: any)
+	self:executeAction(player, action, raw) -- validates, then dispatchAction
 end)
 ```
 
-**In View:**
+**In the View** (`screens/usePlaceholderLook.luau`):
 
 ```lua
-local IntentActions = require(ReplicatedStorage:WaitForChild("IntentActions"))
+local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
--- Type-safe constant usage
-remoteEvent:FireServer(IntentActions.CashMachine.Withdraw, 100)
+Network.Intent.Basket:FireServer(Network.Actions.Basket.Clear)
 ```
 
 ### Multiple Actions in One Feature
 
-When you have multiple related actions, group them under one feature:
+Group related actions under one feature, one controller. StoresController handles 21 (`Create`, `Rename`, `AddItem`, ..., `Moderate`) through one ACTIONS table, and wraps the ones that write to DataStores in a shared budget:
 
 ```lua
--- IntentActions.luau
-Shop = {
-    BuyWeapon = "BuyWeapon",
-    SellWeapon = "SellWeapon",
-    PreviewWeapon = "PreviewWeapon",
-    CompareWeapons = "CompareWeapons",
-},
-
-export type ShopAction = "BuyWeapon" | "SellWeapon" | "PreviewWeapon" | "CompareWeapons"
-```
-
-**Controller uses lookup table pattern:**
-
-```lua
-local function buyWeapon(player: Player, shop: any, weaponId: string)
-    -- implementation
-end
-
-local function sellWeapon(player: Player, shop: any, weaponId: string)
-    -- implementation
-end
-
-local function previewWeapon(player: Player, shop: any, weaponId: string)
-    -- implementation
-end
-
-local function compareWeapons(player: Player, shop: any, weaponId1: string, weaponId2: string)
-    -- implementation
-end
-
-local ACTIONS = {
-    [IntentActions.Shop.BuyWeapon] = buyWeapon,
-    [IntentActions.Shop.SellWeapon] = sellWeapon,
-    [IntentActions.Shop.PreviewWeapon] = previewWeapon,
-    [IntentActions.Shop.CompareWeapons] = compareWeapons,
+local ACTIONS: { [string]: (Player, any, any, ...any) -> Result } = {
+	[Network.Actions.Stores.Create] = budgeted(create),
+	[Network.Actions.Stores.Rename] = budgeted(rename),
+	-- ...
+	[Network.Actions.Stores.Favourite] = favourite,
+	[Network.Actions.Stores.Report] = report,
 }
 ```
 
@@ -990,12 +896,10 @@ local ACTIONS = {
 For controllers with only one action, you still benefit from the pattern:
 
 ```lua
--- IntentActions.luau
-Shrine = {
-    Donate = "Donate",
-},
+-- Network.luau
+Favourites = { "Toggle" },
 
-export type ShrineAction = "Donate"
+export type FavouritesAction = "Toggle"
 ```
 
 This provides:
@@ -1010,21 +914,12 @@ This provides:
 
 ```lua
 -- Before
-CashMachine = {
-    Withdraw = "Withdraw",
-    Deposit = "Deposit",
-},
+WorldOptions = { "Set", "Reset" },
+export type WorldOptionsAction = "Set" | "Reset"
 
-export type CashMachineAction = "Withdraw" | "Deposit"
-
--- After (adding Transfer)
-CashMachine = {
-    Withdraw = "Withdraw",
-    Deposit = "Deposit",
-    Transfer = "Transfer",  -- New action
-},
-
-export type CashMachineAction = "Withdraw" | "Deposit" | "Transfer"  -- Update type
+-- After (adding a hypothetical Randomise)
+WorldOptions = { "Set", "Reset", "Randomise" },
+export type WorldOptionsAction = "Set" | "Reset" | "Randomise"  -- Update type
 ```
 
 **Then update controller:**
@@ -1035,78 +930,67 @@ export type CashMachineAction = "Withdraw" | "Deposit" | "Transfer"  -- Update t
 
 ### Type Safety Benefits
 
-**Compile-time checking:**
+The `export type` unions give you checking wherever you annotate with them:
+
 ```lua
--- ✓ Correct - Luau knows this is valid
-remoteEvent:FireServer(IntentActions.CashMachine.Withdraw, 100)
+-- ✓ Correct
+local action: Network.BasketAction = "Add"
 
--- ✗ Type error - "Withdraww" is not a valid action (typo caught!)
-remoteEvent:FireServer(IntentActions.CashMachine.Withdraww, 100)
-
--- ✗ Type error - "Hack" is not a CashMachineAction
-local action: IntentActions.CashMachineAction = "Hack"
+-- ✗ Type error - "Hack" is not a BasketAction
+local action: Network.BasketAction = "Hack"
 ```
 
-**IDE autocomplete:**
-```lua
--- Type IntentActions.CashMachine. and see:
--- - Withdraw
--- - Deposit
-```
+`Network.Actions.*` itself is generated at runtime by NetworkBuilder, so a typo like `Network.Actions.Basket.Ad` is **not** caught by the type checker — it evaluates to `nil`, and the server's ACTIONS lookup rejects it with an "Invalid action" warning. Copy constants carefully, and keep the exported type in step with NetworkConfig.
 
 **Refactoring safety:**
 ```lua
--- Change "Withdraw" to "WithdrawFunds" in IntentActions
--- Luau will show type errors at every usage site, guiding you to update them all
+-- Rename an action in NetworkConfig and its exported type;
+-- code annotated with the type shows errors where the old string is used
 ```
 
 ### Troubleshooting
 
 **Problem:** Type errors in controller OnServerEvent
-- Check: Did you export the type from IntentActions?
+- Check: Did you export the type from Network.luau?
 - Fix: Add `export type YourFeatureAction = "Action1" | "Action2"`
 
-**Problem:** Action not in ACTIONS table at runtime
-- Check: Did you map the IntentActions constant to a function?
-- Fix: `[IntentActions.Feature.Action] = handlerFunction`
+**Problem:** Action not in ACTIONS table at runtime ("Invalid action received from ...")
+- Check: Did you map the Network.Actions constant to a function?
+- Fix: `[Network.Actions.Feature.Action] = handlerFunction`
 
 **Problem:** View sending wrong action string
-- Check: Are you using IntentActions constants, not magic strings?
-- Fix: Use `IntentActions.Feature.Action` instead of `"Action"`
+- Check: Are you using Network.Actions constants, not magic strings?
+- Fix: Use `Network.Actions.Feature.Action` instead of `"Action"`
 
-**Problem:** Adding action but IDE doesn't show autocomplete
-- Check: Did you add it to both the constant table AND the exported type?
-- Fix: Update both `YourFeature = { NewAction = "NewAction" }` AND `export type YourFeatureAction = "..." | "NewAction"`
+**Problem:** New action is `nil` on the client
+- Check: Did you add it to `NetworkConfig.Controllers` (not just the exported type)?
+- Fix: Update both `YourFeature = { ..., "NewAction" }` AND `export type YourFeatureAction = "..." | "NewAction"`
 
 ### Benefits Summary
 
-✅ **Type Safety** - Catch typos and type mismatches at compile-time
-✅ **Single Source of Truth** - Action strings defined once, used everywhere
-✅ **IDE Autocomplete** - Type `IntentActions.` and see all features and actions
-✅ **Refactoring Safety** - Change once, errors guide you to all usages
+✅ **Type Safety** - Typed `action` parameters catch mismatches at compile-time
+✅ **Single Source of Truth** - Action strings defined once in NetworkConfig, used everywhere
+✅ **Refactoring Safety** - Change once, type errors guide you to annotated usages
 ✅ **Self-Documenting** - Types show valid actions at a glance
-✅ **Complete MVC Type Safety** - From view through controller with zero runtime overhead
 ✅ **Consistent Pattern** - All controllers use the same approach
 
 ### Understanding Type Safety: Compile-Time vs Runtime
 
-It's important to understand the distinction between compile-time type checking and runtime behavior in the IntentActions pattern.
+It's important to understand the distinction between compile-time type checking and runtime behavior.
 
 #### What Happens at Compile-Time
 
 When you write code with type annotations:
 
 ```lua
-self.remoteEvent.OnServerEvent:Connect(function(player: Player, action: IntentActions.CashMachineAction, amount: number)
+self.intentEvent.OnServerEvent:Connect(function(player: Player, action: Network.BasketAction, raw: any)
     -- Luau's type checker validates your code
 end)
 ```
 
 **Compile-time benefits:**
-- Luau validates that `action` is used consistently with the `CashMachineAction` type
-- Your IDE provides autocomplete for valid actions
+- Luau validates that `action` is used consistently with the `BasketAction` type
 - Type errors are caught during development, not in production
-- Refactoring tools can find all usages of a specific action type
 
 **What types DON'T do:**
 - They don't prevent clients from sending arbitrary data
@@ -1115,109 +999,67 @@ end)
 
 #### What Happens at Runtime
 
-When a client fires a RemoteEvent:
+When a client fires an intent:
 
 ```lua
 -- Client sends:
-cashMachineIntent:FireServer("Withdraw", 50)
-
--- Network transmits:
-[PlayerInstance] "Withdraw" 50
+Network.Intent.Basket:FireServer("Add", { targetId = 123, kind = "Asset" })
 
 -- Server receives:
-function(player, action, amount)
-    -- action is just a string - could be anything!
+function(player, action, raw)
+    -- action is just a string, raw is any value - could be anything!
 end
 ```
 
 **Runtime reality:**
-- All type annotations are erased - `action: IntentActions.CashMachineAction` becomes just `action`
-- The value is a plain string that the client sent
-- A malicious client could send `"HackAction"` or any other string
+- All type annotations are erased - `action: Network.BasketAction` becomes just `action`
+- A malicious client could send `"HackAction"`, or a `raw` that isn't a table at all
 - **No automatic validation happens from the type system**
 
 #### Where Real Validation Happens
 
-The ACTIONS table pattern provides your runtime security:
+The ACTIONS table pattern validates the action:
 
 ```lua
-local ACTIONS = {
-    [IntentActions.CashMachine.Withdraw] = withdraw,
-    [IntentActions.CashMachine.Deposit] = deposit,
-}
-
 -- In AbstractController.dispatchAction:
 local actionFunc = actionsTable[action]
 if not actionFunc then
-    warn("Invalid action: " .. tostring(action))  -- Runtime validation!
+    warn("Invalid action received from " .. player.Name .. ": " .. tostring(action))
     return
 end
 ```
 
-**This table lookup is your actual security:**
+**This table lookup is your actual security for the action:**
 - If `action` isn't a key in the table, `actionFunc` is `nil`
-- The `if not actionFunc` check catches invalid actions
 - Only actions you explicitly defined in ACTIONS can execute
+
+The payload needs its own checks in each handler (BasketController's `refOf`: is `raw` a table, is `targetId` a positive integer, is `kind` `"Asset"` or `"Bundle"`).
 
 #### Two-Layer Defense Strategy
 
-The IntentActions pattern provides defense in depth:
-
 **Layer 1: Compile-Time Types (Developer Safety)**
-- Catches typos and mistakes during development
-- Provides IDE support and documentation
+- Catches mistakes during development
 - Prevents internal bugs in your own code
 - Makes refactoring safer
 
 **Layer 2: Runtime Validation (Security)**
 - ACTIONS table lookup rejects invalid actions
-- Parameter validation (like `amount <= 0` checks)
+- Payload validation (shape checks, server-side lookups, size caps, rate limits)
 - Protects against malicious clients
-- Provides actual security guarantees
-
-#### Example: The Complete Flow
-
-```lua
--- CLIENT: View code (compile-time checking)
-cashMachineIntent:FireServer(
-    IntentActions.CashMachine.Withdraw,  -- Luau knows this is "Withdraw"
-    50
-)
-
--- NETWORK: What actually transmits
--- Just the string "Withdraw" and number 50
-
--- SERVER: Controller receives (compile-time + runtime)
-self.remoteEvent.OnServerEvent:Connect(function(
-    player: Player,
-    action: IntentActions.CashMachineAction,  -- Compile-time: helps you write correct code
-    amount: number
-)
-    -- Runtime validation
-    if amount <= 0 then
-        warn("Invalid amount")
-        return
-    end
-
-    -- Runtime security via table lookup
-    self:dispatchAction(ACTIONS, action, player, inventory, amount, player)
-    -- If action isn't in ACTIONS, dispatchAction warns and returns
-end)
-```
 
 #### Key Takeaway
 
 **Types guide honest developers to write correct code. Runtime validation protects against malicious actors.**
 
-Don't rely on types alone for security - always validate untrusted input at runtime. The IntentActions pattern gives you both: excellent developer experience through types, and robust security through table-based validation.
+Don't rely on types alone for security - always validate untrusted input at runtime.
 
 ## Automatic Analytics Tracking
 
 When AnalyticsService is enabled, **every controller action is automatically tracked** in GA4. No code needed — AbstractController calls `AnalyticsService:trackControllerAction()` after each successful `dispatchAction()`.
 
 Each action generates a `controller_action` event with:
-- `controller_name` — e.g., "CashMachineController"
-- `action_name` — e.g., "Withdraw"
+- `controller_name` — e.g., "BasketController"
+- `action_name` — e.g., "Add"
 
 This means every new controller you create automatically gets analytics coverage. You can see action frequency, popular features, and per-user behaviour in GA4 reports.
 
@@ -1227,8 +1069,8 @@ For custom analytics beyond action tracking, call `AnalyticsService:trackEvent()
 
 After creating your controller:
 
-1. **Create a Model** (`src/server/models/`) to store the game state your controller modifies
-2. **Create a View** (`src/client/views/`) to display state and send intents to your controller
+1. **Create a Model** (`Source/ServerScriptService/models/`) to store the game state your controller modifies
+2. **Create a View** (`Source/ReplicatedFirst/views/`) to display state and send intents to your controller
 3. **Test the flow** end-to-end with both server and client scripts
 
 See the main [README.md](../README.md) for the complete MVC architecture overview.

@@ -18,7 +18,8 @@ I'll guide you through creating a new Roblox config that follows this project's 
 
 Before generating code, I will read these stable reference files to ensure accuracy:
 - `docs/CONFIG_GUIDE.md` - Complete config documentation with patterns and examples
-- `Source/ReplicatedStorage/Config/ConfigTypes/FavoursConfigTypes.luau` - Example types file
+- `Source/ReplicatedStorage/Config/ConfigTypes/StoresConfigTypes.luau` - Example types file (small; `AvatarConfigTypes` / `WorldOptionsConfigTypes` show nested tables)
+- `Source/ReplicatedStorage/Config/StoresConfig.luau` - Reference copy of the matching Studio-authored module (repo convention: keep a `-- REFERENCE COPY` next to the types so the values are reviewable; keep the two in step)
 
 These core files contain the exact patterns, type definitions, and conventions to follow.
 
@@ -31,15 +32,15 @@ Let's begin creating your config step by step!
 What should your config be named?
 
 **Requirements**:
-- Must end with "Config" (e.g., ShopConfig, WeaponsConfig, RewardsConfig)
-- Must use PascalCase (e.g., ItemPricesConfig)
+- Must end with "Config" (e.g., StoresConfig, AuctionConfig, PointsConfig)
+- Must use PascalCase (e.g., RecommendationsConfig)
 - No underscores or special characters
 
 **Examples**:
-- ShopConfig - Prices and purchase limits for a shop
-- WeaponsConfig - Stats and costs for weapons
-- SpawnRatesConfig - Enemy spawn rates and probabilities
-- QuestRewardsConfig - Rewards for completing quests
+- StoresConfig - Limits on player stores and their rows (real)
+- WorldOptionsConfig - World options defaults, flight and sprint tuning (real)
+- AuctionConfig - Bid increments and auction durations (hypothetical)
+- PointsConfig - Points awarded per action (hypothetical)
 
 **Config Name**:
 
@@ -48,9 +49,9 @@ What should your config be named?
 What does this config contain? (Brief description for the file header)
 
 **Examples**:
-- "shop item prices and purchase limits"
-- "weapon damage, speed, and cost values"
-- "enemy spawn rates and probabilities"
+- "player stores: limits on stores and their rows"
+- "UGC auction bid increments and durations"
+- "points awarded per action"
 
 **Description**:
 
@@ -59,7 +60,7 @@ What does this config contain? (Brief description for the file header)
 What properties does this config need?
 
 For each property, I'll ask for:
-1. **Property name** (camelCase, e.g., itemPrices, spawnRates)
+1. **Property name** (camelCase, e.g., maxStores, pointsPerAction)
 2. **Property type**:
    - `table` - A lookup table with string keys (most common for configs)
    - `number` - A single numeric value
@@ -76,11 +77,11 @@ For each property, I'll ask for:
 
 For each table property, provide 3-5 example entries that demonstrate the expected data format.
 
-**Example format for a prices table:**
+**Example format for a points table:**
 ```
-Sword = 100
-Shield = 75
-Potion = 25
+Share = 10
+Publish = 25
+Favourite = 2
 ```
 
 This helps generate a useful "stub plus" config module that you can expand in Studio.
@@ -113,7 +114,7 @@ When generating the config, I will:
 
 Use Read tool on:
 - **docs/CONFIG_GUIDE.md** to understand patterns and conventions
-- **FavoursConfigTypes.luau** to see exact type definition syntax
+- **StoresConfigTypes.luau** (and its reference copy `Config/StoresConfig.luau`) to see exact type definition syntax
 
 ### 2. Generate Types File
 
@@ -236,11 +237,11 @@ export type EnabledFeaturesTable = {
 ### Nested Object Table
 
 ```lua
-export type WeaponStatsTable = {
+export type AuctionTiersTable = {
     [string]: {
-        damage: number,
-        speed: number,
-        range: number,
+        startingBid: number,
+        bidIncrement: number,
+        durationMinutes: number,
     },
 }
 ```
@@ -248,10 +249,10 @@ export type WeaponStatsTable = {
 ### Mixed Properties
 
 ```lua
-export type ShopConfig = {
-    prices: PricesTable,
-    maxPurchasesPerDay: number,
-    shopName: string,
+export type AuctionConfig = {
+    tiers: AuctionTiersTable,
+    maxBidsPerMinute: number,
+    houseName: string,
     isEnabled: boolean,
 }
 ```

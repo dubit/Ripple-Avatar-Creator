@@ -9,13 +9,13 @@ I'll guide you through creating a new Roblox model that follows this project's A
 
 - **All models extend AbstractModel**
 - **Five scopes**:
-  - `User`: Per-player, persistent (saved to DataStore). One instance per player. Example: InventoryModel
-  - `UserSession`: Per-player, ephemeral (never saved). One instance per player, resets each session. Example: ManaModel
-  - `Server`: Shared, ephemeral (resets on restart). One instance for all players. Example: ShrineModel
-  - `UserEntity`: Per-player, persistent (saved to DataStore). Multiple instances per player. Example: PetModel
-  - `ServerEntity`: Shared, ephemeral, multiple instances. Two variants:
-    - **Predefined**: Entity IDs known at startup (e.g., DrawbridgeModel — gates, doors, world objects)
-    - **Dynamic**: Entities created at runtime (e.g., CandlesModel — player-placed objects, spawned instances)
+  - `User`: Per-player, persistent (saved to DataStore). One instance per player. Example: BasketModel (a simple list — start here), also AvatarModel, OutfitsModel, StoresModel
+  - `UserSession`: Per-player, ephemeral (never saved). One instance per player, resets each session. Example: OwnershipModel
+  - `Server`: Shared, ephemeral (resets on restart). One instance for all players. No in-repo example yet (hypothetical: LeaderboardModel)
+  - `UserEntity`: Per-player, persistent (saved to DataStore). Multiple instances per player. No in-repo example yet (hypothetical: PetModel)
+  - `ServerEntity`: Shared, ephemeral, multiple instances. No in-repo example yet. Two variants:
+    - **Predefined**: Entity IDs known at startup (hypothetical: DrawbridgeModel — gates, doors, world objects)
+    - **Dynamic**: Entities created at runtime (hypothetical: AuctionLotsModel — player-created listings, spawned instances)
 - **File locations**:
   - User models → `Source/ServerScriptService/models/user/`
   - UserSession models → `Source/ServerScriptService/models/userSession/`
@@ -42,7 +42,7 @@ Let's begin creating your model step by step!
 What should your model be named?
 
 **Requirements**:
-- Must end with "Model" (e.g., InventoryModel, ShrineModel)
+- Must end with "Model" (e.g., BasketModel, OutfitsModel)
 - Must use PascalCase (e.g., QuestProgressModel)
 - No underscores or special characters
 
@@ -50,21 +50,21 @@ What should your model be named?
 
 Does this model need to be **User-scoped**, **UserSession-scoped**, **Server-scoped**, **UserEntity-scoped**, or **ServerEntity-scoped**?
 
-- **User scope**: Per-player data that persists - one instance per player (like inventory, quest progress, player stats)
-- **UserSession scope**: Per-player data that doesn't persist - resets each session (like mana, ammo, cooldowns, combo counters)
-- **Server scope**: Shared data that all players see - one instance for server (like shrines, leaderboards, world state)
+- **User scope**: Per-player data that persists - one instance per player (like the basket, saved outfits, owned stores)
+- **UserSession scope**: Per-player data that doesn't persist - resets each session (like ownership checks and in-flight purchases — see OwnershipModel)
+- **Server scope**: Shared data that all players see - one instance for server (like leaderboards, world state)
 - **UserEntity scope**: Per-player data that persists - multiple instances per player (like pets, bases, character slots)
 - **ServerEntity scope**: Shared, ephemeral, multiple instances. Ask whether entities are:
   - **Predefined** — IDs known at server start (gates, drawbridges, world objects with fixed IDs)
-  - **Dynamic** — created at runtime by game logic (player-placed candles, spawned objects, session instances)
+  - **Dynamic** — created at runtime by game logic (player-created listings, spawned objects, session instances)
 
 ### Step 3: Properties
 
 What properties does this model need?
 
 For each property, I'll ask for:
-1. **Property name** (camelCase, e.g., gold, treasureCount)
-2. **Property type** (number, string, or boolean)
+1. **Property name** (camelCase, e.g., items, budgetLeft)
+2. **Property type** (number, string, boolean, or a list/table — e.g. BasketModel's `items: { BasketItem }`)
 3. **Default value** (initial value when model is created)
 
 **Reserved names** (cannot use): ownerId, _modelName, _scope, _stateProperty
@@ -78,10 +78,11 @@ Based on the properties you've defined, I'll:
    - **number**: add, spend, set operations
    - **string**: set, update operations
    - **boolean**: set, toggle operations
+   - **list**: add, remove/take, clear (see BasketModel)
 2. Ask if any operations need to modify multiple properties together
 3. Discuss invariant validation (constraints that should always be true)
 
-**Important**: Only model-level invariants belong here (e.g., "gold >= 0"). Business logic validation (e.g., "can player afford this purchase") belongs in controllers.
+**Important**: Only model-level invariants belong here (e.g., "basket holds at most AvatarConfig.basketLimit items"). Business logic validation (e.g., "is this a real catalogue item") belongs in controllers.
 
 ### Step 5: Generation
 
@@ -154,7 +155,7 @@ When generating the model, I will:
    - Read current file first
    - Insert state definition in States object (alphabetically)
    - Insert type export in type exports section (alphabetically)
-   - Use model name without "Model" suffix for state name (e.g., InventoryModel → Inventory)
+   - Use model name without "Model" suffix for state name (e.g., BasketModel → Basket)
 
 4. **Validation during generation**:
    - Ensure all properties initialized in .new()

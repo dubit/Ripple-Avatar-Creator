@@ -168,7 +168,7 @@ grep -rln "ConceptKeyword" Source/ReplicatedFirst/views/
 
 **Content-population step (don't skip):** if the design shows an in-game asset inside a UI slot (a pet, character portrait, 3D model), the game may already have a renderer for it. Before emitting an empty placeholder Frame, grep for a `ViewportFrame` / preview helper and reuse the technique.
 
-**Data-type verification (don't skip):** for every field the component will read from state (`data.gold`, `state.lineup.goalkeeper`), grep the type in `Network.luau` to confirm the field exists with that name and type:
+**Data-type verification (don't skip):** for every field the component will read from state (`data.items`, `state.purchase.state`), grep the type in `Network.luau` to confirm the field exists with that name and type:
 
 ```sh
 grep -nE "export type (TypeName)" Source/ReplicatedStorage/Network.luau
@@ -272,7 +272,7 @@ At end-of-run I tell you:
 
 **Refactor preserves children.** When collapsing a one-shot composite into a reusable component, every visible child in the original must remain reachable via a prop. Audit the JSX's children, map each to a prop, and verify the call site re-supplies them. Symptom: "it looked right yesterday and is missing its icon today."
 
-**LayoutOrder discipline.** For siblings under a `UIListLayout`/`UIGridLayout` that need a specific order, set explicit `LayoutOrder = N` on each. React's key iteration order is undefined — without it, "Gold above TeamPower" can flip between renders.
+**LayoutOrder discipline.** For siblings under a `UIListLayout`/`UIGridLayout` that need a specific order, set explicit `LayoutOrder = N` on each. React's key iteration order is undefined — without it, "Price above Name" can flip between renders.
 
 ## Roblox layout pitfalls (learned the painful way)
 
@@ -317,7 +317,7 @@ This template ships spring-physics hooks in `views/hooks/` — prefer them over 
   local springProps = useSpring({ Position = UDim2.fromScale(0.5, 0.5) }, { force = 200, dampening = 20 })
   -- e("Frame", { Position = springProps.Position })
   ```
-- **`useSpringNumber`** — animate a numeric display (gold, score, health) so it rolls to a new value; re-renders only when the displayed digit changes.
+- **`useSpringNumber`** — animate a numeric display (Robux total, count, score) so it rolls to a new value; re-renders only when the displayed digit changes.
 - **`useTransition`** — mount/unmount lifecycle: keeps a component mounted through its exit animation before unmount (Roblox's `AnimatePresence`). Supports staggering via a `trail`.
 - **`useDrag`** — draggable element with momentum and spring-back.
 
@@ -347,7 +347,7 @@ For interactive elements:
 - **Fonts:** Nunito via `Tokens.font(weight)` (600/700/800/900 → SemiBold/Bold/ExtraBold/Heavy) and the `Tokens.type` styles.
 - **Text sizing:** `ShadowText` / `hooks/useTextWidth` — never `AutomaticSize` (or `AutomaticCanvasSize`) under the canvas `UIScale`; measure containers with `hooks/useLocalSize`.
 - **Drop shadow**: a black `UIStroke` halo (`ApplyStrokeMode = Border`), not a separate Frame — but keep it **thin and faint**: the kit uses `Tokens.stroke.shadowThickness` (3, through `skin.px`) at `Tokens.stroke.shadowTransparency` (0.82). `UIStroke` can't feather, so thick halos (6–10px at 0.7–0.8) read as hard rings.
-- **Multi-tone assets** (e.g. an orange-filled + gold-bordered star): one white-fill PNG per tone, layered at runtime as stacked `ImageLabel`s each with its own `ImageColor3`. Never flatten a 2-colour SVG to a single silhouette — the colour distinction is lost forever and you can only restore one tone at runtime.
+- **Multi-tone assets** (e.g. an orange-filled + yellow-bordered star): one white-fill PNG per tone, layered at runtime as stacked `ImageLabel`s each with its own `ImageColor3`. Never flatten a 2-colour SVG to a single silhouette — the colour distinction is lost forever and you can only restore one tone at runtime.
 - **Spacing**: if the design implies a grid (multiples of 4 or 8), keep to it; otherwise take spacing from the design's own values.
 
 ## Translating responsive HTML — pick ONE pattern per ScreenGui root

@@ -28,13 +28,13 @@ The slash command system follows the universal MVC event naming conventions:
 - **`SlashCommandStateChanged`** (Server → Client): Command feedback and results
 
 This matches the pattern used by all other systems:
-- Controllers use `[Name]Intent` events (e.g., `BazaarIntent`, `ShrineIntent`)
-- Models use `[Name]StateChanged` events (e.g., `InventoryStateChanged`, `ShrineStateChanged`)
+- Controllers use `[Name]Intent` events (e.g., `BasketIntent`, `StoresIntent`)
+- Models sync through `[Name]State` Bolt RemoteProperties (e.g., `BasketState`, `StoresState`)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                     USER TYPES SLASH COMMAND                         │
-│             /inventorymodel addGold 100  OR  /bazaarcontroller BuyTreasure │
+│          /favouritesmodel toggle Asset:123  OR  /basketcontroller Clear      │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
@@ -90,18 +90,18 @@ This matches the pattern used by all other systems:
 
 **Model Examples:**
 ```
-/inventorymodel addGold 100
-/inventorymodel addTreasure 5
-/inventorymodel spendGold 50
-/shrinemodel donate 123456789 10
+/basketmodel clear
+/favouritesmodel toggle Asset:123
+/outfitsmodel rename 1 Party
+/worldoptionsmodel reset
 ```
 
 **Controller Examples:**
 ```
-/bazaarcontroller BuyTreasure
-/cashmachinecontroller Withdraw 100
-/cashmachinecontroller Deposit 50
-/shrinecontroller Donate
+/basketcontroller Clear
+/avatarcontroller Undo
+/avatarcontroller TakeOffAll
+/worldoptionscontroller Reset
 ```
 
 ### Permission Requirements
@@ -137,13 +137,13 @@ Shows all available methods (for models) or actions (for controllers) with usage
 **Examples:**
 ```
 /commands                      → Lists all available commands
-/commands inventorymodel       → Shows methods: addGold, spendGold, addTreasure, spendTreasure
-/commands bazaarcontroller     → Shows actions: BuyTreasure
+/commands basketmodel          → Shows methods: add, clear, indexOf, take
+/commands basketcontroller     → Shows actions: Add, AddMany, Clear, Remove, RemoveMany
 ```
 
 The help system automatically:
 - **Discovers model methods** via runtime introspection of the model metatable
-- **Discovers controller actions** by reading from the IntentActions module
+- **Discovers controller actions** by reading `Network.Actions`
 - **Filters out** private methods (starting with `_`) and internal implementation details
 - **Displays in chat** so all players with permission can see the information
 
@@ -168,8 +168,8 @@ Shows the current state of a specific model with all its properties.
 **Examples:**
 ```
 /state                     → Shows all model states (user and server)
-/state inventorymodel      → Shows: gold: 1000, treasure: 5
-/state shrinemodel         → Shows: treasure: 42, userId: 987654321
+/state basketmodel         → Shows: items: { { targetId: 123, kind: "Asset", ... } }
+/state favouritesmodel     → Shows: items: { "Asset:123", "Bundle:45" }
 ```
 
 The state query system automatically:
@@ -190,7 +190,7 @@ The state query system automatically:
 Both models and controllers are **fully discoverable without any additional code**:
 
 - **Models**: Methods are discovered from the model's metatable at runtime
-- **Controllers**: Actions are discovered from the `IntentActions` module automatically
+- **Controllers**: Actions are discovered from `Network.Actions` automatically
 
 No per-model or per-controller configuration needed!
 
@@ -200,34 +200,32 @@ Commands are automatically generated for all models and controllers. The availab
 
 ### User-Scoped Models
 
-User-scoped models (in `src/server/models/user/`) operate on the player's own data.
+User-scoped models (in `ServerScriptService/models/user/`) operate on the player's own data.
 
-**Example - InventoryModel:**
-- `/inventorymodel addGold 100` - Add 100 gold to your inventory
-- `/inventorymodel addTreasure 5` - Add 5 treasure to your inventory
-- `/inventorymodel spendGold 50` - Remove 50 gold from your inventory
-- `/inventorymodel spendTreasure 2` - Remove 2 treasure from your inventory
+**Example - BasketModel / FavouritesModel / StoresModel:**
+- `/basketmodel clear` - Empty your basket
+- `/favouritesmodel toggle Asset:123` - Favourite (or unfavourite) asset 123
+- `/storesmodel toggleFavourite <code>` - Favourite (or unfavourite) a store by its code
+
+Methods that take tables (e.g. `BasketModel:add(items)`) can't be called this way — arguments are only numbers, booleans and strings. Use the controller action, or a method with simple arguments.
 
 ### Server-Scoped Models
 
-Server-scoped models (in `src/server/models/server/`) operate on shared server state.
-
-**Example - ShrineModel:**
-- `/shrinemodel donate 123456789 100` - Donate 100 treasure to shrine with player ID
+Server-scoped models (in `ServerScriptService/models/server/`) operate on shared server state. There are none in this repo yet; one would be reached as `/<name>model <method> [args...]` and act on the single `"SERVER"` instance. (`UserSession` models such as `OwnershipModel` aren't registered for slash commands.)
 
 ### Controller Actions
 
-Controller commands (in `src/server/controllers/`) trigger controller actions with full validation.
+Controller commands (in `ServerScriptService/controllers/`) trigger controller actions with full validation.
 
-**Example - BazaarController:**
-- `/bazaarcontroller BuyTreasure` - Purchase treasure (costs 200 gold, adds 1 treasure)
+**Example - BasketController:**
+- `/basketcontroller Clear` - Empty your basket (counts against the basket rate budget, like a real request)
 
-**Example - CashMachineController:**
-- `/cashmachinecontroller Withdraw 100` - Withdraw 100 gold (adds to inventory)
-- `/cashmachinecontroller Deposit 50` - Deposit 50 gold (removes from inventory)
+**Example - AvatarController:**
+- `/avatarcontroller Undo` - Undo your last avatar change
+- `/avatarcontroller TakeOffAll` - Take off everything you're wearing
 
-**Example - ShrineController:**
-- `/shrinecontroller Donate` - Donate 1 treasure to the shrine
+**Example - WorldOptionsController:**
+- `/worldoptionscontroller Reset` - Reset your world options to defaults
 
 ## How It Works
 
@@ -235,8 +233,8 @@ Controller commands (in `src/server/controllers/`) trigger controller actions wi
 
 When the server starts:
 
-1. **ModelRunner** discovers all models in `src/server/models/user/` and `src/server/models/server/`
-2. **ControllerRunner** discovers all controllers in `src/server/controllers/`
+1. **ModelRunner** discovers all models under `ServerScriptService/models/`
+2. **ControllerRunner** discovers all controllers in `ServerScriptService/controllers/`
 3. **SlashCommandService** registers each discovered model and controller
 4. **TextChatCommands** are created for autocomplete in chat
 
@@ -279,24 +277,26 @@ Arguments are automatically converted to appropriate types:
 
 | Input | Parsed As | Example |
 |-------|-----------|---------|
-| `100` | `number` | `/inventorymodel addGold 100` |
+| `1` | `number` | `/outfitsmodel rename 1 Party` |
 | `true` or `false` | `boolean` | `/somemodel setFlag true` |
-| `"text"` | `string` | `/shrinemodel donate 123456789 10` |
+| `text` | `string` | `/favouritesmodel toggle Asset:123` |
 
 ## Creating Slash-Command-Friendly Models
 
 No special code is needed! Just create models following the normal MVC pattern:
 
 ```lua
--- src/server/models/user/InventoryModel.luau
+-- ServerScriptService/models/user/BasketModel.luau
 
-function InventoryModel:addGold(amount: number): ()
-    self.gold += amount
-    self:syncState()  -- This syncs to client as normal
+function BasketModel:clear(): ()
+    if #self.items > 0 then
+        self.items = {}
+        self:syncState()  -- This syncs to client as normal
+    end
 end
 ```
 
-That's it! The `/inventorymodel addGold 100` command is now automatically available.
+That's it! The `/basketmodel clear` command is now automatically available.
 
 ### Best Practices
 
@@ -347,14 +347,14 @@ All command results are displayed directly in the **chat window**, making it eas
 
 **Successful commands:**
 ```
-Executed InventoryModel:addGold
-Executed BazaarController:BuyTreasure
+Executed basketmodel:clear
+Executed basketcontroller:Clear
 ```
 
 **Error messages:**
 ```
 Model 'wrongname' not found
-Method 'wrongmethod' not found in InventoryModel
+Method 'wrongmethod' not found in basketmodel
 Invalid command format. Usage: /<command> <method> [args...]
 ```
 
@@ -363,11 +363,14 @@ Invalid command format. Usage: /<command> <method> [args...]
 === Available Slash Commands ===
 
 USER MODELS (per-player state):
-  /inventorymodel
+  /basketmodel
+  /favouritesmodel
+  ...
 
 CONTROLLERS:
-  /bazaarcontroller
-  /shrinecontroller
+  /avatarcontroller
+  /basketcontroller
+  ...
 
 Usage: /commands [command] - Show methods/actions for a command
 ```
@@ -379,17 +382,17 @@ The slash command system also includes server-side logging for monitoring:
 **Client Console:**
 ```
 [SlashCommandClient] Found TextChatCommands with 2 commands
-[SlashCommandClient] Registering listener for command: /inventorymodel
-[SlashCommandClient] Command triggered: /inventorymodel with text: "/inventorymodel addGold 100"
-[SlashCommandClient] Sending to server: "inventorymodel addGold 100"
+[SlashCommandClient] Registering listener for command: /basketmodel
+[SlashCommandClient] Command triggered: /basketmodel with text: "/basketmodel clear"
+[SlashCommandClient] Sending to server: "basketmodel clear"
 [ChatMessageClient] initialized
 ```
 
 **Server Console:**
 ```
 [SlashCommandService] Game owned by group 12345678. Rank 200+ required.
-[SlashCommand] SUCCESS - PlayerName: Executed InventoryModel:addGold
-[SlashCommand] PlayerName used /commands inventorymodel
+[SlashCommand] SUCCESS - PlayerName: Executed basketmodel:clear
+[SlashCommand] PlayerName used /commands basketmodel
 ```
 
 ### Common Issues
@@ -415,20 +418,19 @@ The slash command system also includes server-side logging for monitoring:
 ## File Structure
 
 ```
-src/
-├── server/
+Source/
+├── ServerScriptService/
 │   ├── models/
 │   │   ├── user/           ← User-scoped models (commands operate on player data)
-│   │   │   └── InventoryModel.luau
-│   │   ├── server/         ← Server-scoped models (commands operate on server data)
-│   │   │   └── ShrineModel.luau
+│   │   │   └── BasketModel.luau, FavouritesModel.luau, ...
+│   │   ├── server/         ← Server-scoped models (commands operate on server data; none yet)
 │   │   └── ModelRunner.server.luau  ← Registers models with SlashCommandService
 │   ├── services/
-│   │   └── SlashCommandService.luau  ← Server-side command handler & help system
+│   │   └── framework/SlashCommandService.luau  ← Server-side command handler & help system
 │   └── controllers/
-│       ├── AbstractController.luau   ← Base class with getAvailableActions()
-│       └── BazaarController.luau     ← Example with action discovery
-└── client/
+│       ├── AbstractController.luau   ← Base class (commands call each controller's executeAction)
+│       └── BasketController.luau     ← Example; actions listed in Network.luau
+└── ReplicatedFirst/
     ├── SlashCommandClient.client.luau  ← Client-side command listener
     └── ChatMessageClient.client.luau   ← Displays command feedback in chat
 ```

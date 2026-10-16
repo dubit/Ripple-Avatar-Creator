@@ -19,7 +19,7 @@ local NetworkBuilder = {}
 
 -- Build Network.Actions from controller config
 -- Creates nested tables mapping controller names to action constants
--- Example: { CashMachine = { Withdraw = "Withdraw", Deposit = "Deposit" } }
+-- Example: { Basket = { Add = "Add", Remove = "Remove" } }
 local function buildActions(controllersConfig: { [string]: { string } })
 	local actions = {}
 	for controllerName, actionList in controllersConfig do
@@ -33,7 +33,7 @@ end
 
 -- Build Network.Intent from controller config
 -- Creates Bolt ReliableEvents for each controller
--- Example: { CashMachine = ReliableEvent("CashMachineIntent") }
+-- Example: { Basket = ReliableEvent("BasketIntent") }
 local function buildIntents(controllersConfig: { [string]: { string } }, Bolt: any)
 	local intents = {}
 	for controllerName in controllersConfig do
@@ -44,7 +44,7 @@ end
 
 -- Build Network.State from states config
 -- Creates Bolt RemoteProperties for each model with default values
--- Example: { Inventory = RemoteProperty("InventoryState", { ownerId = "", gold = 0 }) }
+-- Example: { Basket = RemoteProperty("BasketState", { ownerId = "", items = {} }) }
 local function buildStates(statesConfig: { [string]: any }, Bolt: any)
 	local states = {}
 	for stateName, defaultValue in statesConfig do
@@ -72,7 +72,7 @@ function NetworkBuilder.build(config: any, Bolt: any): any
 
 		Note: Intents are eagerly created at module load, this just returns the existing one
 
-		@param controllerName - Name of the controller (e.g., "CashMachine")
+		@param controllerName - Name of the controller (e.g., "Basket")
 		@return Bolt.ReliableEvent for this controller
 	]]
 	function Network.registerIntent(controllerName: string): any
@@ -88,7 +88,7 @@ function NetworkBuilder.build(config: any, Bolt: any): any
 
 		Note: Properties are eagerly created at module load, this just returns the existing one
 
-		@param modelName - Name of the model (e.g., "Inventory")
+		@param modelName - Name of the model (e.g., "Basket")
 		@return Bolt.RemoteProperty for this model
 	]]
 	function Network.registerState(modelName: string): any

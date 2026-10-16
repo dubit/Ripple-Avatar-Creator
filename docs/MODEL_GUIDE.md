@@ -11,7 +11,7 @@ Models represent the authoritative game state and live exclusively on the server
 All models in this project follow an inheritance pattern based on `AbstractModel`:
 
 - **AbstractModel**: Base class providing common functionality for all models
-- **Concrete Models** (e.g., InventoryModel): Extend AbstractModel and add specific game logic
+- **Concrete Models** (e.g., BasketModel): Extend AbstractModel and add specific game logic
 
 ## Model Scopes
 
@@ -24,8 +24,8 @@ User-scoped models are **per-player** and **persistent** (saved to DataStore):
 - **Lifecycle**: Created when player joins, destroyed when player leaves
 - **Persistence**: Automatically saved to DataStore
 - **Owner ID**: Player's UserId (e.g., "123456789")
-- **Use Cases**: Inventory, quests, player settings, progress
-- **Example**: `InventoryModel` - each player has their own gold/treasure
+- **Use Cases**: Saved lists, player settings, progress
+- **Examples**: `BasketModel` (the items the player means to buy), `AvatarModel`, `OutfitsModel`, `StoresModel`, `FavouritesModel`, `WorldOptionsModel`
 
 ### Server-Scoped Models (`models/server/`)
 
@@ -35,7 +35,7 @@ Server-scoped models are **per-server instance** and **ephemeral** (not saved):
 - **Persistence**: None - data resets when server restarts
 - **Owner ID**: Fixed string "SERVER"
 - **Use Cases**: Match state, server events, shared game state
-- **Example**: `ShrineModel` - shared by all players in the server
+- **Example** (illustrative): an `EventModel` holding a server-wide live event's countdown — no module in this repo uses this scope yet
 
 ### UserSession-Scoped Models (`models/userSession/`)
 
@@ -46,7 +46,7 @@ UserSession-scoped models are **per-player** and **ephemeral** (never saved to D
 - **Sync**: Owner player only (for UI like mana bars, ammo counters, cooldown timers)
 - **Owner ID**: Player's UserId (e.g., "123456789")
 - **Use Cases**: Mana, ammo, cooldowns, combo counters, session-only buffs, temporary UI state
-- **Example**: `ManaModel` - each player's current mana, displayed on their HUD but not saved
+- **Example**: `OwnershipModel` - what the player owns and how their latest purchase went; checked afresh each session because ownership can change outside the game
 
 ### UserEntity-Scoped Models (`models/userEntities/`)
 
@@ -56,7 +56,7 @@ UserEntity-scoped models are **per-player instances** and **persistent** (saved 
 - **Persistence**: Automatically saved to DataStore with composite keys (ModelName_UserId_ModelId)
 - **Owner ID**: Composite key of UserId + ModelId (e.g., "123456789_pet1")
 - **Use Cases**: Pets, player-owned bases, character slots, equipment slots, squadmates
-- **Example**: `PetModel` - each player can have multiple pets (pet1, pet2, pet3, etc.)
+- **Example** (illustrative): a `PetsModel` - each player can have multiple pets (pet1, pet2, pet3, etc.); no module in this repo uses this scope yet
 - **ID Strategy**: Application-specific - sequential numbers, UUIDs, or semantic identifiers
 
 ### ServerEntity-Scoped Models (`models/serverEntities/`)
@@ -68,7 +68,7 @@ ServerEntity-scoped models are **per-server instances** and **ephemeral** (not s
 - **Persistence**: None - data resets when server restarts
 - **Owner ID**: Fixed string "SERVER" with unique entityId (e.g., "SERVER_main_gate")
 - **Use Cases**: Drawbridges, gates, doors, world objects with fixed IDs
-- **Example**: `DrawbridgeModel` — entities like "main_gate", "north_drawbridge" defined upfront
+- **Example** (illustrative): a `DrawbridgeModel` — entities like "main_gate", "north_drawbridge" defined upfront
 - **ID Strategy**: Semantic strings (e.g., "main_gate", "north_drawbridge")
 
 **Dynamic** — entities created at runtime by game logic:
@@ -76,15 +76,17 @@ ServerEntity-scoped models are **per-server instances** and **ephemeral** (not s
 - **Persistence**: None - all instances lost on server restart
 - **Owner ID**: Fixed string "SERVER" with a runtime-generated entityId (e.g., a UUID)
 - **Use Cases**: Player-placed objects, spawned world items, runtime-created instances
-- **Example**: `CandlesModel` — candles placed by players during a session
+- **Example** (illustrative): a `PickupsModel` — items dropped into the world during a session
 - **ID Strategy**: UUIDs or other runtime-generated unique IDs
+
+No module in this repo uses either ServerEntity variant yet.
 
 ### Choosing a Scope
 
 | Scope | Location | Persistent | Per-Player | Multiple Instances | Sync Target | Use For |
 |-------|----------|------------|------------|-------------------|-------------|---------|
-| **User** | `models/user/` | ✅ Yes | ✅ Yes | ❌ One per player | Owner | Player inventory, progress, settings |
-| **UserSession** | `models/userSession/` | ❌ No | ✅ Yes | ❌ One per player | Owner | Mana, ammo, cooldowns, session UI state |
+| **User** | `models/user/` | ✅ Yes | ✅ Yes | ❌ One per player | Owner | Basket, outfits, avatar, settings |
+| **UserSession** | `models/userSession/` | ❌ No | ✅ Yes | ❌ One per player | Owner | Ownership checks, purchase in progress, cooldowns |
 | **Server** | `models/server/` | ❌ No | ❌ No | ❌ One for server | All | Match scores, timers, shared game state |
 | **UserEntity** | `models/userEntities/` | ✅ Yes | ✅ Yes | ✅ Many per player | Owner | Pets, bases, character slots, equipment |
 | **ServerEntity (predefined)** | `models/serverEntities/` | ❌ No | ❌ No | ✅ Many for server | All | Drawbridges, gates, doors — fixed IDs at startup |
@@ -140,22 +142,21 @@ Use this decision tree to determine which scope your model needs:
 **Examples:**
 
 ✅ **User-scoped** (per-player, persistent):
-- Player's inventory (gold, items, weapons)
+- The basket (`BasketModel`) and saved outfits (`OutfitsModel`)
+- What the player is wearing (`AvatarModel`)
+- Favourite items (`FavouritesModel`) and the player's own stores (`StoresModel`)
+- Player settings and preferences (`WorldOptionsModel`)
 - Quest progress and achievements
-- Player settings and preferences
-- Character stats and levels
-- Owned cosmetics
 
 ✅ **UserSession-scoped** (per-player, ephemeral, resets on rejoin):
-- Current mana / energy
-- Ammo counts
+- What the player owns, as checked this session (`OwnershipModel`)
+- The purchase in progress (`OwnershipModel`)
 - Active cooldown timers
 - Combo counters
 - Session-only buffs or status effects
 
 ✅ **Server-scoped** (shared, ephemeral, single instance):
 - Match timer for all players
-- Shared shrine donations (ShrineModel example)
 - Current round number
 - Server-wide events
 - Leaderboard for current session
@@ -166,12 +167,12 @@ Use this decision tree to determine which scope your model needs:
 - World objects with known IDs at server start
 
 ✅ **ServerEntity-scoped, dynamic** (shared, ephemeral, runtime-created instances):
-- Player-placed candles or objects
+- Player-placed objects or dropped pickups
 - Spawned world items with session lifetimes
 - Any shared object whose ID is only known at runtime
 
 ❌ **Common mistakes:**
-- Making inventory Server-scoped (each player needs their own!)
+- Making the basket Server-scoped (each player needs their own!)
 - Making match timer User-scoped (all players should see the same timer!)
 - Expecting Server-scoped data to persist (it won't - that's by design!)
 
@@ -183,6 +184,7 @@ Before creating your model, decide which scope it needs:
 - **UserSession-Scoped**: Place in `Source/ServerScriptService/models/userSession/YourModel.luau` and pass `"UserSession"` to AbstractModel
 - **Server-Scoped**: Place in `Source/ServerScriptService/models/server/YourModel.luau` and pass `"Server"` to AbstractModel
 - **UserEntity-Scoped**: Place in `Source/ServerScriptService/models/userEntities/YourModel.luau` and pass `"UserEntity"` to AbstractModel
+- **ServerEntity-Scoped**: Place in `Source/ServerScriptService/models/serverEntities/YourModel.luau` and pass `"ServerEntity"` to AbstractModel
 
 ### Step 3: Create Your Model File
 
@@ -592,22 +594,30 @@ For UserEntity-scoped models, choosing an appropriate ID strategy is important. 
 
 **Best for:** Pets, equipment slots, save slots, bases
 
-**Example:**
+**Example:** `OutfitsModel` hands out outfit ids this way (inside one User-scoped model), so an outfit keeps its id when others are deleted:
 ```lua
--- Store in UserModel
-export type InventoryModel = typeof(setmetatable({} :: {
-	nextPetId: number, -- Track next available ID
-	petIds: {string}, -- List of active pet IDs
-}, InventoryModel))
+-- OutfitsModel:add
+local outfit = {
+	id = self.nextId,
+	name = name,
+	items = keep(items),
+	-- ...
+}
+self.nextId += 1
+table.insert(self.outfits, outfit)
+self:syncState()
+```
 
--- In controller when creating new pet
-local inventory = InventoryModel.get(ownerId)
-local petId = tostring(inventory.nextPetId)
-inventory.nextPetId += 1
-table.insert(inventory.petIds, petId)
-inventory:syncState()
+For UserEntity IDs, keep the same counter (plus the list of live IDs) on a User-scoped model, which `loadAllForOwner()` then reads. Creating a new pet (illustrative names):
+```lua
+local roster = PetRosterModel.get(ownerId) -- hypothetical User-scoped model
+if not roster then return end
+local petId = tostring(roster.nextPetId)
+roster.nextPetId += 1
+table.insert(roster.petIds, petId)
+roster:syncState()
 
-local pet = PetModel.get(ownerId, petId)
+local pet = PetsModel.get(ownerId, petId)
 ```
 
 #### UUID/GUID Strategy
@@ -713,7 +723,7 @@ end
 - **Prerequisite:** Add an entry to NetworkConfig.States in Network.luau first (NetworkBuilder auto-generates the RemoteProperty)
 - State properties are accessed as `Network.State.Your` (model name without "Model" suffix)
 - Pass `ownerId` as the second parameter
-- Pass the scope (`"User"` or `"Server"`) as the third parameter
+- Pass the scope (`"User"`, `"UserSession"`, `"Server"`, `"UserEntity"` or `"ServerEntity"`) as the third parameter
 - Cast `AbstractModel.new()` to `any` to allow metatable manipulation without type errors
 
 **Type Safety Tip:**
@@ -795,7 +805,7 @@ end
 The `syncState()` method **automatically detects the appropriate broadcast scope** based on the model's scope type:
 
 - **User-scoped models**: Automatically sync only to the owning player via `RemoteProperty:SetFor(player, state)`
-  - Use for private data: inventory, quest progress, personal stats
+  - Use for private data: basket, outfits, personal settings
   - Most common for player-specific models
   - Triggers DataStore persistence
 
@@ -812,16 +822,17 @@ The `syncState()` method **automatically detects the appropriate broadcast scope
 #### Example: User vs Server Scoped
 
 ```lua
--- User-scoped model: Only the player sees their gold
-function InventoryModel:addGold(amount: number): ()
-	self.gold += amount
-	self:syncState()  -- Automatically sends only to owner + persists to DataStore
+-- User-scoped model (BasketModel.luau): only the player sees their basket
+function BasketModel:clear(): ()
+	if #self.items > 0 then
+		self.items = {}
+		self:syncState()  -- Automatically sends only to owner + persists to DataStore
+	end
 end
 
--- Server-scoped model: Everyone sees the shared shrine donations
-function ShrineModel:addDonation(donorName: string, amount: number): ()
-	self.totalDonations += amount
-	self.lastDonor = donorName
+-- Server-scoped model (illustrative EventModel): everyone sees the same countdown
+function EventModel:start(endsAt: number): ()
+	self.endsAt = endsAt
 	self:syncState()  -- Automatically broadcasts to all players
 end
 ```
@@ -837,69 +848,103 @@ end
 
 ## Examples
 
-### Example 1: InventoryModel (User-Scoped)
+### Example 1: BasketModel (User-Scoped)
 
-The `InventoryModel.luau` file in `src/server/models/user/` demonstrates a User-scoped model with per-owner registry pattern and state broadcasting:
-
-### Features:
-- Per-owner registry pattern via `get(ownerId)` method
-- Properties: `gold: number`, `treasure: number`, `ownerId: string`
-- Custom method: `addGold(amount: number)` - broadcasts with `"owner"` scope
-- State broadcasting: Automatically creates `InventoryStateChanged` RemoteEvent
-- Inherits `syncState()` from AbstractModel for state synchronization
-- Cleanup method: `remove(ownerId)` for player lifecycle management
-
-### Usage in Production:
-User-scoped models are initialized automatically when players join:
-- `ModelRunner.server.luau` creates inventories in the PlayerAdded handler
-- Controllers access instances via `InventoryModel.get(tostring(player.UserId))`
-- Properties can be modified directly or through custom methods
-- State changes are automatically broadcast to clients via RemoteEvents
-- Cleanup happens automatically in the PlayerRemoving handler
-
-### Example 2: ShrineModel (Server-Scoped)
-
-The `ShrineModel.luau` file in `src/server/models/server/` demonstrates a Server-scoped model:
+`Source/ServerScriptService/models/user/BasketModel.luau` is the simplest real model: the items the player means to buy, oldest first, saved across sessions.
 
 ### Features:
-- Server-scoped (single instance shared by all players)
-- Properties: `treasure: number`, `userID: string`
-- Custom method: `donate(playerUserId: string, amount: number)` - broadcasts with `"all"` scope
-- State broadcasting: Automatically creates `ShrineStateChanged` RemoteEvent
-- Ephemeral: Data resets when server restarts (no DataStore persistence)
-- Access pattern: `ShrineModel.get("SERVER")` returns the shared instance
+- One property: `items: { BasketItem }` (each `{ targetId, kind, typeName, name }`)
+- `get(ownerId)` uses `getOrWait` and returns `BasketModel?` — callers nil-check
+- Methods: `indexOf(targetId, kind)`, `add(items)` (skips duplicates, drops the oldest past `AvatarConfig.basketLimit`), `take(refs)`, `clear()`
+- Each mutating method calls `syncState()` only when something actually changed
+- Synced as `Network.State.Basket` (entry `Basket = { ownerId = "", items = {} }` in Network.luau)
+
+```lua
+-- Add the items not already in the basket. Returns the ones added.
+function BasketModel:add(items: { BasketItem }): { BasketItem }
+	local added = {}
+	for _, item in items do
+		if not self:indexOf(item.targetId, item.kind) then
+			table.insert(self.items, {
+				targetId = item.targetId,
+				kind = item.kind,
+				typeName = item.typeName,
+				name = item.name,
+			})
+			table.insert(added, item)
+		end
+	end
+	if #added > 0 then
+		while #self.items > AvatarConfig.basketLimit do
+			table.remove(self.items, 1)
+		end
+		self:syncState()
+	end
+	return added
+end
+```
 
 ### Usage in Production:
-Server-scoped models are initialized once when the server starts:
-- `ModelRunner.server.luau` creates the server instance on startup
-- Controllers access the shared instance via `ShrineModel.get("SERVER")`
-- All players interact with the same model instance
-- State changes sync to all clients via `syncState()` (automatically broadcasts to all)
-- No cleanup on player leave (persists for server lifetime)
+- `ModelRunner.server.luau` loads each player's saved data on join, applies it, syncs, then calls `markLoaded`
+- `BasketController` resolves and validates items, then calls `BasketModel.get(tostring(player.UserId))` and `:add(...)`
+- Views observe `Network.State.Basket`
+- Cleanup happens automatically on PlayerRemoving (after pending writes are flushed)
 
-### Example 3: DrawbridgeModel (ServerEntity-Scoped)
+The other User-scoped models follow the same shape with more state: `AvatarModel` (what's worn), `OutfitsModel` (saved outfits, `nextId`), `StoresModel` (codes of stores owned and starred), `FavouritesModel`, `WorldOptionsModel`.
 
-ServerEntity-scoped models are similar to Server-scoped but allow multiple instances:
+### Example 2: OwnershipModel (UserSession-Scoped)
+
+`Source/ServerScriptService/models/userSession/OwnershipModel.luau` holds what the player owns (as checked this session) and their latest purchase. Never saved: ownership can change outside the game, so each session checks afresh.
 
 ### Features:
-- ServerEntity-scoped (multiple instances shared by all players)
-- Properties: `isOpen: boolean`, `ownerId: string`, `modelId: string`
-- Custom method: `toggle()` - broadcasts state change to all
-- State broadcasting: Syncs as aggregated dictionary `{entityId -> state}`
-- Ephemeral: Data resets when server restarts (no DataStore persistence)
-- Access pattern: `DrawbridgeModel.get("main_gate")` returns specific instance
+- Synced: `owned: { string }` ("Asset:123" / "Bundle:45" keys), `purchase: Purchase`
+- Private (underscore-prefixed, never sent): `_checked` (every key looked up, owned or not), `_pending` (the purchase in progress)
+- `get(ownerId)` uses `getOrCreate`, **not** `getOrWait` — only persisted models are marked loaded, so `getOrWait` would wait forever
+- Methods: `owns(key)`, `knows(key)`, `record(results)`, `startPurchase(id, items)`, `finishPurchase(id, state, reason, bought)`
 
-### Usage in Production:
-ServerEntity-scoped models are initialized once when the server starts:
+```lua
+-- Session models have nothing to load, so no waiting (getOrWait would wait
+-- forever: only persisted models are marked loaded).
+function OwnershipModel.get(ownerId: string): OwnershipModel?
+	return AbstractModel.getOrCreate("OwnershipModel", ownerId, function()
+		return OwnershipModel.new(ownerId)
+	end) :: OwnershipModel?
+end
+```
+
+### Example 3: Server-Scoped (illustrative)
+
+> Illustrative — no module in this repo uses this scope yet (`models/server/` exists, empty, with a `.gitkeep`).
+
+A Server-scoped model is a single instance with ownerId `"SERVER"`, created by ModelRunner at startup and broadcast to everyone:
+
+```lua
+-- models/server/EventModel.luau (hypothetical)
+function EventModel.new(ownerId: string): EventModel
+	local self = AbstractModel.new("EventModel", ownerId, "Server") :: any
+	setmetatable(self, EventModel)
+	self.endsAt = 0
+	return self :: EventModel
+end
+
+-- From a controller or service: EventModel.get("SERVER"):start(os.time() + 300)
+```
+
+- Ephemeral: resets when the server restarts; no cleanup on player leave
+- Needs a `States` entry in Network.luau like any other model (`Event = { ownerId = "", endsAt = 0 }`)
+
+### Example 4: DrawbridgeModel (ServerEntity-Scoped, predefined — illustrative)
+
+> Illustrative — no module in this repo uses this scope yet (`models/serverEntities/` exists, empty, with a `.gitkeep`).
+
+ServerEntity-scoped models are like Server-scoped but allow multiple instances:
 - `ModelRunner.server.luau` calls `initAllServerEntities()` on startup
-- Each entity ID (e.g., "main_gate", "north_drawbridge") gets its own instance
-- Controllers access instances via `DrawbridgeModel.get("main_gate")`
-- All players see the same state for each entity
-- State changes sync to all clients via `syncState()` as `{entityId -> state}` dictionary
+- Each entity ID (e.g., "main_gate", "north_drawbridge") gets its own instance: `DrawbridgeModel.get("main_gate")`
+- State syncs to all clients as an aggregated `{entityId -> state}` dictionary
 - No cleanup on player leave (persists for server lifetime)
 
 ```lua
--- Example DrawbridgeModel in models/serverEntities/DrawbridgeModel.luau
+-- models/serverEntities/DrawbridgeModel.luau (hypothetical)
 function DrawbridgeModel.new(entityId: string): DrawbridgeModel
 	local self = AbstractModel.new("DrawbridgeModel", "SERVER", "ServerEntity", entityId) :: any
 	setmetatable(self, DrawbridgeModel)
@@ -926,89 +971,68 @@ function DrawbridgeModel:toggle(): ()
 end
 ```
 
-### Example 4: CandlesModel (Dynamic ServerEntity-Scoped)
+### Example 5: PickupsModel (ServerEntity-Scoped, dynamic — illustrative)
 
-`CandlesModel` demonstrates the **dynamic** ServerEntity variant where entities are created at runtime rather than predefined at startup:
+> Illustrative — no module in this repo uses this scope yet.
 
-### Key Differences from Predefined ServerEntity:
+The **dynamic** variant, where entities are created at runtime rather than predefined at startup:
 - `initAllServerEntities()` is a **no-op** — no entities exist at server start
-- A static `create()` factory method initializes all properties and syncs in one call
-- `syncAll()` handles the **empty-collection edge case**: when the last candle is removed, no instance remains to call `syncState()` on, so it broadcasts `{}` directly via Network
-- Entity IDs are generated at runtime (e.g., UUIDs from `HttpService:GenerateGUID()`)
-
-### Usage in Production:
-- Controllers call `CandlesModel.create(entityId, creator, x, y, z)` to add a new candle
-- Controllers call `CandlesModel.remove(entityId)` then `CandlesModel.syncAll()` to remove one
-- Client receives the full `{entityId -> state}` dictionary and renders all candles from it
+- A static `create()` factory initializes all properties and syncs in one call
+- `syncAll()` handles the **empty-collection edge case**: when the last entity is removed, no instance remains to call `syncState()` on, so it broadcasts `{}` directly via Network
+- Entity IDs are generated at runtime (e.g., `HttpService:GenerateGUID(false)`)
+- Removal: `PickupsModel.remove(entityId)` then `PickupsModel.syncAll()`; an expiry loop for this belongs in a game service (see [SERVICES_GUIDE.md](SERVICES_GUIDE.md))
 
 ```lua
--- Example CandlesModel in models/serverEntities/CandlesModel.luau
-function CandlesModel.create(entityId, creator, posX, posY, posZ)
-	local candle = CandlesModel.get(entityId)
-	candle.creator = creator
-	candle.positionX = posX
-	candle.positionY = posY
-	candle.positionZ = posZ
-	candle.createdTime = os.time()
-	candle:syncState()
-	return candle
+-- models/serverEntities/PickupsModel.luau (hypothetical)
+function PickupsModel.create(entityId: string, kind: string, position: Vector3): PickupsModel
+	local pickup = PickupsModel.get(entityId)
+	pickup.kind = kind
+	pickup.positionX, pickup.positionY, pickup.positionZ = position.X, position.Y, position.Z
+	pickup.createdTime = os.time()
+	pickup:syncState()
+	return pickup
 end
 
-function CandlesModel.syncAll(): ()
-	local all = CandlesModel.getAll()
-	local anyCandle = next(all)
-	if anyCandle then
-		all[anyCandle]:syncState() -- triggers aggregated broadcast for all entities
+function PickupsModel.syncAll(): ()
+	local all = PickupsModel.getAll()
+	local anyPickup = next(all)
+	if anyPickup then
+		all[anyPickup]:syncState() -- triggers aggregated broadcast for all entities
 	else
-		-- No candles remain — broadcast empty state directly
-		local Network = require(game:GetService("ReplicatedStorage").Network)
-		Network.State.Candles:Set({})
+		-- No pickups remain — broadcast empty state directly
+		local Network = require(game:GetService("ReplicatedStorage"):WaitForChild("Network"))
+		Network.State.Pickups:Set({})
 	end
 end
 
--- No-op: candles are created dynamically, not at server start
-function CandlesModel.initAllServerEntities(): ()
+-- No-op: pickups are created dynamically, not at server start
+function PickupsModel.initAllServerEntities(): ()
 end
 ```
 
 ## File Locations
 
-- **AbstractModel**: `src/server/models/AbstractModel.luau`
-- **ModelRunner**: `src/server/models/ModelRunner.server.luau`
-- **User-Scoped Models**: `src/server/models/user/YourModel.luau`
-- **Server-Scoped Models**: `src/server/models/server/YourModel.luau`
-- **UserEntity-Scoped Models**: `src/server/models/userEntities/YourModel.luau`
-- **ServerEntity-Scoped Models**: `src/server/models/serverEntities/YourModel.luau`
-- **Test Scripts**: `src/server/YourModelTest.server.luau`
+All under `Source/ServerScriptService/models/`:
+
+- **AbstractModel**: `AbstractModel.luau`
+- **ModelRunner**: `ModelRunner.server.luau`
+- **User-Scoped Models**: `user/` (BasketModel, AvatarModel, OutfitsModel, StoresModel, FavouritesModel, WorldOptionsModel)
+- **UserSession-Scoped Models**: `userSession/` (OwnershipModel)
+- **Server-Scoped Models**: `server/` (empty, `.gitkeep`)
+- **UserEntity-Scoped Models**: `userEntities/` (empty, `.gitkeep`)
+- **ServerEntity-Scoped Models**: `serverEntities/` (empty, `.gitkeep`)
+- **State entries**: `Source/ReplicatedStorage/Network.luau` (`NetworkConfig.States`)
+- **Testing**: see Testing Your Model below
 
 ## Testing Your Model
 
-Create a test script in `src/server/` to verify your model:
+Test in a Studio Play session, after stopping and restarting Play so it runs the latest synced source:
 
-```lua
---!strict
+- **Through the game:** do the thing that changes the model (or call one of its methods with a slash command, e.g. `/basketmodel clear`; see `docs/SLASH_COMMANDS.md`), then read the replicated state on the client with `Network.State.<Name>:Get()`.
+- **Persistence:** leave and rejoin, and check the Output for PersistenceService's `Loaded` / `Successfully wrote` lines for your model.
+- **Pure logic:** keep list-editing helpers free of the model instance where you can, so a Server command-bar script can require and call them.
 
-local YourModel = require(script.Parent.models.YourModel)
-
-print("\n--- Testing YourModel ---")
-
--- Test per-owner instances
-local owner1 = YourModel.get("owner1")
-local owner2 = YourModel.get("owner2")
-
--- Test your methods
-owner1:yourMethod()
-
--- Verify instances are different
-print("owner1 == owner2:", owner1 == owner2) -- Should be false
-
--- Debug output
-owner1:syncState()
-owner2:syncState()
-
--- Test cleanup
-YourModel.remove("owner1")
-```
+Don't call a User-scoped model's `.get()` from the command bar: it waits for that player's model to load (`getOrWait`), and the command bar's copy of the model registry never gets one.
 
 ## Best Practices
 
@@ -1060,7 +1084,7 @@ local inventory = PlayerInventory.get(tostring(player.UserId))
 
 Player lifecycle is automatically handled by `ModelRunner.server.luau` in the `models/` folder. The ModelRunner:
 
-- **Auto-discovers** all models in `models/user/`, `models/server/`, `models/userEntities/`, and `models/serverEntities/` folders
+- **Auto-discovers** all models in `models/user/`, `models/userSession/`, `models/server/`, `models/userEntities/`, and `models/serverEntities/` folders (empty folders simply contribute nothing)
 - **Server-scoped models**: Initialized once on server startup with ownerId "SERVER"
 - **ServerEntity-scoped models**: Initialized once on server startup via `initAllServerEntities()` method
 - **User-scoped models**: Initialized when players join (PlayerAdded event)
@@ -1180,209 +1204,55 @@ Players.PlayerRemoving:Connect(function(player: Player)
 end)
 ```
 
-**Important**: You don't need to manually add your model to ModelRunner. Simply create it in the `models/user/`, `models/server/`, `models/userEntities/`, or `models/serverEntities/` folder and it will be automatically discovered and managed.
+**Important**: You don't need to manually add your model to ModelRunner. Simply create it in the `models/user/`, `models/userSession/`, `models/server/`, `models/userEntities/`, or `models/serverEntities/` folder and it will be automatically discovered and managed.
 
-## Working with StateEvents
+## Working with Network State Entries
 
-When you create a new model that broadcasts state to clients, you should add it to the `StateEvents` module for type-safe state synchronization.
+Every model needs a matching entry in `NetworkConfig.States` in `Source/ReplicatedStorage/Network.luau`. `AbstractModel.new("BasketModel", ...)` strips the `Model` suffix and calls `Network.registerState("Basket")`, which returns the Bolt RemoteProperty NetworkBuilder built from the `Basket` entry; views read it as `Network.State.Basket`. (Network.luau replaces the template's old `StateEvents` module.)
 
-### What are StateEvents?
-
-StateEvents is a centralized module (`src/shared/StateEvents.luau`) that provides:
-- **Event name constants** - Single source of truth for RemoteEvent names
-- **Exported data types** - Type-safe state data structures for views
-- **Complete MVC type safety** - From model through view
-
-### When to Add a New State Event
-
-Add a new state event to StateEvents when:
-- ✅ You create a new model that broadcasts state to clients
-- ✅ Views need to observe changes in a model's state
-- ✅ You want type-safe state synchronization between server and client
-
-### When to Reuse an Existing State Event
-
-Reuse an existing event when:
-- ✅ Multiple views observe the same model (e.g., StatusBarView and InventoryUIView both use InventoryStateChanged)
-- ✅ Data structure is the same, just different UI presentation
-
-### Step-by-Step: Adding a New State Event
-
-**1. Open `src/shared/StateEvents.luau`**
-
-**2. Add event name constant:**
-
-Match your model name exactly (AbstractModel uses this for auto-creation):
+**1. Add the default state** (always include `ownerId`):
 
 ```lua
-local StateEvents = {
-    -- ... existing events ...
-    YourModel = {
-        EventName = "YourModelStateChanged",
-    },
-}
-```
-
-**Naming convention:** `[ModelName]StateChanged` (e.g., "InventoryStateChanged", "ShrineStateChanged")
-
-**3. Add exported data type:**
-
-Match your model's properties that views need to observe:
-
-```lua
--- ... existing type exports ...
-export type YourModelData = {
-    ownerId: string,  -- ALWAYS include (required for filtering)
-    property1: type,
-    property2: type,
-}
-```
-
-**4. Return the module:**
-
-```lua
-return StateEvents
-```
-
-### State Data Type Guidelines
-
-**Always include:**
-- `ownerId: string` - Required for filtering, even if not always used by views
-
-**Include properties that:**
-- ✅ Views need to display (e.g., gold amount, treasure count)
-- ✅ Change over time (e.g., health, score, progress)
-- ✅ Are synced by the model (via `self:syncState()`)
-
-**Don't include:**
-- ❌ Internal model state that clients never see
-- ❌ Computed values that views calculate themselves (unless expensive)
-- ❌ Sensitive data that shouldn't be visible to clients
-
-### Example: InventoryModel State Event
-
-**In StateEvents.luau:**
-
-```lua
-Inventory = {
-    EventName = "InventoryStateChanged",
+-- Network.luau, NetworkConfig.States
+-- What the player means to buy (persisted; BasketModel): a list of
+-- { targetId, kind, typeName, name }, oldest first.
+Basket = {
+	ownerId = "",
+	items = {},
 },
-
-export type InventoryData = {
-    ownerId: string,
-    gold: number,
-    treasure: number,
-}
 ```
 
-**How it's used:**
-
-1. **AbstractModel auto-creates RemoteEvent:**
-   - `AbstractModel.new("InventoryModel", ...)` creates RemoteEvent "InventoryStateChanged"
-   - Event is placed in ReplicatedStorage → Events
-
-2. **Model broadcasts state:**
-   ```lua
-   function InventoryModel:addGold(amount: number): ()
-       self.gold += amount
-       self:syncState()  -- Syncs InventoryData to owner (auto-detected scope)
-   end
-   ```
-
-3. **Views observe state with type safety:**
-   ```lua
-   local StateEvents = require(ReplicatedStorage.StateEvents)
-   local inventoryStateChanged = eventsFolder:WaitForChild(StateEvents.Inventory.EventName)
-
-   inventoryStateChanged.OnClientEvent:Connect(function(data: StateEvents.InventoryData)
-       -- Type-safe! Luau knows: data.gold (number), data.treasure (number)
-       updateLabels(data.gold, data.treasure)
-   end)
-   ```
-
-### Example: ShrineModel State Event (Server-Scoped)
-
-**In StateEvents.luau:**
+**2. Export a state type** for views:
 
 ```lua
-Shrine = {
-    EventName = "ShrineStateChanged",
-},
-
-export type ShrineData = {
-    ownerId: string,  -- For server-scoped, use "SERVER"
-    treasure: number,
-    userId: string,  -- Last donor
+export type BasketState = {
+	ownerId: string,
+	items: { WornItem }, -- oldest first (`owned` is never set)
 }
 ```
 
-**Key difference for Server-scoped models:**
-- `ownerId` is always "SERVER" (not a player UserId)
-- Automatically sync to all clients via `syncState()` since scope is "Server"
-- All clients receive the same state
-
-### Common Patterns
-
-#### User-Scoped Model (Private Data)
+**3. Observe it in a view** with `useBoltState` (Bolt's `:Observe()` fires immediately with the current value, then on every update):
 
 ```lua
--- StateEvents.luau
-PlayerQuest = {
-    EventName = "PlayerQuestStateChanged",
-},
-
-export type PlayerQuestData = {
-    ownerId: string,
-    questId: string,
-    progress: number,
-    isComplete: boolean,
-}
-
--- Model syncs with syncState() - User-scoped so only owner sees it
+local basket = useBoltState(Network.State.Basket, {
+	ownerId = "",
+	items = {},
+})
 ```
 
-#### Server-Scoped Model (Public Data)
+### State Data Guidelines
 
-```lua
--- StateEvents.luau
-MatchTimer = {
-    EventName = "MatchTimerStateChanged",
-},
-
-export type MatchTimerData = {
-    ownerId: string,  -- "SERVER"
-    timeRemaining: number,
-    matchState: string,
-}
-
--- Model syncs with syncState() - Server-scoped so all players see it
-```
+**Include** what views display and what changes over time (`items`, `worn`, `purchase`). **Don't include** internal state clients never see — keep it on underscore-prefixed fields, like OwnershipModel's `_checked` and `_pending` — or sensitive data.
 
 ### Troubleshooting
 
 **Problem:** Views not receiving state updates
-- Check: Does event name match model name? (`InventoryModel` → `"InventoryStateChanged"`)
-- Check: Is the type exported from StateEvents.luau?
-- Check: Are you using `StateEvents.ModelName.EventName` in view?
-
-**Problem:** Type errors in view
-- Check: Did you export the data type? (`export type ModelData = {...}`)
-- Check: Are you using the correct type annotation? (`data: StateEvents.ModelData`)
-- Check: Do the properties match your model's actual properties?
+- Check: Does the `States` key match the model name minus `Model`? (`BasketModel` → `Basket`)
+- Check: Is the view observing `Network.State.<Key>` with that same key?
 
 **Problem:** Wrong players receiving state
-- Check: Is your model scope correct? (User vs Server in AbstractModel.new())
-- Check: Bolt handles filtering automatically - User-scoped sends only to owner
-- Check: Server-scoped models send to all players - this is expected behavior
-
-### Benefits of Using StateEvents
-
-✅ **Type Safety** - Catch typos and type mismatches at compile-time
-✅ **Single Source of Truth** - Event names defined once, used everywhere
-✅ **IDE Autocomplete** - Type `StateEvents.` and see all available events
-✅ **Refactoring Safety** - Change once, errors guide you to all usages
-✅ **Self-Documenting** - Types show what data models broadcast
-✅ **Complete MVC Type Safety** - From model through view with zero runtime overhead
+- Check: Is your model scope correct in `AbstractModel.new()`?
+- User/UserSession/UserEntity sync only to the owner by default; Server/ServerEntity sync to everyone — this is expected
 
 ## Exercising Models from Chat
 
@@ -1392,8 +1262,8 @@ Every public model method is automatically available as an in-game slash command
 
 After creating your model:
 
-1. **Create a Controller** (`src/server/controllers/`) to handle user intents and update your model
-2. **Create a View** (`src/client/views/`) to display model state to players
-3. **Set up RemoteEvents** (`src/shared/events/`) for communication between client and server
+1. **Add its state entry** to `NetworkConfig.States` in `Source/ReplicatedStorage/Network.luau` (see above)
+2. **Create a Controller** (`Source/ServerScriptService/controllers/`) to handle user intents and update your model
+3. **Create a View** (`Source/ReplicatedFirst/views/`) to display model state to players
 
 See the main [README.md](../README.md) for the complete MVC architecture overview.

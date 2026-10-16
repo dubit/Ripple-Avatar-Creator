@@ -304,7 +304,7 @@ local function queueEvent(player: Player, eventName: string, params: { [string]:
 		eventParams.debug_mode = true
 	end
 
-	-- Stamp configured global dimensions (e.g. gold, xp) onto the event, except
+	-- Stamp configured global dimensions (e.g. basket_count, worn_count) onto the event, except
 	-- aggregate / pre-hydration events. Each fetcher reads the current model
 	-- value; nil results are omitted (model not ready / absent).
 	if not GLOBAL_PARAM_EXCLUDED_EVENTS[eventName] then

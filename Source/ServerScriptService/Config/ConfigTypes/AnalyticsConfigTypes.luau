@@ -52,7 +52,7 @@ export type AnalyticsConfig = {
 	debug: boolean,                    -- log events to output + send to GA4 DebugView
 	excludedActions: { string }?,      -- controller action names to skip auto-tracking (noise reduction)
 	globalParams: { string }?,         -- absolute model values stamped onto (almost) every event, e.g.
-	                                   -- { "gold", "xp" }. Each key needs a resolver registered via
+	                                   -- { "basket_count", "worn_count" }. Each key needs a resolver registered via
 	                                   -- AnalyticsService.registerDimension (see AnalyticsDimensions).
 	                                   -- Lets any event be segmented by player progression in BigQuery.
 	heatmap: HeatmapConfig,            -- spatial heatmap tracking settings
