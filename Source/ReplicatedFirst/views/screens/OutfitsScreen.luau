@@ -341,25 +341,16 @@ local function OutfitCard(props: {
 	local interaction = useInteraction()
 	local first = PlaceholderData.item(props.outfit.items[1])
 	local cells = mosaic(props.outfit.items, if props.fill then props.shape else nil)
-	return e("TextButton", {
+	return e("Frame", {
 		Name = "OutfitCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(props.onActivated),
-		[React.Event.Activated] = Press.activated(props.onActivated),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
-		[React.Event.MouseButton1Down] = interaction.onDown,
-		[React.Event.MouseButton1Up] = interaction.onUp,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Parts.swatch(if first then first.colour else ""),
 			radius = 14,
-			hovered = interaction.hovered,
-			pressed = interaction.pressed,
+			onActivated = props.onActivated,
 			selected = props.ring,
 			caption = if next(cells) then nil else "outfit",
 			size = if props.fill then UDim2.new(1, 0, 1, -skin.px(40)) else nil,
@@ -423,23 +414,24 @@ local function ActionCard(props: {
 	local skin = useSkin()
 	local interaction = useInteraction()
 	local orange = Tokens.color.accentText
-	return e("TextButton", {
+	-- Only the well is the button (dragging the labels scrolls a carousel).
+	return e("Frame", {
 		Name = "ActionCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(props.onActivated),
-		[React.Event.Activated] = Press.activated(props.onActivated),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
 	}, {
-		Well = e("Frame", {
+		Well = e("TextButton", {
 			Size = UDim2.fromScale(1, 1),
 			BackgroundColor3 = Tokens.color.accent,
 			BackgroundTransparency = if interaction.hovered then 0.86 else 0.94,
 			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Text = "",
+			[React.Event.InputBegan] = Press.began(props.onActivated),
+			[React.Event.Activated] = Press.activated(props.onActivated),
+			[React.Event.MouseEnter] = interaction.onEnter,
+			[React.Event.MouseLeave] = interaction.onLeave,
 		}, {
 			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
 			Corner = e("UICorner", { CornerRadius = UDim.new(0, skin.px(14)) }),
@@ -536,25 +528,16 @@ local ERRORS = {
 local function PersonCard(props: { user: UserLooks.User, sub: string, onActivated: () -> (), layoutOrder: number })
 	local skin = useSkin()
 	local interaction = useInteraction()
-	return e("TextButton", {
+	return e("Frame", {
 		Name = "PersonCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(props.onActivated),
-		[React.Event.Activated] = Press.activated(props.onActivated),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
-		[React.Event.MouseButton1Down] = interaction.onDown,
-		[React.Event.MouseButton1Up] = interaction.onUp,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Parts.swatch(""),
 			radius = 14,
-			hovered = interaction.hovered,
-			pressed = interaction.pressed,
+			onActivated = props.onActivated,
 			image = "rbxthumb://type=Avatar&id=" .. props.user.userId .. "&w=150&h=150",
 		}, {
 			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),

@@ -26,6 +26,7 @@
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
 
@@ -117,6 +118,9 @@ export type ThumbProps = {
 	anchorPoint: Vector2?,
 	hovered: boolean?, -- the ring glows (sprung)
 	pressed: boolean?, -- the thumb dips a little (sprung)
+	-- With this the thumb is the card's button (its own hover and press);
+	-- the rest of a card isn't, so dragging there scrolls a carousel.
+	onActivated: (() -> ())?,
 	selected: boolean?,
 	caption: string?,
 	layoutOrder: number?,
@@ -128,9 +132,13 @@ function Parts.Thumb(props: ThumbProps)
 	local skin = useSkin()
 	local z = props.zIndex or 1
 	local caption = if props.image then nil else props.caption
-	local hover = useSpring({ v = if props.hovered then 1 else 0 }, Tokens.spring.hover)
-	local press = useSpring({ v = if props.pressed then 1 else 0 }, Tokens.spring.press)
-	return e("Frame", {
+	local interaction = useInteraction()
+	local onActivated = props.onActivated
+	local hovered = props.hovered or (onActivated ~= nil and interaction.hovered)
+	local pressed = props.pressed or (onActivated ~= nil and interaction.pressed)
+	local hover = useSpring({ v = if hovered then 1 else 0 }, Tokens.spring.hover)
+	local press = useSpring({ v = if pressed then 1 else 0 }, Tokens.spring.press)
+	local frame: { [any]: any } = {
 		Name = "Thumb",
 		Size = props.size or UDim2.fromScale(1, 1),
 		Position = props.position,
@@ -139,7 +147,18 @@ function Parts.Thumb(props: ThumbProps)
 		BackgroundColor3 = if props.flat then props.colour else Tokens.color.white,
 		BorderSizePixel = 0,
 		ZIndex = z,
-	}, {
+	}
+	if onActivated then
+		frame.AutoButtonColor = false
+		frame.Text = ""
+		frame[React.Event.InputBegan] = Press.began(onActivated)
+		frame[React.Event.Activated] = Press.activated(onActivated)
+		frame[React.Event.MouseEnter] = interaction.onEnter
+		frame[React.Event.MouseLeave] = interaction.onLeave
+		frame[React.Event.MouseButton1Down] = interaction.onDown
+		frame[React.Event.MouseButton1Up] = interaction.onUp
+	end
+	return e(if onActivated then "TextButton" else "Frame", frame, {
 		Corner = e("UICorner", { CornerRadius = UDim.new(0, skin.px(props.radius or Tokens.radius.itemCard)) }),
 		Gradient = if props.flat then nil else e("UIGradient", { Color = tint(props.colour), Rotation = 70 }),
 		Ring = e("UIStroke", {
@@ -423,26 +442,17 @@ function Parts.ItemCard(props: ItemCardProps)
 		end
 	end
 
-	return e("TextButton", {
+	return e("Frame", {
 		Name = "ItemCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder or 0,
-		[React.Event.InputBegan] = Press.began(onPress),
-		[React.Event.Activated] = Press.activated(onPress),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
-		[React.Event.MouseButton1Down] = interaction.onDown,
-		[React.Event.MouseButton1Up] = interaction.onUp,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Parts.swatch(item.colour),
 			image = Parts.image(item),
 			caption = string.lower(item.sub),
-			hovered = interaction.hovered,
-			pressed = interaction.pressed,
+			onActivated = onPress,
 			-- Square: the thumb is as tall as the card is wide (or, with
 			-- `fill`, whatever the cell leaves above the labels).
 			size = if props.fill then UDim2.new(1, 0, 1, -skin.px(40)) else UDim2.fromScale(1, 1),
@@ -753,8 +763,62 @@ function Parts.cardRowHeight(skin: any, cardWidth: number, extraHeight: number?,
 	return skin.px(thumbHeight or cardWidth) + skin.px(extraHeight or 40) + skin.px(3) * 2 + skin.px(12)
 end
 
--- A carousel: one row of fixed-width cells that scrolls sideways (drag on
--- touch, or the scroll bar under it).
+-- Mouse drag-to-scroll for a sideways ScrollingFrame. Touch already drags
+-- natively. Only presses the frame itself gets start a drag: a card's thumb
+-- is a button and keeps its taps, so drags start on the labels and gaps.
+-- The scroll bar keeps its own drag.
+local function useDragScroll(): (rbx: ScrollingFrame, input: InputObject) -> ()
+	local drag = React.useRef(nil :: { startX: number, startCanvas: number, connections: { RBXScriptConnection } }?)
+	local function stop()
+		local current = drag.current
+		if current then
+			for _, connection in current.connections do
+				connection:Disconnect()
+			end
+			drag.current = nil
+		end
+	end
+	React.useEffect(function()
+		return stop
+	end, {})
+	local function began(frame: ScrollingFrame, input: InputObject)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 or drag.current then
+			return
+		end
+		-- Not on the scroll bar (below the window). A GUI event's position is
+		-- in the same space as AbsolutePosition.
+		if input.Position.Y > frame.AbsolutePosition.Y + frame.AbsoluteWindowSize.Y then
+			return
+		end
+		local function move(x: number)
+			local room = math.max(0, frame.AbsoluteCanvasSize.X - frame.AbsoluteWindowSize.X)
+			local current = drag.current
+			if current then
+				frame.CanvasPosition = Vector2.new(math.clamp(current.startCanvas - (x - current.startX), 0, room), frame.CanvasPosition.Y)
+			end
+		end
+		drag.current = {
+			startX = input.Position.X,
+			startCanvas = frame.CanvasPosition.X,
+			connections = {
+				UserInputService.InputChanged:Connect(function(changed: InputObject)
+					if changed.UserInputType == Enum.UserInputType.MouseMovement then
+						move(changed.Position.X)
+					end
+				end),
+				UserInputService.InputEnded:Connect(function(ended: InputObject)
+					if ended.UserInputType == Enum.UserInputType.MouseButton1 then
+						stop()
+					end
+				end),
+			},
+		}
+	end
+	return began
+end
+
+-- A carousel: one row of fixed-width cells that scrolls sideways (drag it
+-- by its labels and gaps, or on touch anywhere, or the scroll bar under it).
 function Parts.CardRow(props: CardRowProps)
 	local skin = useSkin()
 	local width = skin.px(props.cardWidth)
@@ -762,8 +826,10 @@ function Parts.CardRow(props: CardRowProps)
 	local gap = skin.px(props.gap or 12)
 	local inset = skin.px(3) -- room for strokes and glows, as in CardGrid
 	local count = props.count
+	local dragBegan = useDragScroll()
 	return e("ScrollingFrame", {
 		Name = "CardRow",
+		[React.Event.InputBegan] = dragBegan,
 		Size = UDim2.new(1, 0, 0, Parts.cardRowHeight(skin, props.cardWidth, props.extraHeight, props.thumbHeight)),
 		LayoutOrder = props.layoutOrder or 0,
 		BackgroundTransparency = 1,

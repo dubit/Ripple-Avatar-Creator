@@ -165,25 +165,16 @@ local function StoreCard(props: { card: StoresClient.Card, favourite: boolean, o
 		Sounds.play("press")
 		props.onActivated()
 	end
-	return e("TextButton", {
+	return e("Frame", {
 		Name = "StoreCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(open),
-		[React.Event.Activated] = Press.activated(open),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
-		[React.Event.MouseButton1Down] = interaction.onDown,
-		[React.Event.MouseButton1Up] = interaction.onUp,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Tokens.color.white,
 			radius = 14,
-			hovered = interaction.hovered,
-			pressed = interaction.pressed,
+			onActivated = open,
 			caption = if next(cells) then nil else "store",
 		}, {
 			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
@@ -241,25 +232,16 @@ local function CreateCard(props: { layoutOrder: number })
 	local function create()
 		hud.createStore()
 	end
-	return e("TextButton", {
+	return e("Frame", {
 		Name = "CreateStoreCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(create),
-		[React.Event.Activated] = Press.activated(create),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
-		[React.Event.MouseButton1Down] = interaction.onDown,
-		[React.Event.MouseButton1Up] = interaction.onUp,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Tokens.color.accent,
 			radius = 14,
-			hovered = interaction.hovered,
-			pressed = interaction.pressed,
+			onActivated = create,
 		}, {
 			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
 			Icon = e(Icon, {
@@ -1175,24 +1157,15 @@ local function CollectionTile(props: { section: StoresClient.Section, colour: st
 		Sounds.play("press")
 		props.onActivated()
 	end
-	return e("TextButton", {
+	return e("Frame", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(open),
-		[React.Event.Activated] = Press.activated(open),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
-		[React.Event.MouseButton1Down] = interaction.onDown,
-		[React.Event.MouseButton1Up] = interaction.onUp,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Parts.swatch(props.colour),
 			radius = 16,
-			hovered = interaction.hovered,
-			pressed = interaction.pressed,
+			onActivated = open,
 			size = UDim2.fromScale(1, 1),
 		}, {
 			Padding = e("UIPadding", {
