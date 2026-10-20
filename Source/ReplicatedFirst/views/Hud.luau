@@ -343,6 +343,24 @@ local function Hud()
 		end
 	end, { nav.isOpen })
 
+	-- Navigation analytics (NavigationController): every change of the panel's
+	-- root or page, and closing it.
+	local depth = #nav.stack
+	local screen = if nav.top then nav.top.kind else "home"
+	local reported = React.useRef(false)
+	React.useEffect(function()
+		if not nav.root and not reported.current then
+			return nil -- still closed since joining
+		end
+		reported.current = nav.root ~= nil
+		Network.Intent.Navigation:FireServer(Network.Actions.Navigation.View, {
+			root = nav.root,
+			screen = screen,
+			depth = depth,
+		})
+		return nil
+	end, { nav.root or "", screen, depth } :: { any })
+
 	-- Keep the last open navigation so the panel shows its screen while leaving.
 	local lastOpenNav = React.useRef(nav)
 	if nav.isOpen then
