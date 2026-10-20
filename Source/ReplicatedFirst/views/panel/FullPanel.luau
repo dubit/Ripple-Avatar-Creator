@@ -333,8 +333,6 @@ local function FullPanel(props: Props)
 	wasDeep.current = { deep = deep ~= nil, root = nav.root }
 	local back = useSpring({ v = returns.current }, Tokens.spring.screen)
 	local returned = returns.current
-	-- The crumb row's space opens and closes smoothly too.
-	local crumbs = useSpring({ h = crumbsHeight }, Tokens.spring.screen)
 	local open = props.t or React.createBinding(1)
 	local baseTransparency = if skin.glass == "blur" then 0.25 else 0
 	local margin = skin.px(6)
@@ -437,12 +435,10 @@ local function FullPanel(props: Props)
 					})
 					else nil,
 				Screen = e("Frame", {
-					Position = crumbs.h:map(function(h: number)
-						return UDim2.fromOffset(0, h)
-					end),
-					Size = crumbs.h:map(function(h: number)
-						return UDim2.new(1, 0, 1, -h)
-					end),
+					-- The crumb row's space changes at once: easing it as well made
+					-- the sideways slides look diagonal.
+					Position = UDim2.fromOffset(0, crumbsHeight),
+					Size = UDim2.new(1, 0, 1, -crumbsHeight),
 					BackgroundTransparency = 1,
 				}, {
 					["Root/" .. (nav.root or "")] = e("Frame", {
