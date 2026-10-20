@@ -9,8 +9,9 @@
 	top-bar buttons (the tab bar is centred, so nothing reaches it).
 
 	Hidden while the full panel is open — the design's panel covers it. When it
-	comes back, the bottom buttons rise into place; World options slides in and
-	out from the right; the Basket badge total rolls.
+	comes back, the bottom buttons rise into place, and they sink away as the
+	panel opens (`leaving`, while Hud keeps it for its leave); World options
+	slides in and out from the right; the Basket badge total rolls.
 	Basket and Wearing carry a callout once they hold anything: the basket's
 	Robux total (or its item count when everything in it is free), and how
 	many items are being worn. Create avatar (save the look as a new Roblox
@@ -22,6 +23,7 @@
 		nav, look
 		tabs: { PillTabs.Tab }
 		world: useWorldOptions result { options, config, change, commit }
+		leaving: boolean?   the panel is opening over it: the buttons sink away
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -33,7 +35,7 @@ local components = views:WaitForChild("components")
 local hooks = views:WaitForChild("hooks")
 local Tokens = require(views:WaitForChild("Tokens"))
 local useSkin = require(hooks:WaitForChild("useSkin"))
-local useAppear = require(hooks:WaitForChild("useAppear"))
+local useSpring = require(hooks:WaitForChild("useSpring"))
 local useSpringNumber = require(hooks:WaitForChild("useSpringNumber"))
 local useTransition = require(hooks:WaitForChild("useTransition"))
 local PillButton = require(components:WaitForChild("PillButton"))
@@ -55,6 +57,7 @@ export type Props = {
 	look: any,
 	tabs: { any },
 	world: any,
+	leaving: boolean?,
 }
 
 local function WorldHud(props: Props)
@@ -71,7 +74,15 @@ local function WorldHud(props: Props)
 	local total = useSpringNumber(props.look.basketTotal, Tokens.spring.count)
 	local basketCount = useSpringNumber(#props.look.basket, Tokens.spring.count)
 	local wornCount = useSpringNumber(#props.look.worn, Tokens.spring.count)
-	local rise = useAppear(Tokens.spring.slide)
+	-- The bottom buttons rise in when it mounts, and sink while it's leaving.
+	local shown, setShown = React.useState(false)
+	React.useEffect(function()
+		setShown(true)
+	end, {})
+	local rise = useSpring(
+		{ t = if props.leaving then 0 elseif shown then 1 else 0 },
+		if props.leaving then Tokens.spring.panelOut else Tokens.spring.slide
+	).t
 	local worldTransitions = useTransition(worldOpen, {
 		from = { t = 0 },
 		enter = { t = 1 },

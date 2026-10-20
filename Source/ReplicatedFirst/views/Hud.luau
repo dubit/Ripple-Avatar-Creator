@@ -640,6 +640,26 @@ local function Hud()
 		}
 	end, { buyingKey, picking, searching } :: { any })
 
+	-- The World HUD stays while the panel opens over it, its buttons sinking
+	-- away (they used to vanish in a frame), then goes.
+	local worldTransitions = useTransition(not nav.isOpen, {
+		from = { t = 0 },
+		enter = { t = 1 },
+		leave = { t = 0 },
+		config = Tokens.spring.slide,
+		leaveConfig = Tokens.spring.panelOut,
+	})
+	local worldHuds: { [string]: any } = {}
+	for _, transition in worldTransitions do
+		worldHuds["World"] = e(WorldHud, {
+			nav = nav,
+			look = look,
+			tabs = TABS,
+			world = world,
+			leaving = transition.phase == "leaving",
+		})
+	end
+
 	local panels: { [string]: any } = {}
 	for _, transition in panelTransitions do
 		panels["Panel"] = e(FullPanel, {
@@ -659,7 +679,7 @@ local function Hud()
 		}, {
 			Blur = e(BlurDriver, { active = nav.isOpen }),
 			Renderer = e(WorldRenderer, { options = world.options, config = world.config }),
-			World = if nav.isOpen then nil else e(WorldHud, { nav = nav, look = look, tabs = TABS, world = world }),
+			World = e(React.Fragment, nil, worldHuds),
 			Panel = e(React.Fragment, nil, panels),
 			Share = e(ShareDialog, {
 				outfit = (function()

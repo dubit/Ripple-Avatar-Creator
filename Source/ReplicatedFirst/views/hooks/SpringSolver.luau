@@ -115,6 +115,8 @@ end
 -- SOLVER
 -- ============================================================================
 
+local MAX_STEP = 1 / 240 -- seconds
+
 function SpringSolver.step(state: SpringState, config: SpringConfig, dt: number): SpringState
 	local position = state.position
 	local velocity = state.velocity
@@ -127,14 +129,20 @@ function SpringSolver.step(state: SpringState, config: SpringConfig, dt: number)
 	local newVelocity: { number } = {}
 	local allSettled = true
 
+	-- Small fixed sub-steps: one big step per frame overshoots further each
+	-- frame when the frame rate drops (Studio unfocused, a slow device), and a
+	-- stiff spring then oscillates and grows instead of settling.
+	dt = math.min(dt, 0.25) -- a long hitch shouldn't cost thousands of steps
+	local steps = math.max(1, math.ceil(dt / MAX_STEP))
+	local h = dt / steps
 	for i = 1, #position do
-		local displacement = position[i] - target[i]
-		local springForce = -force * displacement
-		local dampingForce = -dampening * velocity[i]
-		local acceleration = (springForce + dampingForce) / mass
-
-		local v = velocity[i] + acceleration * dt
-		local p = position[i] + v * dt
+		local p = position[i]
+		local v = velocity[i]
+		for _ = 1, steps do
+			local acceleration = (-force * (p - target[i]) - dampening * v) / mass
+			v += acceleration * h
+			p += v * h
+		end
 
 		newVelocity[i] = v
 		newPosition[i] = p
