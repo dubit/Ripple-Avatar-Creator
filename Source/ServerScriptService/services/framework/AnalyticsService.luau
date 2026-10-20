@@ -13,10 +13,11 @@
 
 	Custom events:
 		local AnalyticsService = require(ServerScriptService.services.framework.AnalyticsService)
-		AnalyticsService:trackEvent(player, "purchase_complete", {
-			item_name = "Golden Sword",
-			item_price = 500,
+		AnalyticsService:trackEvent(player, "store_open", {
+			code = "7KQ2XM",
+			own = false,
 		})
+	(Ripple's events are listed in .claude/commands/analytics.md.)
 ]]
 
 local HttpService = game:GetService("HttpService")

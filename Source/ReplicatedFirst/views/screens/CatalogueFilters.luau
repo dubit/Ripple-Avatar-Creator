@@ -37,6 +37,7 @@ local Tokens = require(views:WaitForChild("Tokens"))
 local Sounds = require(views:WaitForChild("Sounds"))
 local Press = require(views:WaitForChild("Press"))
 local useSkin = require(hooks:WaitForChild("useSkin"))
+local useAppear = require(hooks:WaitForChild("useAppear"))
 local useTextWidth = require(hooks:WaitForChild("useTextWidth"))
 local GlassPanel = require(components:WaitForChild("GlassPanel"))
 local PillButton = require(components:WaitForChild("PillButton"))
@@ -215,6 +216,7 @@ function CatalogueFilters.Popover(props: {
 	children: any,
 })
 	local skin = useSkin()
+	local appear = useAppear(Tokens.spring.state)
 	local titleHeight = skin.px(20)
 	local function clear()
 		local onClear = props.onClear
@@ -228,13 +230,20 @@ function CatalogueFilters.Popover(props: {
 	return e("TextButton", {
 		Name = "Popover",
 		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -skin.px(8), 1, -props.bottom),
+		Position = appear:map(function(v: number)
+			return UDim2.new(1, -skin.px(8), 1, -props.bottom + (1 - v) * skin.px(12))
+		end),
 		Size = UDim2.fromOffset(skin.px(props.width), skin.px(props.height)),
 		BackgroundTransparency = 1,
 		AutoButtonColor = false,
 		Text = "",
 		ZIndex = 5,
 	}, {
+		Appear = e("UIScale", {
+			Scale = appear:map(function(v: number)
+				return 0.94 + 0.06 * v
+			end),
+		}),
 		Card = e(GlassPanel, {
 			variant = "bar",
 			cornerRadius = 18,

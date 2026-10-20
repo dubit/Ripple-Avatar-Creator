@@ -26,7 +26,7 @@ local useSpringNumber = require(script.Parent:WaitForChild("useSpringNumber"))
 
 local function useGlassBlur(active: boolean, size: number?)
 	local target = if active then size or Tokens.glass.blurSize else 0
-	local current = useSpringNumber(target, Tokens.spring.panel)
+	local current = useSpringNumber(target, if active then Tokens.spring.panelIn else Tokens.spring.panelOut)
 	local blurRef = React.useRef(nil :: BlurEffect?)
 
 	React.useEffect(function()

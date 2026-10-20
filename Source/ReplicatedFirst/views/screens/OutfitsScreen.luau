@@ -4,7 +4,11 @@
 	OutfitsScreen (design frame 5d: Outfits root and the outfit page)
 
 	Root: tabs for where the outfits come from, beside a search box whose
-	meaning follows the tab:
+	meaning follows the tab. With no tab chosen it's the home: a carousel
+	per source (Wardrobe, Creations, Friends, People you follow, Community's
+	Popular: its first ROW_CARDS cards) with See all; empty ones are left
+	out, and the search narrows them all by name. Tapping a tab (or See
+	all) shows that source as a grid; tapping it again returns home.
 	  · Current: Your avatar, your own Roblox avatar as it is (restart badge;
 	    its Wear button reads "Reset to this"). No search.
 	  · Wardrobe (the default): Save what I'm wearing, then the outfits saved
@@ -337,22 +341,16 @@ local function OutfitCard(props: {
 	local interaction = useInteraction()
 	local first = PlaceholderData.item(props.outfit.items[1])
 	local cells = mosaic(props.outfit.items, if props.fill then props.shape else nil)
-	return e("TextButton", {
+	return e("Frame", {
 		Name = "OutfitCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(props.onActivated),
-		[React.Event.Activated] = Press.activated(props.onActivated),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Parts.swatch(if first then first.colour else ""),
 			radius = 14,
-			hovered = interaction.hovered,
+			onActivated = props.onActivated,
 			selected = props.ring,
 			caption = if next(cells) then nil else "outfit",
 			size = if props.fill then UDim2.new(1, 0, 1, -skin.px(40)) else nil,
@@ -416,23 +414,24 @@ local function ActionCard(props: {
 	local skin = useSkin()
 	local interaction = useInteraction()
 	local orange = Tokens.color.accentText
-	return e("TextButton", {
+	-- Only the well is the button (dragging the labels scrolls a carousel).
+	return e("Frame", {
 		Name = "ActionCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(props.onActivated),
-		[React.Event.Activated] = Press.activated(props.onActivated),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
 	}, {
-		Well = e("Frame", {
+		Well = e("TextButton", {
 			Size = UDim2.fromScale(1, 1),
 			BackgroundColor3 = Tokens.color.accent,
 			BackgroundTransparency = if interaction.hovered then 0.86 else 0.94,
 			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Text = "",
+			[React.Event.InputBegan] = Press.began(props.onActivated),
+			[React.Event.Activated] = Press.activated(props.onActivated),
+			[React.Event.MouseEnter] = interaction.onEnter,
+			[React.Event.MouseLeave] = interaction.onLeave,
 		}, {
 			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
 			Corner = e("UICorner", { CornerRadius = UDim.new(0, skin.px(14)) }),
@@ -508,6 +507,17 @@ for _, entry in SOURCES do
 	SOURCE_IDS[entry.id] = true
 end
 
+-- The home's carousels, in order ("Roblox" is the people you follow).
+local HOME_ROWS = {
+	{ id = "Wardrobe", title = "Wardrobe" },
+	{ id = "Creations", title = "Creations" },
+	{ id = "Friends", title = "Friends" },
+	{ id = "Roblox", title = "People you follow" },
+	{ id = "Community", title = "Community · Popular" },
+}
+local ROW_CARDS = 10 -- cards in a home carousel
+local ROW_CARD = 150 -- design px: an outfit card's width in a carousel (as in a store)
+
 local ERRORS = {
 	notfound = "No one has that username or id",
 	busy = "Too many lookups. Try again in a moment",
@@ -518,22 +528,16 @@ local ERRORS = {
 local function PersonCard(props: { user: UserLooks.User, sub: string, onActivated: () -> (), layoutOrder: number })
 	local skin = useSkin()
 	local interaction = useInteraction()
-	return e("TextButton", {
+	return e("Frame", {
 		Name = "PersonCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(props.onActivated),
-		[React.Event.Activated] = Press.activated(props.onActivated),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Parts.swatch(""),
 			radius = 14,
-			hovered = interaction.hovered,
+			onActivated = props.onActivated,
 			image = "rbxthumb://type=Avatar&id=" .. props.user.userId .. "&w=150&h=150",
 		}, {
 			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
@@ -921,10 +925,11 @@ end
 local function OutfitsScreen(props: { nav: any, look: any })
 	local skin = useSkin()
 	local look = props.look
-	local storedSource, setSource = useSessionState("outfits.source", "Wardrobe")
-	local source = if SOURCE_IDS[storedSource] then storedSource else "Wardrobe"
+	local storedSource, setSource = useSessionState("outfits.source", "")
+	local source = if SOURCE_IDS[storedSource] then storedSource else "" -- "" = home
+	local home = source == ""
 	local query, setQuery = useSessionState("outfits.query", "")
-	local searchHint: string? = nil
+	local searchHint: string? = if home then "Search outfits, people or a code" else nil
 	local adding, setAdding = React.useState(false) -- the Add a person panel (Roblox tab)
 	local storedSort, setSort = useSessionState("outfits.community", "popular")
 	local sort = if COMMUNITY_EMPTY[storedSort] then storedSort else "popular"
@@ -949,13 +954,14 @@ local function OutfitsScreen(props: { nav: any, look: any })
 					setQuery("") -- each tab's search means something different
 					setAdding(false)
 				end
-				setSource(entry.id)
+				-- The chosen tab again goes back home.
+				setSource(if entry.id == source then "" else entry.id)
 			end,
 		})
 	end
 
-	useRobloxOutfits(source == "Creations")
-	usePeople(source == "Friends" or source == "Roblox")
+	useRobloxOutfits(home or source == "Creations")
+	usePeople(home or source == "Friends" or source == "Roblox")
 	-- Share codes belong in the Community tab's search (community outfits
 	-- join them there in Task 16); one typed into another tab that finds
 	-- something switches to Community (keeping the search) to show it. A
@@ -972,7 +978,9 @@ local function OutfitsScreen(props: { nav: any, look: any })
 	local sharedError = if onCommunity then codeError else nil
 	local typedCode = if onCommunity then codeTyped else nil
 	local personal = PERSONAL_LISTS[sort]
-	local community = useCommunity(onCommunity, sort, if personal then table.concat((look :: any)[personal] or {}, ",") else "")
+	local listSort = if home then "popular" else sort
+	local listed = PERSONAL_LISTS[listSort]
+	local community = useCommunity(onCommunity or home, listSort, if listed then table.concat((look :: any)[listed] or {}, ",") else "")
 	-- Current shows your Roblox avatar as it is now (it may have changed
 	-- since you joined).
 	React.useEffect(function()
@@ -987,8 +995,9 @@ local function OutfitsScreen(props: { nav: any, look: any })
 	end
 	local cards: { [string]: any } = {}
 	local count = 0
+	local limit = math.huge -- ROW_CARDS while filling a home carousel
 	local function addOutfit(outfit: OutfitView, sub: string, badge: any?)
-		if not matches(outfit.name) then
+		if not matches(outfit.name) or count >= limit then
 			return
 		end
 		count += 1
@@ -1009,14 +1018,17 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		})
 	end
 	local function addAction(key: string, card: { [string]: any })
+		if count >= limit then
+			return
+		end
 		count += 1
 		card.layoutOrder = count
 		cards[key] = e(ActionCard, card :: any)
 	end
 
-	local seen: { [number]: boolean } = { [game:GetService("Players").LocalPlayer.UserId] = true }
+	local seen: { [number]: boolean } = {}
 	local function addPerson(user: UserLooks.User?, sub: string)
-		if not user or seen[user.userId] then
+		if not user or seen[user.userId] or user.userId == game:GetService("Players").LocalPlayer.UserId or count >= limit then
 			return
 		end
 		seen[user.userId] = true
@@ -1053,83 +1065,110 @@ local function OutfitsScreen(props: { nav: any, look: any })
 			})
 		end
 	end
-	if source == "Current" then
-		-- Your own Roblox avatar as it is: wearing it is a reset.
-		if #look.own > 0 then
-			addOutfit(ownView(look), "Reset to your avatar", e(Badge, { kind = "marker", tone = "white", icon = "restart_alt" }))
-		end
-	elseif source == "Wardrobe" then
-		if needle == "" then
-			addAction("Save", {
-				icon = "add_circle",
-				label = "Save what I'm wearing",
-				title = "New outfit",
-				sub = #look.worn .. " items",
-				onActivated = look.saveOutfit,
-			})
-		end
-		for _, outfit in look.outfits do
-			addOutfit(savedView(outfit), #outfit.items .. " items")
-		end
-	elseif source == "Creations" then
-		-- Outfits saved on Roblox itself (once Roblox lets us see them).
-		local status = RobloxOutfits.status()
-		if status == "ready" then
-			for _, outfit in RobloxOutfits.outfits() do
-				addOutfit(robloxView(outfit), #outfit.items .. " items · saved on Roblox")
+	-- One source's cards (the grid, or a home carousel).
+	local function build(source: string)
+		if source == "Current" then
+			-- Your own Roblox avatar as it is: wearing it is a reset.
+			if #look.own > 0 then
+				addOutfit(ownView(look), "Reset to your avatar", e(Badge, { kind = "marker", tone = "white", icon = "restart_alt" }))
 			end
-		elseif status == "loading" or status == "unknown" then
-			count += 1
-			cards.RobloxLoading = e(Parts.LoadingCard, { layoutOrder = count })
-		elseif (status == "locked" or status == "denied") and needle == "" then
-			addAction("Roblox", {
-				icon = "lock",
-				label = "Show my Roblox outfits",
-				title = "Outfits on Roblox",
-				sub = if status == "denied" then "Roblox needs your OK" else "Saved outside this game",
-				onActivated = function()
-					Sounds.play("press")
-					RobloxOutfits.request()
-				end,
-			})
-		end
-	elseif source == "Friends" then
-		for _, user in UserLooks.friends() do
-			if matches(user.displayName) or matches(user.username) then
-				addPerson(user, "@" .. user.username)
+		elseif source == "Wardrobe" then
+			if needle == "" then
+				addAction("Save", {
+					icon = "add_circle",
+					label = "Save what I'm wearing",
+					title = "New outfit",
+					sub = #look.worn .. " items",
+					onActivated = look.saveOutfit,
+				})
+			end
+			for _, outfit in look.outfits do
+				addOutfit(savedView(outfit), #outfit.items .. " items")
+			end
+		elseif source == "Creations" then
+			-- Outfits saved on Roblox itself (once Roblox lets us see them).
+			local status = RobloxOutfits.status()
+			if status == "ready" then
+				for _, outfit in RobloxOutfits.outfits() do
+					addOutfit(robloxView(outfit), #outfit.items .. " items · saved on Roblox")
+				end
+			elseif status == "loading" or status == "unknown" then
+				count += 1
+				cards.RobloxLoading = e(Parts.LoadingCard, { layoutOrder = count })
+			elseif (status == "locked" or status == "denied") and needle == "" then
+				addAction("Roblox", {
+					icon = "lock",
+					label = "Show my Roblox outfits",
+					title = "Outfits on Roblox",
+					sub = if status == "denied" then "Roblox needs your OK" else "Saved outside this game",
+					onActivated = function()
+						Sounds.play("press")
+						RobloxOutfits.request()
+					end,
+				})
+			end
+		elseif source == "Friends" then
+			for _, user in UserLooks.friends() do
+				if matches(user.displayName) or matches(user.username) then
+					addPerson(user, "@" .. user.username)
+				end
+			end
+		elseif source == "Roblox" then
+			-- People you follow here; the first card adds someone.
+			if needle == "" then
+				addAction("AddPerson", {
+					icon = "person_add",
+					label = "Add a person",
+					title = "Follow someone",
+					sub = "By username or id",
+					onActivated = function()
+						Sounds.play("press")
+						setSource("Roblox") -- from home: the panel is on that tab
+						setAdding(true)
+					end,
+				})
+			end
+			UserLooks.prefetch(look.following)
+			for _, userId in look.following do
+				local user = UserLooks.known(userId)
+				if user and (matches(user.displayName) or matches(user.username)) then
+					addPerson(user, "@" .. user.username)
+				end
+			end
+		elseif source == "Community" then
+			for _, card in community.cards do
+				if not (sharedFound and sharedFound.code == card.code) then
+					addOutfit(sharedView(card), communitySub(card))
+				end
+			end
+			if community.loading and count < limit then
+				count += 1
+				cards.CommunityLoading = e(Parts.LoadingCard, { layoutOrder = count })
 			end
 		end
-	elseif source == "Roblox" then
-		-- People you follow here; the first card adds someone.
-		if needle == "" then
-			addAction("AddPerson", {
-				icon = "person_add",
-				label = "Add a person",
-				title = "Follow someone",
-				sub = "By username or id",
-				onActivated = function()
-					Sounds.play("press")
-					setAdding(true)
-				end,
-			})
-		end
-		UserLooks.prefetch(look.following)
-		for _, userId in look.following do
-			local user = UserLooks.known(userId)
-			if user and (matches(user.displayName) or matches(user.username)) then
-				addPerson(user, "@" .. user.username)
+	end
+	local rows: { Parts.HomeRow } = {}
+	if home then
+		limit = ROW_CARDS
+		for _, row in HOME_ROWS do
+			cards, count, seen = {}, 0, {}
+			build(row.id)
+			if count > 0 then
+				table.insert(rows, {
+					key = row.id,
+					title = row.title,
+					onSeeAll = function()
+						setSource(row.id)
+					end,
+					cardWidth = ROW_CARD,
+					count = count,
+					cells = cards,
+				})
 			end
 		end
-	elseif source == "Community" then
-		for _, card in community.cards do
-			if not (sharedFound and sharedFound.code == card.code) then
-				addOutfit(sharedView(card), communitySub(card))
-			end
-		end
-		if community.loading then
-			count += 1
-			cards.CommunityLoading = e(Parts.LoadingCard, { layoutOrder = count })
-		end
+		cards, count = {}, 0
+	else
+		build(source)
 	end
 	local message: string? = nil
 	if typedCode and not sharedFound and count == 0 then
@@ -1145,6 +1184,8 @@ local function OutfitsScreen(props: { nav: any, look: any })
 		message = if needle ~= "" then "No friends with that name" else "Your friends will show here"
 	elseif source == "Creations" and count == 0 and RobloxOutfits.status() == "ready" then
 		message = "You haven't saved any outfits on Roblox"
+	elseif home and #rows == 0 then
+		message = if needle ~= "" then "Nothing here has that name" else nil
 	elseif onCommunity and count == 0 and not community.loading then
 		message = if community.error == "busy" then ERRORS.busy
 			elseif community.error then "Couldn't load Community outfits. Try again"
@@ -1223,7 +1264,14 @@ local function OutfitsScreen(props: { nav: any, look: any })
 				end,
 			})
 			else nil,
-		Grid = if adding and source == "Roblox" then nil else e(Parts.CardGrid, {
+		Rows = if home
+			then e(Parts.HomeRows, {
+				rows = rows,
+				position = UDim2.fromOffset(0, gridTop),
+				size = UDim2.new(1, 0, 1, -gridTop),
+			})
+			else nil,
+		Grid = if home or (adding and source == "Roblox") then nil else e(Parts.CardGrid, {
 			columns = 5,
 			extraHeight = 40,
 			count = count,
@@ -1309,8 +1357,11 @@ local function NameField(props: {
 		return e(ShadowText, { text = props.name, style = style, maxWidth = props.maxWidth or skin.px(LEFT_WIDTH), layoutOrder = props.layoutOrder or 2 })
 	end
 	local changed = draft ~= props.name and string.match(draft, "%S") ~= nil
-	local function save()
+	local function save(quiet: boolean?)
 		if changed then
+			if not quiet then
+				Sounds.play("confirm")
+			end
 			props.onRename(draft)
 		end
 	end
@@ -1364,7 +1415,7 @@ local function NameField(props: {
 			position = UDim2.new(0, boxWidth + gap, 0.5, 0),
 			onActivated = function()
 				if changed then
-					save()
+					save(true) -- the button plays its own sound
 				elseif boxRef.current then
 					boxRef.current:CaptureFocus()
 				end

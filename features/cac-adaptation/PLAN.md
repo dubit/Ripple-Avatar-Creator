@@ -536,7 +536,7 @@
 - **Outcome:** Every template example is gone from source, Studio and docs; the guides, README, SLASH_COMMANDS and create-* skills quote our own modules (BasketModel / BasketController as the primary worked examples), and the README tutorial became "Featured Picks". Scopes and patterns we don't use yet keep short samples labelled illustrative, so the monoliths can become their first real examples. Analytics global dimensions are now basket_count, worn_count, outfits_count and stores_count. While re-homing examples the docs turned out to be stale in other ways (src/ paths, a StateEvents/IntentActions world, "player always last", command-bar test scripts that can't work against getOrWait), and those were corrected too; the Hud.luau snippet in VIEW_GUIDE and MODEL_GUIDE's ModelRunner block are still simplified. Rojo moved to port 34879 (2026-10-16).
 
 ### Task 21: Polish, analytics completeness and success-criteria review
-- **Status:** [TODO]
+- **Status:** [PARTIAL]
 - **Why here:** The success criteria are judged side by side with CAC in playtests, not by a metric. This closing task audits against them and fills gaps accumulated during the build.
 - **Depends on:** 20
 - **Refs:** Success criteria (functional parity; fewer clicks, nothing hidden; state stays small; feels good); Integration points (Analytics); Devices
@@ -549,13 +549,13 @@
 - **Associated UI:** All frames 5a to 5h, World options panel, buy prompt.
 - **Replication:** none new.
 - **Sub-tasks:**
-  - [TODO] 21.1 Navigation analytics: a navigation intent/controller (or `trackEvent` calls) for tab opens, breadcrumb depth and screen views, validated against a fixed screen list. `/create-controller`.
-  - [TODO] 21.2 Verify analytics events from Tasks 4 to 19 reach GA4 with consistent naming; update `bigquery/` notes and `/analytics` references if events need documenting.
-  - [TODO] 21.3 CAC side-by-side playtest script: parity checklist plus tap-count table; record results in the feature folder notes (not a new doc unless asked).
-  - [TODO] 21.4 Feel pass: audit every interactive element for hover/press states, motion and sounds; remove anything cluttering; tune springs and volumes.
+  - [DONE] 21.1 Navigation analytics: a navigation intent/controller (or `trackEvent` calls) for tab opens, breadcrumb depth and screen views, validated against a fixed screen list. `/create-controller`.
+  - [PARTIAL] 21.2 Verify analytics events from Tasks 4 to 19 reach GA4 with consistent naming; update `bigquery/` notes and `/analytics` references if events need documenting. Names checked and catalogued in `.claude/commands/analytics.md` (2026-10-20); batches send ("Sent batch"), but neither BigQuery connection holds Ripple's GA4 property, so arrival in GA4 is unchecked.
+  - [PARTIAL] 21.3 CAC side-by-side playtest script: parity checklist plus tap-count table; record results in the feature folder notes (not a new doc unless asked). Script and traced counts at the end of this plan; the measured columns wait for the playtest.
+  - [PARTIAL] 21.4 Feel pass: audit every interactive element for hover/press states, motion and sounds; remove anything cluttering; tune springs and volumes. Audit done (2026-10-20); first fixes in: card press/hover springs, card menu in/out, badges grow in, filter popovers rise in, tap-outside closes sound, rename-on-Enter sound, leaving pick mode sounds, press released on any input end, blur on the panel springs, all volumes listed. Still open: root-screen back motion and crumbs, StoreRowMenu and animation menu in/out, swapped content (Add a person, overwrite picker, skin editor, 3D viewer, banners), text links / swatches / list rows hover, World HUD blink on open. Store row header clutter is accepted (user, 2026-10-20: stores carry some by nature, and only bought-in players make them). Carousels drag by their labels and gaps with the mouse (only a card's thumb is its button); scroll bars stay.
   - [TODO] 21.5 Device pass on desktop, iPad and phone: sizing issues captured in earlier tasks, touch targets, safe areas, performance (frame rate with previews and carousels).
   - [TODO] 21.6 Triage and fix, or log for phase 2, anything found. Confirm with the user that phase 1 is acceptable.
-  - [TODO] 21.7 Netflix-style home rows for Catalogue and Outfits, like the Stores home (user liked it in Task 18): a titled carousel per list (`Parts.CardRow`) with See all opening the full grid, and the tabs toggling between rows and grid.
+  - [DONE] 21.7 Netflix-style home rows for Catalogue and Outfits, like the Stores home (user liked it in Task 18): a titled carousel per list (`Parts.CardRow`) with See all opening the full grid, and the tabs toggling between rows and grid.
 
 ### Task 22: Other avatars in the world
 - **Status:** [TODO]
@@ -605,3 +605,30 @@ Each needs a user decision (or a recorded finding) before or during the named ta
 20. **What a store is commercially (Task 17).** Whether "Sell your own items" implies creator revenue share (a business question), how sponsored placement is sourced, and how ratings and visits are defined and protected from abuse.
 21. **Store creation design (Task 19).** The create/edit/publish screens are not in the design.
 22. **Retirement policy for template examples (Task 20).** Remove all, or keep one example for patterns with no in-repo replacement. **Decided (2026-10-16): remove all**, illustrative samples in the guides for patterns we don't use yet.
+
+## Phase 1 playtest: CAC side by side (Task 21.3)
+
+Start each flow in the world with the panel closed. Count every tap or click; typing doesn't count, and Roblox's own prompt confirm counts as one. "Ours" was traced from the code (2026-10-20); fill in "Ours (measured)" and "CAC (measured)" in the playtest.
+
+| Flow | Ours (traced): path | Ours (measured) | CAC (measured) |
+|------|---------------------|-----------------|----------------|
+| Try on an item | 3: Catalogue › card (opens its menu) › Try | | |
+| Take an item off | 2: Wearing (or tap your avatar) › Take off | | |
+| Buy what you're wearing | 3: Wearing › Buy all › Roblox prompt | | |
+| Save an outfit | 2: Wearing › Save as new outfit (no naming step) | | |
+| Load an outfit | 3: Outfits › card (opens its page) › Wear all items | | |
+| Find an item | 2 + typing: Catalogue › search (live, no Enter); +1 if the last browse was another tab | | |
+
+Likely losses to CAC: try-on and loading an outfit, where a card opens a menu or a page before the action (CAC is thought to wear on tap). Kept as they are by choice (user, 2026-10-20: they feel good). Quicker paths to time as well: card menu Take off; paste a marketplace link (opens the item page); the panel's View N items for Wearing and Basket; Undo on the preview.
+
+Parity checklist (ours › where; CAC: tick in the playtest):
+- Catalogue: category tabs and chips, home rows per chip, infinite grid; sort, price, creator, sales type, off-sale, colour; keyword search; paste link or id (CatalogueScreen, CatalogueFilters)
+- Try-on: card menu (Try · Basket · Buy · View · store), item page with 3D view and More like this, live preview with animations and emotes, Undo (Parts, ItemScreen, panel/)
+- Wearing: rows with price or Owned, Buy, Basket, Take off; Take everything off; Buy all; Add unowned to basket (ListScreens)
+- Body: layering order, scale sliders, skin tone per part (LayeringPanel, ScalePanel, SkinTonePanel)
+- Basket: Buy all, Try on everything, Add what I'm wearing, Remove all (ListScreens)
+- Outfits: home rows; Current (reset), Wardrobe (save, save over, rename, delete), Creations (Roblox outfits), Friends, people you follow, Community (sorts, star, report), share codes and QR, outfit page with wear or buy selected (OutfitsScreen, ShareDialog)
+- Roblox account: Create avatar and Save to Roblox prompts (AccountPrompts)
+- Stores: browse, search by name or code, store pages, favourite, share, report, create and edit (StoresScreen, StoreRowMenu, StoreDialogs)
+- World: time, sky, floor and pattern, lighting; double-jump flight, sprint; tap your avatar for Wearing (WorldOptionsView, FlightView, SprintView)
+- Not built yet: tapping other players to copy their look (Task 22)

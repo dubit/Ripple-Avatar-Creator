@@ -41,6 +41,7 @@ local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("R
 local views = script.Parent.Parent
 local Tokens = require(views:WaitForChild("Tokens"))
 local Press = require(views:WaitForChild("Press"))
+local Sounds = require(views:WaitForChild("Sounds"))
 local useSkin = require(views:WaitForChild("hooks"):WaitForChild("useSkin"))
 local useTransition = require(views:WaitForChild("hooks"):WaitForChild("useTransition"))
 local PillButton = require(views:WaitForChild("components"):WaitForChild("PillButton"))
@@ -84,7 +85,10 @@ local function Card(props: Callbacks & { outfit: Outfit, t: any })
 		AutoButtonColor = false,
 		Text = "",
 		ZIndex = 40,
-		[React.Event.InputBegan] = Press.began(props.onClose), -- tap outside to close
+		[React.Event.InputBegan] = Press.began(function() -- tap outside to close
+			Sounds.play("back")
+			props.onClose()
+		end),
 	}, {
 		Dialog = e("CanvasGroup", {
 			AnchorPoint = Vector2.new(0.5, 0.5),

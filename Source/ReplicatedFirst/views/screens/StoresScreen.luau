@@ -165,22 +165,16 @@ local function StoreCard(props: { card: StoresClient.Card, favourite: boolean, o
 		Sounds.play("press")
 		props.onActivated()
 	end
-	return e("TextButton", {
+	return e("Frame", {
 		Name = "StoreCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(open),
-		[React.Event.Activated] = Press.activated(open),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Tokens.color.white,
 			radius = 14,
-			hovered = interaction.hovered,
+			onActivated = open,
 			caption = if next(cells) then nil else "store",
 		}, {
 			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
@@ -238,22 +232,16 @@ local function CreateCard(props: { layoutOrder: number })
 	local function create()
 		hud.createStore()
 	end
-	return e("TextButton", {
+	return e("Frame", {
 		Name = "CreateStoreCard",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(create),
-		[React.Event.Activated] = Press.activated(create),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Tokens.color.accent,
 			radius = 14,
-			hovered = interaction.hovered,
+			onActivated = create,
 		}, {
 			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
 			Icon = e(Icon, {
@@ -560,39 +548,6 @@ local function AddRowButton(props: { disabled: boolean, layoutOrder: number, onO
 	})
 end
 
--- "Title ........ See all"
-local function SectionHeading(props: { text: string, onSeeAll: (() -> ())?, layoutOrder: number? })
-	local skin = useSkin()
-	return e("Frame", {
-		Size = UDim2.new(1, 0, 0, skin.px(24)),
-		BackgroundTransparency = 1,
-		LayoutOrder = props.layoutOrder or 0,
-	}, {
-		Title = e(ShadowText, { text = props.text, style = { size = 18, weight = 900 }, shadow = false }),
-		SeeAll = if props.onSeeAll
-			then e("TextButton", {
-				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.fromScale(1, 0.5),
-				Size = UDim2.fromOffset(skin.px(90), skin.px(24)),
-				BackgroundTransparency = 1,
-				Text = "See all",
-				TextColor3 = Tokens.color.accentText,
-				TextSize = skin.textPx(13.5),
-				FontFace = Tokens.font(800),
-				TextXAlignment = Enum.TextXAlignment.Right,
-				[React.Event.InputBegan] = Press.began(function()
-					Sounds.play("press")
-					;(props.onSeeAll :: () -> ())()
-				end),
-				[React.Event.Activated] = Press.activated(function()
-					Sounds.play("press")
-					;(props.onSeeAll :: () -> ())()
-				end),
-			})
-			else nil,
-	})
-end
-
 -- Every list, loaded (and re-rendered as pages arrive). The personal lists
 -- reload when the player's own list changes.
 local function useStoreLists(look: any, sorts: { string })
@@ -786,16 +741,7 @@ local function StoresScreen(props: { nav: any, look: any })
 		}, cards)
 	else
 		-- Home: a carousel per list that has stores (or is still loading).
-		local rows: { [string]: any } = {
-			Layout = e("UIListLayout", {
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				Padding = UDim.new(0, skin.px(20)),
-			}),
-			-- Keep See all clear of the scroll bar, as the other lists do.
-			Inset = e("UIPadding", { PaddingRight = UDim.new(0, skin.px(8)) }),
-		}
-		local rowHeight = skin.px(24) + skin.px(10) + Parts.cardRowHeight(skin, STORE_CARD)
-		local shown = 0
+		local rows: { Parts.HomeRow } = {}
 		local anyLoading = false
 		for index, entry in StoresClient.SORTS do
 			local list = StoresClient.get(entry.id)
@@ -818,38 +764,26 @@ local function StoresScreen(props: { nav: any, look: any })
 				cells.Loading = e(Parts.LoadingCard, { layoutOrder = 1 })
 			end
 			if count > 0 then
-				shown += 1
-				rows["Row" .. index] = e("Frame", {
-					Size = UDim2.new(1, 0, 0, rowHeight),
-					BackgroundTransparency = 1,
-					LayoutOrder = index,
-				}, {
-					Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(10)) }),
-					Heading = e(SectionHeading, {
-						text = entry.label,
-						layoutOrder = 1,
-						onSeeAll = function()
-							setSort(entry.id)
-						end,
-					}),
-					Cards = e(Parts.CardRow, { cardWidth = STORE_CARD, count = count, layoutOrder = 2 }, cells),
+				table.insert(rows, {
+					key = entry.id,
+					title = entry.label,
+					onSeeAll = function()
+						setSort(entry.id)
+					end,
+					cardWidth = STORE_CARD,
+					count = count,
+					cells = cells,
 				})
 			end
 		end
-		if shown == 0 and not anyLoading then
+		if #rows == 0 and not anyLoading then
 			message = "No one has published a store yet"
 		end
-		body = e("ScrollingFrame", {
-			Position = UDim2.fromOffset(0, bodyTop),
-			Size = UDim2.new(1, 0, 1, -bodyTop),
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			CanvasSize = UDim2.fromOffset(0, shown * rowHeight + math.max(0, shown - 1) * skin.px(20)),
-			ScrollingDirection = Enum.ScrollingDirection.Y,
-			ScrollBarThickness = skin.px(8),
-			ScrollBarImageColor3 = Tokens.color.accent,
-			VerticalScrollBarInset = Enum.ScrollBarInset.Always,
-		}, rows)
+		body = e(Parts.HomeRows, {
+			rows = rows,
+			position = UDim2.fromOffset(0, bodyTop),
+			size = UDim2.new(1, 0, 1, -bodyTop),
+		})
 	end
 
 	return e("Frame", {
@@ -1223,21 +1157,15 @@ local function CollectionTile(props: { section: StoresClient.Section, colour: st
 		Sounds.play("press")
 		props.onActivated()
 	end
-	return e("TextButton", {
+	return e("Frame", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		AutoButtonColor = false,
-		Text = "",
 		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(open),
-		[React.Event.Activated] = Press.activated(open),
-		[React.Event.MouseEnter] = interaction.onEnter,
-		[React.Event.MouseLeave] = interaction.onLeave,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Parts.swatch(props.colour),
 			radius = 16,
-			hovered = interaction.hovered,
+			onActivated = open,
 			size = UDim2.fromScale(1, 1),
 		}, {
 			Padding = e("UIPadding", {

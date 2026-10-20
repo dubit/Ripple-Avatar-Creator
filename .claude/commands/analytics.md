@@ -72,6 +72,40 @@ Use the query templates below. Replace `PROJECT.DATASET` with the values from `.
 
 ---
 
+## Event Catalogue (Ripple Avatar Creator)
+
+Every custom event the game sends, with its params (all snake_case). Besides these, every controller action is logged as `controller_action` (`controller_name`, `action_name`) unless listed in `AnalyticsConfig.excludedActions` (currently `View`, since navigation logs its own events), and every event carries the global dimensions above when they're enabled.
+
+| Area | Event | Params | Sent from |
+|------|-------|--------|-----------|
+| Session | `player_join`, `player_leave` | (session props; `launch_data` user property) | AnalyticsService |
+| Navigation | `tab_open` | `tab` (Catalogue / Stores / Outfits / Basket / Wearing), `from` (`world` or the previous root) | NavigationController |
+| | `screen_view` | `root`, `screen` (`home`, `item`, `store`, `storeSection`, `outfit`, `skin`), `depth` (breadcrumb levels) | NavigationController |
+| | `panel_close` | `root`, `depth` | NavigationController |
+| Try-on | `try_on`, `take_off` | `item_id`, `item_kind` (Asset / Bundle), `item_type` | AvatarController |
+| | `reset` | (none) | AvatarController |
+| Basket | `basket_add`, `basket_remove` | `item_id`, `item_kind`, `item_type` (one event per item) | BasketController |
+| Favourites | `favourite`, `unfavourite` | `item_id`, `item_kind` | FavouritesController |
+| Purchase | `purchase_prompted` | `item_ids`, `item_count`, `store_code` | PurchaseController |
+| | `purchase_completed` | `item_ids`, `item_count`, `robux_spent`, `store_code` | PurchaseController |
+| | `purchase_cancelled` | `item_count`, `reason` | PurchaseController |
+| Outfits | `outfit_save` | `outfit_id`, `item_count`, `replaced` (overwrite) | OutfitsController |
+| | `outfit_delete` | `outfit_id`, `item_count` | OutfitsController |
+| | `outfit_wear` | `outfit_id`, `item_count`, `partial`, `source` (`roblox`, `server_player`, `roblox_user`, `community`, `share_code`; none = saved outfit) | Outfits / AvatarController |
+| | `outfit_share` | `outfit_id`, `item_count`, `source` | OutfitsController |
+| | `user_follow`, `user_unfollow` | `followed_user_id` | OutfitsController |
+| Sharing | `share_resolve` | `kind` | OutfitsController |
+| | `share_join` | `code`, `kind`, `owner_id`, `own` | DeepLinkService |
+| Community | `community_publish` | `code`, `source` | OutfitsController |
+| | `community_open`, `community_report` | `code` | CommunityController |
+| | `community_wear` | `code` | OutfitsController |
+| Stores | `store_create`, `store_publish`, `store_unpublish`, `store_delete`, `store_report` | `code` | StoresController |
+| | `store_open`, `store_share` | `code`, `own` | StoresController |
+| | `store_favourite` | `code`, `on` | StoresController |
+| World | `heatmap_summary`, `heatmap_cell`, `heatmap_presence` | see Heatmap Query | HeatmapService |
+
+When adding an event, add its row here in the same change.
+
 ## Query Templates
 
 ### Heatmap Query

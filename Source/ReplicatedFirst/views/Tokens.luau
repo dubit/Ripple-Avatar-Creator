@@ -288,6 +288,12 @@ Tokens.sound = {
 		default = 0.5,
 		press = 0.35,
 		tab = 0.35,
+		open = 0.45,
+		close = 0.4,
+		back = 0.4,
+		confirm = 0.5,
+		tryOn = 0.5,
+		error = 0.45,
 		-- The synthesised swipes measure louder than the pack's tones.
 		switch = 0.3,
 		worldIn = 0.35,
