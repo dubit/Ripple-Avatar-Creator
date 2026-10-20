@@ -32,6 +32,7 @@ local views = script.Parent.Parent
 local Tokens = require(views:WaitForChild("Tokens"))
 local useSkin = require(views:WaitForChild("hooks"):WaitForChild("useSkin"))
 local useTextWidth = require(views:WaitForChild("hooks"):WaitForChild("useTextWidth"))
+local useAppear = require(views:WaitForChild("hooks"):WaitForChild("useAppear"))
 local Icon = require(script.Parent:WaitForChild("Icon"))
 
 local e = React.createElement
@@ -64,8 +65,15 @@ local function Badge(props: Props)
 	local padLeft = skin.px(if props.icon then 5 else 7)
 	local padRight = skin.px(if props.icon then 9 else 7)
 	local countWidth = math.max(height, padLeft + (if props.icon then iconSize + gap else 0) + textWidth + padRight)
+	-- Grows in when it first shows (a slight overshoot: spring.state).
+	local appear = useAppear(Tokens.spring.state)
 
 	local children: { [string]: any } = {
+		Appear = e("UIScale", {
+			Scale = appear:map(function(v: number)
+				return 0.6 + 0.4 * v
+			end),
+		}),
 		Corner = e("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
 		Gradient = e("UIGradient", {
 			Color = if isOrange then Tokens.gradient.orange else Tokens.gradient.whiteBadge,

@@ -5,7 +5,8 @@
 
 	Hover + press state for a GuiButton, shared by every skin control.
 	MouseButton1Down/Up also fire for touch, so press feedback works on
-	tablets/phones. Leaving the button cancels the press. On touch-only
+	tablets/phones. Leaving the button cancels the press, and so does a
+	release anywhere (the button may not get its own Up). On touch-only
 	devices hover is ignored — taps fire MouseEnter without a reliable
 	MouseLeave, which would leave buttons stuck glowing.
 
@@ -51,6 +52,22 @@ local function useInteraction(disabled: boolean?): Interaction
 	local onUp = React.useCallback(function()
 		setPressed(false)
 	end, {})
+	-- A release anywhere ends the press: something that opens over the
+	-- button (a card's menu) takes the release, and touch has no leave.
+	React.useEffect(function()
+		if not pressed then
+			return nil
+		end
+		local connection = UserInputService.InputEnded:Connect(function(input: InputObject)
+			local kind = input.UserInputType
+			if kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
+				setPressed(false)
+			end
+		end)
+		return function()
+			connection:Disconnect()
+		end
+	end, { pressed })
 
 	return {
 		hovered = hovered and not disabled and not (UserInputService.TouchEnabled and not UserInputService.MouseEnabled),

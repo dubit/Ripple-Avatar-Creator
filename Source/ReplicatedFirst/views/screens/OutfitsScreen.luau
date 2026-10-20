@@ -352,11 +352,14 @@ local function OutfitCard(props: {
 		[React.Event.Activated] = Press.activated(props.onActivated),
 		[React.Event.MouseEnter] = interaction.onEnter,
 		[React.Event.MouseLeave] = interaction.onLeave,
+		[React.Event.MouseButton1Down] = interaction.onDown,
+		[React.Event.MouseButton1Up] = interaction.onUp,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Parts.swatch(if first then first.colour else ""),
 			radius = 14,
 			hovered = interaction.hovered,
+			pressed = interaction.pressed,
 			selected = props.ring,
 			caption = if next(cells) then nil else "outfit",
 			size = if props.fill then UDim2.new(1, 0, 1, -skin.px(40)) else nil,
@@ -544,11 +547,14 @@ local function PersonCard(props: { user: UserLooks.User, sub: string, onActivate
 		[React.Event.Activated] = Press.activated(props.onActivated),
 		[React.Event.MouseEnter] = interaction.onEnter,
 		[React.Event.MouseLeave] = interaction.onLeave,
+		[React.Event.MouseButton1Down] = interaction.onDown,
+		[React.Event.MouseButton1Up] = interaction.onUp,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Parts.swatch(""),
 			radius = 14,
 			hovered = interaction.hovered,
+			pressed = interaction.pressed,
 			image = "rbxthumb://type=Avatar&id=" .. props.user.userId .. "&w=150&h=150",
 		}, {
 			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
@@ -1368,8 +1374,11 @@ local function NameField(props: {
 		return e(ShadowText, { text = props.name, style = style, maxWidth = props.maxWidth or skin.px(LEFT_WIDTH), layoutOrder = props.layoutOrder or 2 })
 	end
 	local changed = draft ~= props.name and string.match(draft, "%S") ~= nil
-	local function save()
+	local function save(quiet: boolean?)
 		if changed then
+			if not quiet then
+				Sounds.play("confirm")
+			end
 			props.onRename(draft)
 		end
 	end
@@ -1423,7 +1432,7 @@ local function NameField(props: {
 			position = UDim2.new(0, boxWidth + gap, 0.5, 0),
 			onActivated = function()
 				if changed then
-					save()
+					save(true) -- the button plays its own sound
 				elseif boxRef.current then
 					boxRef.current:CaptureFocus()
 				end

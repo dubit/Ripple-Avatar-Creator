@@ -39,6 +39,8 @@ local useSkin = require(hooks:WaitForChild("useSkin"))
 local useInteraction = require(hooks:WaitForChild("useInteraction"))
 local useLocalSize = require(hooks:WaitForChild("useLocalSize"))
 local useTextWidth = require(hooks:WaitForChild("useTextWidth"))
+local useSpring = require(hooks:WaitForChild("useSpring"))
+local useTransition = require(hooks:WaitForChild("useTransition"))
 local Badge = require(components:WaitForChild("Badge"))
 local Icon = require(components:WaitForChild("Icon"))
 local ShadowText = require(components:WaitForChild("ShadowText"))
@@ -53,6 +55,7 @@ local Parts = {}
 
 local CARD_BASE = Color3.fromHex("#1c1c1c")
 local FREE_GREEN = Color3.fromHex("#9be37a")
+local CARD_PRESS = 0.97 -- a card's thumb scale while pressed (gentler than a button's)
 
 -- CSS linear-gradient(160deg, <colour>55, #1c1c1c 75%) → UIGradient at
 -- Rotation 70 (CSS angle - 90), colour at ~33% over the card base.
@@ -112,7 +115,8 @@ export type ThumbProps = {
 	size: UDim2?,
 	position: UDim2?,
 	anchorPoint: Vector2?,
-	hovered: boolean?,
+	hovered: boolean?, -- the ring glows (sprung)
+	pressed: boolean?, -- the thumb dips a little (sprung)
 	selected: boolean?,
 	caption: string?,
 	layoutOrder: number?,
@@ -124,6 +128,8 @@ function Parts.Thumb(props: ThumbProps)
 	local skin = useSkin()
 	local z = props.zIndex or 1
 	local caption = if props.image then nil else props.caption
+	local hover = useSpring({ v = if props.hovered then 1 else 0 }, Tokens.spring.hover)
+	local press = useSpring({ v = if props.pressed then 1 else 0 }, Tokens.spring.press)
 	return e("Frame", {
 		Name = "Thumb",
 		Size = props.size or UDim2.fromScale(1, 1),
@@ -137,10 +143,19 @@ function Parts.Thumb(props: ThumbProps)
 		Corner = e("UICorner", { CornerRadius = UDim.new(0, skin.px(props.radius or Tokens.radius.itemCard)) }),
 		Gradient = if props.flat then nil else e("UIGradient", { Color = tint(props.colour), Rotation = 70 }),
 		Ring = e("UIStroke", {
-			Color = if props.selected or props.hovered then Tokens.color.accentText else Tokens.color.white,
-			Transparency = if props.selected then 0 elseif props.hovered then 1 - 0.7 else 1 - 0.1,
+			Color = if props.selected then Tokens.color.accentText else hover.v:map(function(v: number)
+				return Tokens.color.white:Lerp(Tokens.color.accentText, v)
+			end),
+			Transparency = if props.selected then 0 else hover.v:map(function(v: number)
+				return 0.9 - 0.6 * v
+			end),
 			Thickness = skin.stroke(if props.selected then 2 else 1),
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
+		PressScale = e("UIScale", {
+			Scale = press.v:map(function(v: number)
+				return 1 - (1 - CARD_PRESS) * v
+			end),
 		}),
 		Image = if props.image
 			then e("ImageLabel", {
@@ -236,7 +251,7 @@ export type ItemCardProps = {
 local MENU_BUTTON = 30
 local MENU_TEXT = { size = 13.5, weight = 900 }
 
-local function CardMenuOverlay(props: { item: PlaceholderData.Item, wearing: boolean, inBasket: boolean, menu: CardMenu })
+local function CardMenuOverlay(props: { item: PlaceholderData.Item, wearing: boolean, inBasket: boolean, menu: CardMenu, t: any })
 	local skin = useSkin()
 	local hud = React.useContext(HudContext)
 	local item, menu = props.item, props.menu
@@ -246,10 +261,17 @@ local function CardMenuOverlay(props: { item: PlaceholderData.Item, wearing: boo
 		Name = "Menu",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = Tokens.color.black,
-		BackgroundTransparency = 0.3,
+		BackgroundTransparency = props.t:map(function(v: number)
+			return 1 - 0.7 * v
+		end),
 		BorderSizePixel = 0,
 		ZIndex = 3,
 	}, {
+		Scale = e("UIScale", {
+			Scale = props.t:map(function(v: number)
+				return 0.9 + 0.1 * v
+			end),
+		}),
 		Corner = e("UICorner", { CornerRadius = UDim.new(0, skin.px(Tokens.radius.itemCard)) }),
 		Padding = e("UIPadding", {
 			PaddingTop = UDim.new(0, skin.px(9)),
@@ -366,6 +388,31 @@ function Parts.ItemCard(props: ItemCardProps)
 	local interaction = useInteraction()
 	local item = props.item
 	local nameSize = skin.textPx(13)
+	-- The menu fades and grows in, and out again (kept until it has gone).
+	local menuOpen = props.menu ~= nil and props.menu.open
+	local lastMenu = React.useRef(props.menu)
+	if props.menu then
+		lastMenu.current = props.menu
+	end
+	local menuTransitions = useTransition(menuOpen, {
+		from = { t = 0 },
+		enter = { t = 1 },
+		leave = { t = 0 },
+		config = Tokens.spring.state,
+		leaveConfig = Tokens.spring.press,
+	})
+	local menus: { [string]: any } = {}
+	for _, transition in menuTransitions do
+		if lastMenu.current then
+			menus["Menu" .. transition.key] = e(CardMenuOverlay, {
+				item = item,
+				wearing = props.wearing,
+				inBasket = props.inBasket,
+				menu = lastMenu.current :: CardMenu,
+				t = transition.springProps.t,
+			})
+		end
+	end
 
 	local function onPress()
 		Sounds.play("press")
@@ -387,12 +434,15 @@ function Parts.ItemCard(props: ItemCardProps)
 		[React.Event.Activated] = Press.activated(onPress),
 		[React.Event.MouseEnter] = interaction.onEnter,
 		[React.Event.MouseLeave] = interaction.onLeave,
+		[React.Event.MouseButton1Down] = interaction.onDown,
+		[React.Event.MouseButton1Up] = interaction.onUp,
 	}, {
 		Thumb = e(Parts.Thumb, {
 			colour = Parts.swatch(item.colour),
 			image = Parts.image(item),
 			caption = string.lower(item.sub),
 			hovered = interaction.hovered,
+			pressed = interaction.pressed,
 			-- Square: the thumb is as tall as the card is wide (or, with
 			-- `fill`, whatever the cell leaves above the labels).
 			size = if props.fill then UDim2.new(1, 0, 1, -skin.px(40)) else UDim2.fromScale(1, 1),
@@ -432,14 +482,7 @@ function Parts.ItemCard(props: ItemCardProps)
 			Busy = if props.pickBusy
 				then e(Spinner, { size = 32, anchorPoint = Vector2.new(0.5, 0.5), position = UDim2.fromScale(0.5, 0.5), zIndex = 3 })
 				else nil,
-			Menu = if props.menu and props.menu.open
-				then e(CardMenuOverlay, {
-					item = item,
-					wearing = props.wearing,
-					inBasket = props.inBasket,
-					menu = props.menu,
-				})
-				else nil,
+			Menus = e(React.Fragment, nil, menus),
 		}),
 		Meta = e("Frame", {
 			AnchorPoint = Vector2.new(0, 1),

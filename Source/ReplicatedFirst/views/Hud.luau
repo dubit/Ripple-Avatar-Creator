@@ -291,6 +291,9 @@ local function Hud()
 		if not left then
 			return nil
 		end
+		if picking or searching then
+			Sounds.play("back") -- unsaved picks or setup are dropped, as Cancel would
+		end
 		if picking then
 			setPicking(nil)
 		end
