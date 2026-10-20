@@ -3,10 +3,14 @@
 --[[
 	CatalogueScreen (design frame 5b root)
 
-	Category text tabs + search, sub-category chips, and a 6-column grid of
-	real catalogue items (useCatalogue → CatalogueClient, Task 7). Tabs and
-	chips come from CatalogueConfig; the search box is a catalogue keyword
-	search within the current tab and chip.
+	Category text tabs + search, sub-category chips, and real catalogue items
+	(useCatalogue → CatalogueClient, Task 7). Tabs and chips come from
+	CatalogueConfig; the search box is a catalogue keyword search within the
+	current tab and chip. With All chosen and no search, a tab is a home of
+	carousels, one per chip (its first ROW_CARDS items, with the same sort and
+	filters), each with See all; a chip (or See all) shows a 6-column grid,
+	and tapping the chosen chip again goes back to the rows. Store search
+	setup always shows the grid (it's what the row will use).
 
 	Tapping a card opens its menu over the thumb (Try · basket · Buy · View;
 	one open at a time, Backspace closes it). The grid loads the next page as
@@ -65,6 +69,20 @@ local PASTE_MESSAGES = {
 }
 
 local BAR_HEIGHT = 52
+local ROW_CARDS = 12 -- items in a home carousel
+local ROW_CARD = 132 -- design px: an item card's width in a carousel (as in a store)
+
+-- The most chips (that are searches) any tab has: the carousels' hooks.
+local ROW_SLOTS = 0
+for _, entry in CatalogueConfig.categories do
+	local n = 0
+	for _, chip in entry.chips do
+		if not chip.special then
+			n += 1
+		end
+	end
+	ROW_SLOTS = math.max(ROW_SLOTS, n)
+end
 local PICK_HEIGHT = 52 -- design px: the pick-mode banner (filling a store row)
 
 local function CatalogueScreen(props: { nav: any, look: any })
@@ -90,21 +108,54 @@ local function CatalogueScreen(props: { nav: any, look: any })
 			end
 		end
 	end
-	local results = useCatalogue({
-		category = if special then "" else category, -- "" = don't search
-		chip = if sub == "All" then nil else sub,
-		keyword = query,
-		minPrice = filters.minPrice,
-		maxPrice = filters.maxPrice,
-		sort = filters.sort,
-		sortWindow = filters.sortWindow,
-		creator = filters.creator,
-		salesType = filters.salesType,
-		includeOffSale = filters.includeOffSale,
-	})
+	local hud = React.useContext(HudContext)
+	-- The chips that are searches, for the home carousels.
+	local rowChips: { string } = {}
+	for _, entry in CatalogueConfig.categories do
+		if entry.name == category then
+			for _, chip in entry.chips do
+				if not chip.special then
+					table.insert(rowChips, chip.name)
+				end
+			end
+		end
+	end
+	local rowsMode = not special
+		and sub == "All"
+		and #rowChips > 1
+		and string.match(query, "^%s*$") ~= nil
+		and not hud.searching
+	local function queryFor(chip: string?): any
+		return {
+			category = category,
+			chip = chip,
+			keyword = query,
+			minPrice = filters.minPrice,
+			maxPrice = filters.maxPrice,
+			sort = filters.sort,
+			sortWindow = filters.sortWindow,
+			creator = filters.creator,
+			salesType = filters.salesType,
+			includeOffSale = filters.includeOffSale,
+		}
+	end
+	local gridQuery = queryFor(if sub == "All" then nil else sub)
+	if special or rowsMode then
+		gridQuery.category = "" -- "" = don't search
+	end
+	local results = useCatalogue(gridQuery)
 	-- Colour narrows the loaded results client-side (thumbnail colours).
 	local catalogue = useColourFilter(results, filters.colour)
-	local hud = React.useContext(HudContext)
+	-- One search per carousel; the same number of hooks every render.
+	local rowResults = {}
+	for slot = 1, ROW_SLOTS do
+		local chip = rowChips[slot]
+		local q = queryFor(chip)
+		if not rowsMode or not chip then
+			q.category = ""
+		end
+		rowResults[slot] = useColourFilter(useCatalogue(q), filters.colour)
+	end
 	local menuId, setMenuId = React.useState(nil :: number?)
 
 	local function setFilter(changes: { [string]: any })
@@ -238,15 +289,14 @@ local function CatalogueScreen(props: { nav: any, look: any })
 	local count = 0
 	-- Pick mode (filling a store row): a tap adds or takes out, no menu.
 	local picking = hud.picking
-	for _, item in catalogue.items do
-		count += 1
-		cards["Item" .. item.id] = e(Parts.ItemCard, {
+	local function itemCard(item: CatalogueClient.Item, order: number): any
+		return e(Parts.ItemCard, {
 			item = item,
 			wearing = props.look.isWorn(item.id),
 			inBasket = props.look.inBasket(item.id),
 			favourite = props.look.isFavourite(item.id),
 			picked = picking ~= nil and hud.isPicked(item.id),
-			layoutOrder = count,
+			layoutOrder = order,
 			onActivated = if picking
 				then function()
 					hud.pickToggle(item.id)
@@ -282,18 +332,57 @@ local function CatalogueScreen(props: { nav: any, look: any })
 			},
 		})
 	end
+	for _, item in catalogue.items do
+		count += 1
+		cards["Item" .. item.id] = itemCard(item, count)
+	end
+	-- Home: a carousel per chip that has items (or is still loading).
+	local rows: { Parts.HomeRow } = {}
+	local rowsLoading = false
+	if rowsMode then
+		for slot, chip in rowChips do
+			local found = rowResults[slot]
+			local cells: { [string]: any } = {}
+			local n = 0
+			for _, item in found.items do
+				if n >= ROW_CARDS then
+					break
+				end
+				n += 1
+				cells["Item" .. item.id] = itemCard(item, n)
+			end
+			if n == 0 and found.status == "loading" then
+				rowsLoading = true
+				n = 1
+				cells.Loading = e(Parts.LoadingCard, { layoutOrder = 1 })
+			end
+			if n > 0 then
+				table.insert(rows, {
+					key = chip,
+					title = chip,
+					onSeeAll = function()
+						setSub(chip)
+					end,
+					cardWidth = ROW_CARD,
+					count = n,
+					cells = cells,
+				})
+			end
+		end
+	end
 	-- Still finding matches (colour classification under way): a spinner card
 	-- holds the next empty slot. With nothing yet, the message says so instead.
 	if count > 0 and catalogue.status == "loading" then
 		cards.Loading = e(Parts.LoadingCard, { layoutOrder = count + 1 })
 	end
 	local cells = count + (if cards.Loading then 1 else 0)
-	local message = if count > 0 then nil
+	local message = if rowsMode then (if #rows == 0 and not rowsLoading then MESSAGES.empty else nil)
+		elseif count > 0 then nil
 		elseif catalogue.status == "ready" then MESSAGES.empty
 		elseif catalogue.status == "loading" and filters.colour ~= "" then `Finding {string.lower(filters.colour)} items…`
 		else MESSAGES[catalogue.status]
 	-- The catalogue doesn't report a total, so "60+" while more pages remain.
-	local countLabel = if count == 0 then "" else `{count}{if catalogue.exhausted then "" else "+"} items`
+	local countLabel = if count == 0 or rowsMode then "" else `{count}{if catalogue.exhausted then "" else "+"} items`
 	local countWidth = useTextWidth(if countLabel == "" then " " else countLabel, Tokens.font(800), skin.textPx(13.5))
 	local sortLabel = CatalogueFilters.sortLabel(filters)
 	local priceLabel = CatalogueFilters.priceLabel(filters)
@@ -519,7 +608,14 @@ local function CatalogueScreen(props: { nav: any, look: any })
 				}),
 			})
 			else nil,
-		Grid = if special then nil else e(Parts.CardGrid, {
+		Rows = if rowsMode
+			then e(Parts.HomeRows, {
+				rows = rows,
+				position = UDim2.fromOffset(0, gridTop),
+				size = UDim2.new(1, 0, 1, -(gridTop + barSpace)),
+			})
+			else nil,
+		Grid = if special or rowsMode then nil else e(Parts.CardGrid, {
 			columns = 6,
 			extraHeight = 40,
 			count = cells,

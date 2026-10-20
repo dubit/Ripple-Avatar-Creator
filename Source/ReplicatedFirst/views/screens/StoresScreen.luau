@@ -560,39 +560,6 @@ local function AddRowButton(props: { disabled: boolean, layoutOrder: number, onO
 	})
 end
 
--- "Title ........ See all"
-local function SectionHeading(props: { text: string, onSeeAll: (() -> ())?, layoutOrder: number? })
-	local skin = useSkin()
-	return e("Frame", {
-		Size = UDim2.new(1, 0, 0, skin.px(24)),
-		BackgroundTransparency = 1,
-		LayoutOrder = props.layoutOrder or 0,
-	}, {
-		Title = e(ShadowText, { text = props.text, style = { size = 18, weight = 900 }, shadow = false }),
-		SeeAll = if props.onSeeAll
-			then e("TextButton", {
-				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.fromScale(1, 0.5),
-				Size = UDim2.fromOffset(skin.px(90), skin.px(24)),
-				BackgroundTransparency = 1,
-				Text = "See all",
-				TextColor3 = Tokens.color.accentText,
-				TextSize = skin.textPx(13.5),
-				FontFace = Tokens.font(800),
-				TextXAlignment = Enum.TextXAlignment.Right,
-				[React.Event.InputBegan] = Press.began(function()
-					Sounds.play("press")
-					;(props.onSeeAll :: () -> ())()
-				end),
-				[React.Event.Activated] = Press.activated(function()
-					Sounds.play("press")
-					;(props.onSeeAll :: () -> ())()
-				end),
-			})
-			else nil,
-	})
-end
-
 -- Every list, loaded (and re-rendered as pages arrive). The personal lists
 -- reload when the player's own list changes.
 local function useStoreLists(look: any, sorts: { string })
@@ -786,16 +753,7 @@ local function StoresScreen(props: { nav: any, look: any })
 		}, cards)
 	else
 		-- Home: a carousel per list that has stores (or is still loading).
-		local rows: { [string]: any } = {
-			Layout = e("UIListLayout", {
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				Padding = UDim.new(0, skin.px(20)),
-			}),
-			-- Keep See all clear of the scroll bar, as the other lists do.
-			Inset = e("UIPadding", { PaddingRight = UDim.new(0, skin.px(8)) }),
-		}
-		local rowHeight = skin.px(24) + skin.px(10) + Parts.cardRowHeight(skin, STORE_CARD)
-		local shown = 0
+		local rows: { Parts.HomeRow } = {}
 		local anyLoading = false
 		for index, entry in StoresClient.SORTS do
 			local list = StoresClient.get(entry.id)
@@ -818,38 +776,26 @@ local function StoresScreen(props: { nav: any, look: any })
 				cells.Loading = e(Parts.LoadingCard, { layoutOrder = 1 })
 			end
 			if count > 0 then
-				shown += 1
-				rows["Row" .. index] = e("Frame", {
-					Size = UDim2.new(1, 0, 0, rowHeight),
-					BackgroundTransparency = 1,
-					LayoutOrder = index,
-				}, {
-					Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(10)) }),
-					Heading = e(SectionHeading, {
-						text = entry.label,
-						layoutOrder = 1,
-						onSeeAll = function()
-							setSort(entry.id)
-						end,
-					}),
-					Cards = e(Parts.CardRow, { cardWidth = STORE_CARD, count = count, layoutOrder = 2 }, cells),
+				table.insert(rows, {
+					key = entry.id,
+					title = entry.label,
+					onSeeAll = function()
+						setSort(entry.id)
+					end,
+					cardWidth = STORE_CARD,
+					count = count,
+					cells = cells,
 				})
 			end
 		end
-		if shown == 0 and not anyLoading then
+		if #rows == 0 and not anyLoading then
 			message = "No one has published a store yet"
 		end
-		body = e("ScrollingFrame", {
-			Position = UDim2.fromOffset(0, bodyTop),
-			Size = UDim2.new(1, 0, 1, -bodyTop),
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			CanvasSize = UDim2.fromOffset(0, shown * rowHeight + math.max(0, shown - 1) * skin.px(20)),
-			ScrollingDirection = Enum.ScrollingDirection.Y,
-			ScrollBarThickness = skin.px(8),
-			ScrollBarImageColor3 = Tokens.color.accent,
-			VerticalScrollBarInset = Enum.ScrollBarInset.Always,
-		}, rows)
+		body = e(Parts.HomeRows, {
+			rows = rows,
+			position = UDim2.fromOffset(0, bodyTop),
+			size = UDim2.new(1, 0, 1, -bodyTop),
+		})
 	end
 
 	return e("Frame", {

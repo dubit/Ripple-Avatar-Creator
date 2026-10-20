@@ -746,6 +746,88 @@ function Parts.CardRow(props: CardRowProps)
 	})
 end
 
+-- "Title ........ See all"
+function Parts.SectionHeading(props: { text: string, onSeeAll: (() -> ())?, layoutOrder: number? })
+	local skin = useSkin()
+	return e("Frame", {
+		Size = UDim2.new(1, 0, 0, skin.px(24)),
+		BackgroundTransparency = 1,
+		LayoutOrder = props.layoutOrder or 0,
+	}, {
+		Title = e(ShadowText, { text = props.text, style = { size = 18, weight = 900 }, shadow = false }),
+		SeeAll = if props.onSeeAll
+			then e("TextButton", {
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.fromScale(1, 0.5),
+				Size = UDim2.fromOffset(skin.px(90), skin.px(24)),
+				BackgroundTransparency = 1,
+				Text = "See all",
+				TextColor3 = Tokens.color.accentText,
+				TextSize = skin.textPx(13.5),
+				FontFace = Tokens.font(800),
+				TextXAlignment = Enum.TextXAlignment.Right,
+				[React.Event.InputBegan] = Press.began(function()
+					Sounds.play("press")
+					;(props.onSeeAll :: () -> ())()
+				end),
+				[React.Event.Activated] = Press.activated(function()
+					Sounds.play("press")
+					;(props.onSeeAll :: () -> ())()
+				end),
+			})
+			else nil,
+	})
+end
+
+export type HomeRow = {
+	key: string,
+	title: string,
+	onSeeAll: (() -> ())?,
+	cardWidth: number, -- design px
+	count: number,
+	cells: { [string]: any }, -- keyed, with LayoutOrder
+}
+
+-- A home page of carousels (Stores, Catalogue, Outfits): a titled CardRow
+-- per list, each with See all, scrolling down.
+function Parts.HomeRows(props: { rows: { HomeRow }, position: UDim2?, size: UDim2? })
+	local skin = useSkin()
+	local children: { [string]: any } = {
+		Layout = e("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, skin.px(20)),
+		}),
+		-- Keep See all clear of the scroll bar, as the other lists do.
+		Inset = e("UIPadding", { PaddingRight = UDim.new(0, skin.px(8)) }),
+	}
+	local total = 0
+	for index, row in props.rows do
+		local height = skin.px(24) + skin.px(10) + Parts.cardRowHeight(skin, row.cardWidth)
+		total += height + (if index > 1 then skin.px(20) else 0)
+		children["Row" .. row.key] = e("Frame", {
+			Size = UDim2.new(1, 0, 0, height),
+			BackgroundTransparency = 1,
+			LayoutOrder = index,
+		}, {
+			Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(10)) }),
+			Heading = e(Parts.SectionHeading, { text = row.title, layoutOrder = 1, onSeeAll = row.onSeeAll }),
+			Cards = e(Parts.CardRow, { cardWidth = row.cardWidth, count = row.count, layoutOrder = 2 }, row.cells),
+		})
+	end
+	return e("ScrollingFrame", {
+		Name = "HomeRows",
+		Position = props.position,
+		Size = props.size or UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		CanvasSize = UDim2.fromOffset(0, total),
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ScrollBarThickness = skin.px(8),
+		ScrollBarImageColor3 = Tokens.color.accent,
+		VerticalScrollBarInset = Enum.ScrollBarInset.Always,
+	}, children)
+end
+
 export type HeadingProps = { text: string, trailing: any?, layoutOrder: number? }
 
 function Parts.Heading(props: HeadingProps)
