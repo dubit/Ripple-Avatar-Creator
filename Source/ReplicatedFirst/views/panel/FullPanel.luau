@@ -42,6 +42,7 @@ local Tokens = require(views:WaitForChild("Tokens"))
 local useSkin = require(hooks:WaitForChild("useSkin"))
 local useAppear = require(hooks:WaitForChild("useAppear"))
 local useSpringNumber = require(hooks:WaitForChild("useSpringNumber"))
+local useSpring = require(hooks:WaitForChild("useSpring"))
 local PillButton = require(components:WaitForChild("PillButton"))
 local PillTabs = require(components:WaitForChild("PillTabs"))
 local GlassPanel = require(components:WaitForChild("GlassPanel"))
@@ -321,6 +322,17 @@ local function FullPanel(props: Props)
 	-- fresh. Switching tab or closing the panel resets the root.
 	local deep = deepScreen(nav, props.look)
 	local deepKey = (nav.root or "") .. "/" .. #nav.stack .. "/" .. (if nav.top then nav.top.label else "")
+	-- Coming back to the root screen slides it in from the left (pushed pages
+	-- slide in from the right as they mount; the root doesn't remount). The
+	-- spring chases a count of returns, so each one replays the slide.
+	local wasDeep = React.useRef({ deep = false, root = nav.root })
+	local returns = React.useRef(0)
+	if wasDeep.current.deep and deep == nil and wasDeep.current.root == nav.root then
+		returns.current += 1
+	end
+	wasDeep.current = { deep = deep ~= nil, root = nav.root }
+	local back = useSpring({ v = returns.current }, Tokens.spring.screen)
+	local returned = returns.current
 	local open = props.t or React.createBinding(1)
 	local baseTransparency = if skin.glass == "blur" then 0.25 else 0
 	local margin = skin.px(6)
@@ -423,11 +435,16 @@ local function FullPanel(props: Props)
 					})
 					else nil,
 				Screen = e("Frame", {
+					-- The crumb row's space changes at once: easing it as well made
+					-- the sideways slides look diagonal.
 					Position = UDim2.fromOffset(0, crumbsHeight),
 					Size = UDim2.new(1, 0, 1, -crumbsHeight),
 					BackgroundTransparency = 1,
 				}, {
 					["Root/" .. (nav.root or "")] = e("Frame", {
+						Position = back.v:map(function(v: number)
+							return UDim2.fromOffset(-(returned - v) * skin.px(Tokens.motion.screenSlide), 0)
+						end),
 						Size = UDim2.fromScale(1, 1),
 						BackgroundTransparency = 1,
 						Visible = deep == nil,
