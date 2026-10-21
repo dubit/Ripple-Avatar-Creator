@@ -35,6 +35,9 @@
 		iconAfter: boolean?      put the icon after the label (e.g. a trailing chevron)
 		label: string?
 		labelMaxWidth: number?   design px; a longer label ends in "…"
+		contentInset: number?    design px: content starts this far from the left
+		                         edge instead of centred (an icon that mustn't
+		                         move while the button grows)
 		textStyle: Tokens.TypeStyle?   default Tokens.type.cta
 		active: boolean?         orange face
 		disabled: boolean?       greyed out (dimmed face and content) and inert
@@ -77,6 +80,7 @@ export type Props = {
 	iconAfter: boolean?,
 	label: string?,
 	labelMaxWidth: number?,
+	contentInset: number?,
 	textStyle: Tokens.TypeStyle?,
 	active: boolean?,
 	disabled: boolean?,
@@ -145,11 +149,14 @@ local function PillButton(props: Props)
 	local contentChildren: { [string]: any } = {
 		Layout = e("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
-			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			HorizontalAlignment = if props.contentInset then Enum.HorizontalAlignment.Left else Enum.HorizontalAlignment.Center,
 			VerticalAlignment = Enum.VerticalAlignment.Center,
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, skin.px(6)),
 		}),
+		Inset = if props.contentInset
+			then e("UIPadding", { PaddingLeft = UDim.new(0, skin.px(props.contentInset)) })
+			else nil,
 	}
 	-- Disabled: content dimmed (and a dark wash over the face, below).
 	local contentTransparency = if props.disabled then DISABLED_CONTENT else 0

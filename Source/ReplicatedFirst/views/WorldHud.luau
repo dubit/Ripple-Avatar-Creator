@@ -109,6 +109,9 @@ local function ConfirmAction(props: { icon: string, onConfirm: () -> (), layoutO
 			icon = props.icon,
 			iconSize = action.icon,
 			label = if armed and width >= full - 4 then CONFIRM_LABEL else nil,
+			-- Opening: the icon keeps its place at the left as the pill grows,
+			-- so the label arriving doesn't move it.
+			contentInset = if armed then (action.size - action.icon) / 2 else nil,
 			active = armed,
 			glowRadius = action.glow,
 			anchorPoint = Vector2.new(1, 0),
