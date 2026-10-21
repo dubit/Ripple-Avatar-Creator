@@ -3,9 +3,9 @@
 --[[
 	WorldHud (design frame 5a: the HUD over the world)
 
-	Tab bar top centre. Down the middle of the left edge, Basket and Wearing;
+	Tab bar top centre. Down the middle of the left edge, Wearing then Basket;
 	down the middle of the right edge, the World options toggle (as big as
-	them) with Create avatar and Save to Roblox under it, and World options'
+	them) with Create avatar, Save to Roblox and Reset avatar under it, and World options'
 	side panel opens just inside that column. Both bottom corners stay clear
 	for Roblox's touch controls (thumbstick, jump: issue #1), and the top-left
 	for Roblox's own top-bar buttons (the tab bar is centred).
@@ -19,8 +19,11 @@
 	Robux total (or its item count when everything in it is free), and how
 	many items are being worn. Create avatar (save the look as a new Roblox
 	outfit) and Save to Roblox (make it their Roblox avatar) open Roblox's own
-	prompts (AccountPrompts). There's no Reset here: Outfits › Mine's "Your
-	avatar" does it.
+	prompts (AccountPrompts). Reset avatar, at the bottom of the right
+	column, puts your own Roblox avatar back (undoable; Outfits › Current
+	does it too). It asks first: the first press slides it out leftwards
+	into an orange "Tap again to reset" pill for CONFIRM_SECONDS, and a
+	second press within that resets.
 
 	Props:
 		nav, look
@@ -40,6 +43,7 @@ local Tokens = require(views:WaitForChild("Tokens"))
 local useSkin = require(hooks:WaitForChild("useSkin"))
 local useSpring = require(hooks:WaitForChild("useSpring"))
 local useSpringNumber = require(hooks:WaitForChild("useSpringNumber"))
+local useTextWidth = require(hooks:WaitForChild("useTextWidth"))
 local useTransition = require(hooks:WaitForChild("useTransition"))
 local PillButton = require(components:WaitForChild("PillButton"))
 local AccountPrompts = require(views:WaitForChild("AccountPrompts"))
@@ -64,6 +68,67 @@ export type Props = {
 }
 
 local COLUMN_GAP = 12 -- design px between the buttons in a side column
+local CONFIRM_SECONDS = 3 -- how long Reset avatar waits for its second press
+local CONFIRM_LABEL = "Tap again to reset"
+
+-- A round action button that asks before it acts: the first press slides it
+-- out to the left (it sits at the right edge) as an orange pill with
+-- CONFIRM_LABEL; a second press within CONFIRM_SECONDS acts, otherwise it
+-- slides back.
+local function ConfirmAction(props: { icon: string, onConfirm: () -> (), layoutOrder: number })
+	local skin = useSkin()
+	local action = Tokens.size.action
+	local armed, setArmed = React.useState(false)
+	React.useEffect(function()
+		if not armed then
+			return nil
+		end
+		local thread = task.delay(CONFIRM_SECONDS, function()
+			setArmed(false)
+		end)
+		return function()
+			task.cancel(thread)
+		end
+	end, { armed })
+	local style = Tokens.type.cta
+	local textWidth = useTextWidth(CONFIRM_LABEL, Tokens.font(style.weight), skin.textPx(style.size))
+	-- Design px: icon, gaps and padding around the label.
+	local full = math.ceil(textWidth) + action.icon + 44
+	local width = useSpringNumber(if armed then full else action.size, Tokens.spring.state)
+	-- The slot keeps its place in the column; the button grows out of it.
+	return e("Frame", {
+		Size = UDim2.fromOffset(skin.px(action.size), skin.px(action.size)),
+		BackgroundTransparency = 1,
+		LayoutOrder = props.layoutOrder,
+		ZIndex = 2,
+	}, {
+		Button = e(PillButton, {
+			variant = "pill",
+			size = action.size,
+			width = math.max(width, action.size),
+			icon = props.icon,
+			iconSize = action.icon,
+			label = if armed and width >= full - 4 then CONFIRM_LABEL else nil,
+			-- Opening: the icon keeps its place at the left as the pill grows,
+			-- so the label arriving doesn't move it.
+			contentInset = if armed then (action.size - action.icon) / 2 else nil,
+			active = armed,
+			glowRadius = action.glow,
+			anchorPoint = Vector2.new(1, 0),
+			position = UDim2.fromScale(1, 0),
+			zIndex = 2,
+			sound = if armed then false else nil, -- the reset plays its own sound
+			onActivated = function()
+				if armed then
+					setArmed(false)
+					props.onConfirm()
+				else
+					setArmed(true)
+				end
+			end,
+		}),
+	})
+end
 
 local function WorldHud(props: Props)
 	local skin = useSkin()
@@ -174,7 +239,7 @@ local function WorldHud(props: Props)
 				icon = "shopping_basket",
 				iconSize = basket.icon,
 				glowRadius = basket.glow,
-				layoutOrder = 1,
+				layoutOrder = 2,
 				zIndex = 2,
 				sound = false, -- opening the panel plays its own sound
 				onActivated = function()
@@ -191,7 +256,7 @@ local function WorldHud(props: Props)
 				icon = "checkroom",
 				iconSize = basket.icon,
 				glowRadius = basket.glow,
-				layoutOrder = 2,
+				layoutOrder = 1,
 				zIndex = 2,
 				sound = false, -- opening the panel plays its own sound
 				onActivated = function()
@@ -206,7 +271,7 @@ local function WorldHud(props: Props)
 			Position = rise:map(function(t: number)
 				return UDim2.new(1, -edge + (1 - t) * skin.px(basket.size + Tokens.size.edgeInset), 0.5, 0)
 			end),
-			Size = UDim2.fromOffset(skin.px(basket.size), skin.px(basket.size + action.size * 2 + COLUMN_GAP * 2)),
+			Size = UDim2.fromOffset(skin.px(basket.size), skin.px(basket.size + action.size * 3 + COLUMN_GAP * 3)),
 			BackgroundTransparency = 1,
 			ZIndex = 2,
 		}, {
@@ -232,6 +297,9 @@ local function WorldHud(props: Props)
 			}),
 			CreateAvatar = actionButton("person_add", 2, AccountPrompts.createOutfit),
 			SaveToRoblox = actionButton("cloud_upload", 3, AccountPrompts.saveAvatar),
+			-- Back to your own Roblox avatar, after a second press (its own
+			-- sound; Undo reverses it).
+			ResetAvatar = e(ConfirmAction, { icon = "restart_alt", onConfirm = props.look.reset, layoutOrder = 4 }),
 		}),
 		World = e(React.Fragment, nil, worldPanels),
 	})
