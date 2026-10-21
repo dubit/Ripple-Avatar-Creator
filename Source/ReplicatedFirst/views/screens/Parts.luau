@@ -39,6 +39,7 @@ local Press = require(views:WaitForChild("Press"))
 local useSkin = require(hooks:WaitForChild("useSkin"))
 local useInteraction = require(hooks:WaitForChild("useInteraction"))
 local useLocalSize = require(hooks:WaitForChild("useLocalSize"))
+local useContentSize = require(hooks:WaitForChild("useContentSize"))
 local useTextWidth = require(hooks:WaitForChild("useTextWidth"))
 local useSpring = require(hooks:WaitForChild("useSpring"))
 local useTransition = require(hooks:WaitForChild("useTransition"))
@@ -541,13 +542,17 @@ function Parts.ListRow(props: ListRowProps)
 	local thumb = skin.px(48)
 	local leadingWidth = if props.leading then skin.px(34) else 0
 	local trailingWidth = skin.px(props.trailingWidth or 250)
+	-- What the price and buttons really take (an owned item has fewer), so
+	-- the title gets the rest; trailingWidth is only the most they may take.
+	local trailingRef, trailingContent = useContentSize()
+	local trailingUsed = if trailingContent.X > 0 then math.min(trailingContent.X, trailingWidth) else trailingWidth
 	local ref = React.useRef(nil :: GuiObject?)
 	local size = useLocalSize(ref)
 	local textLeft = skin.px(8) + leadingWidth + (if props.leading then skin.px(8) else 0) + thumb + skin.px(12)
 	-- Too narrow for the title and the buttons side by side: two lines. It
 	-- holds on to one line down to two thirds of that width (the title just
 	-- truncates harder), so it only drops when it really must.
-	local stacked = size.X > 0 and size.X < (textLeft + skin.px(ROW_TITLE_ROOM) + trailingWidth + skin.px(10)) * STACK_AT
+	local stacked = size.X > 0 and size.X < (textLeft + skin.px(ROW_TITLE_ROOM) + trailingUsed + skin.px(10)) * STACK_AT
 	local height = if stacked then line * 2 else line
 
 	return e("TextButton", {
@@ -591,7 +596,7 @@ function Parts.ListRow(props: ListRowProps)
 		Text = e("Frame", {
 			AnchorPoint = Vector2.new(0, 0.5),
 			Position = UDim2.new(0, textLeft, 0, line / 2),
-			Size = UDim2.new(1, -(textLeft + (if stacked then skin.px(10) else trailingWidth)), 0, skin.px(40)),
+			Size = UDim2.new(1, -(textLeft + (if stacked then skin.px(10) else trailingUsed + skin.px(22))), 0, skin.px(40)),
 			BackgroundTransparency = 1,
 		}, {
 			Layout = e("UIListLayout", {
@@ -632,6 +637,7 @@ function Parts.ListRow(props: ListRowProps)
 			BackgroundTransparency = 1,
 		}, {
 			Layout = e("UIListLayout", {
+				ref = trailingRef,
 				FillDirection = Enum.FillDirection.Horizontal,
 				HorizontalAlignment = Enum.HorizontalAlignment.Right,
 				VerticalAlignment = Enum.VerticalAlignment.Center,
