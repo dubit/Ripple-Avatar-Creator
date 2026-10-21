@@ -19,6 +19,7 @@
 		onReset: () -> ()   back to the defaults
 		onClose: () -> ()
 		t: binding?   slide progress (0 off the right edge → 1 in place)
+		inset: number?   design px from the right edge (default edgeInset)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -50,6 +51,7 @@ export type Props = {
 	onReset: () -> (),
 	onClose: () -> (),
 	t: any?,
+	inset: number?,
 }
 
 -- Colour swatches (design px): six across the scrolling body's width.
@@ -284,8 +286,9 @@ local function WorldOptionsView(props: Props)
 		shadow = true,
 		anchorPoint = Vector2.new(1, 0),
 		position = (props.t or React.createBinding(1)):map(function(t: number)
-			local off = (1 - t) * skin.px(Tokens.size.sidePanelWidth + Tokens.size.edgeInset)
-			return UDim2.new(1, -skin.px(Tokens.size.edgeInset) + off, 0, skin.px(88))
+			local inset = props.inset or Tokens.size.edgeInset
+			local off = (1 - t) * skin.px(Tokens.size.sidePanelWidth + inset)
+			return UDim2.new(1, -skin.px(inset) + off, 0, skin.px(88))
 		end),
 		size = UDim2.new(0, skin.px(Tokens.size.sidePanelWidth), 1, -skin.px(88 + 112)),
 		zIndex = 5,

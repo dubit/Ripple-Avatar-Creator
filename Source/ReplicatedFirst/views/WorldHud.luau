@@ -3,15 +3,18 @@
 --[[
 	WorldHud (design frame 5a: the HUD over the world)
 
-	Tab bar top centre; bottom-left the Basket button, then Wearing, Create
-	avatar and Save to Roblox; bottom-right the World options
-	toggle and its side panel. The top-left is left clear for Roblox's own
-	top-bar buttons (the tab bar is centred, so nothing reaches it).
+	Tab bar top centre. Down the middle of the left edge, Basket and Wearing;
+	down the middle of the right edge, the World options toggle (as big as
+	them) with Create avatar and Save to Roblox under it, and World options'
+	side panel opens just inside that column. Both bottom corners stay clear
+	for Roblox's touch controls (thumbstick, jump: issue #1), and the top-left
+	for Roblox's own top-bar buttons (the tab bar is centred).
 
 	Hidden while the full panel is open — the design's panel covers it. When it
-	comes back, the bottom buttons rise into place, and they sink away as the
-	panel opens (`leaving`, while Hud keeps it for its leave); World options
-	slides in and out from the right; the Basket badge total rolls.
+	comes back, the side columns slide in from their edges, and they slide
+	back out as the panel opens (`leaving`, while Hud keeps it for its leave);
+	World options slides in and out from the right; the Basket badge total
+	rolls.
 	Basket and Wearing carry a callout once they hold anything: the basket's
 	Robux total (or its item count when everything in it is free), and how
 	many items are being worn. Create avatar (save the look as a new Roblox
@@ -23,7 +26,7 @@
 		nav, look
 		tabs: { PillTabs.Tab }
 		world: useWorldOptions result { options, config, change, commit }
-		leaving: boolean?   the panel is opening over it: the buttons sink away
+		leaving: boolean?   the panel is opening over it: the columns slide away
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -60,6 +63,8 @@ export type Props = {
 	leaving: boolean?,
 }
 
+local COLUMN_GAP = 12 -- design px between the buttons in a side column
+
 local function WorldHud(props: Props)
 	local skin = useSkin()
 	local worldOpen, setWorldOpen = React.useState(false)
@@ -74,7 +79,8 @@ local function WorldHud(props: Props)
 	local total = useSpringNumber(props.look.basketTotal, Tokens.spring.count)
 	local basketCount = useSpringNumber(#props.look.basket, Tokens.spring.count)
 	local wornCount = useSpringNumber(#props.look.worn, Tokens.spring.count)
-	-- The bottom buttons rise in when it mounts, and sink while it's leaving.
+	-- The side columns slide in from their edges when it mounts, and back out
+	-- while it's leaving.
 	local shown, setShown = React.useState(false)
 	React.useEffect(function()
 		setShown(true)
@@ -94,6 +100,7 @@ local function WorldHud(props: Props)
 	for _, transition in worldTransitions do
 		worldPanels.World = e(WorldOptionsView, {
 			t = transition.springProps.t,
+			inset = Tokens.size.edgeInset + basket.size + COLUMN_GAP, -- clear of the right column
 			options = props.world.options,
 			config = props.world.config,
 			onChange = props.world.change,
@@ -145,20 +152,21 @@ local function WorldHud(props: Props)
 			position = UDim2.new(0.5, 0, 0, skin.px(16)),
 			zIndex = 2,
 		}),
-		BottomLeft = e("Frame", {
-			AnchorPoint = Vector2.new(0, 1),
+		-- Down the middle of the left edge (clear of the thumbstick corner).
+		Left = e("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5),
 			Position = rise:map(function(t: number)
-				return UDim2.new(0, edge, 1, -edge + (1 - t) * skin.px(basket.size + edge))
+				return UDim2.new(0, edge - (1 - t) * skin.px(basket.size + Tokens.size.edgeInset), 0.5, 0)
 			end),
-			Size = UDim2.fromOffset(skin.px(basket.size * 2 + 12 * 3 + action.size * 2), skin.px(basket.size)),
+			Size = UDim2.fromOffset(skin.px(basket.size), skin.px(basket.size * 2 + COLUMN_GAP)),
 			BackgroundTransparency = 1,
 			ZIndex = 2,
 		}, {
 			Layout = e("UIListLayout", {
-				FillDirection = Enum.FillDirection.Horizontal,
-				VerticalAlignment = Enum.VerticalAlignment.Bottom,
+				FillDirection = Enum.FillDirection.Vertical,
+				HorizontalAlignment = Enum.HorizontalAlignment.Center,
 				SortOrder = Enum.SortOrder.LayoutOrder,
-				Padding = UDim.new(0, skin.px(12)),
+				Padding = UDim.new(0, skin.px(COLUMN_GAP)),
 			}),
 			Basket = e(PillButton, {
 				variant = "round",
@@ -191,25 +199,39 @@ local function WorldHud(props: Props)
 				end,
 				badge = if #props.look.worn > 0 then callout(tostring(wornCount)) else nil,
 			}),
-			CreateAvatar = actionButton("person_add", 3, AccountPrompts.createOutfit),
-			SaveToRoblox = actionButton("cloud_upload", 4, AccountPrompts.saveAvatar),
 		}),
-		WorldToggle = e(PillButton, {
-			variant = "round",
-			size = action.size,
-			icon = "landscape",
-			iconSize = action.icon,
-			glowRadius = action.glow,
-			active = worldOpen,
-			anchorPoint = Vector2.new(1, 1),
-			position = rise:map(function(t: number)
-				return UDim2.new(1, -edge, 1, -edge + (1 - t) * skin.px(action.size + edge))
+		-- Down the middle of the right edge (clear of the jump button corner).
+		Right = e("Frame", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = rise:map(function(t: number)
+				return UDim2.new(1, -edge + (1 - t) * skin.px(basket.size + Tokens.size.edgeInset), 0.5, 0)
 			end),
-			zIndex = 2,
-			sound = false, -- the slide plays its own swipe
-			onActivated = function()
-				setWorld(not worldOpen)
-			end,
+			Size = UDim2.fromOffset(skin.px(basket.size), skin.px(basket.size + action.size * 2 + COLUMN_GAP * 2)),
+			BackgroundTransparency = 1,
+			ZIndex = 2,
+		}, {
+			Layout = e("UIListLayout", {
+				FillDirection = Enum.FillDirection.Vertical,
+				HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, skin.px(COLUMN_GAP)),
+			}),
+			WorldToggle = e(PillButton, {
+				variant = "round",
+				size = basket.size,
+				icon = "landscape",
+				iconSize = basket.icon,
+				glowRadius = basket.glow,
+				active = worldOpen,
+				layoutOrder = 1,
+				zIndex = 2,
+				sound = false, -- the slide plays its own swipe
+				onActivated = function()
+					setWorld(not worldOpen)
+				end,
+			}),
+			CreateAvatar = actionButton("person_add", 2, AccountPrompts.createOutfit),
+			SaveToRoblox = actionButton("cloud_upload", 3, AccountPrompts.saveAvatar),
 		}),
 		World = e(React.Fragment, nil, worldPanels),
 	})
