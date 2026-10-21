@@ -5,7 +5,7 @@
 
 	Tab bar top centre. Down the middle of the left edge, Basket and Wearing;
 	down the middle of the right edge, the World options toggle (as big as
-	them) with Create avatar and Save to Roblox under it, and World options'
+	them) with Create avatar, Save to Roblox and Reset avatar under it, and World options'
 	side panel opens just inside that column. Both bottom corners stay clear
 	for Roblox's touch controls (thumbstick, jump: issue #1), and the top-left
 	for Roblox's own top-bar buttons (the tab bar is centred).
@@ -19,8 +19,9 @@
 	Robux total (or its item count when everything in it is free), and how
 	many items are being worn. Create avatar (save the look as a new Roblox
 	outfit) and Save to Roblox (make it their Roblox avatar) open Roblox's own
-	prompts (AccountPrompts). There's no Reset here: Outfits › Mine's "Your
-	avatar" does it.
+	prompts (AccountPrompts). Reset avatar, at the bottom of the right
+	column, puts your own Roblox avatar back (undoable; Outfits › Current
+	does it too).
 
 	Props:
 		nav, look
@@ -206,7 +207,7 @@ local function WorldHud(props: Props)
 			Position = rise:map(function(t: number)
 				return UDim2.new(1, -edge + (1 - t) * skin.px(basket.size + Tokens.size.edgeInset), 0.5, 0)
 			end),
-			Size = UDim2.fromOffset(skin.px(basket.size), skin.px(basket.size + action.size * 2 + COLUMN_GAP * 2)),
+			Size = UDim2.fromOffset(skin.px(basket.size), skin.px(basket.size + action.size * 3 + COLUMN_GAP * 3)),
 			BackgroundTransparency = 1,
 			ZIndex = 2,
 		}, {
@@ -232,6 +233,8 @@ local function WorldHud(props: Props)
 			}),
 			CreateAvatar = actionButton("person_add", 2, AccountPrompts.createOutfit),
 			SaveToRoblox = actionButton("cloud_upload", 3, AccountPrompts.saveAvatar),
+			-- Back to your own Roblox avatar (its own sound; Undo reverses it).
+			ResetAvatar = actionButton("restart_alt", 4, props.look.reset, false),
 		}),
 		World = e(React.Fragment, nil, worldPanels),
 	})
