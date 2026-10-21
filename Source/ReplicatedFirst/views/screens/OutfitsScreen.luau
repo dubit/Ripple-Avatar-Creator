@@ -67,6 +67,7 @@ local Press = require(views:WaitForChild("Press"))
 local Sounds = require(views:WaitForChild("Sounds"))
 local useSkin = require(hooks:WaitForChild("useSkin"))
 local useTextWidth = require(hooks:WaitForChild("useTextWidth"))
+local useContentHeight = require(hooks:WaitForChild("useContentHeight"))
 local useLocalSize = require(hooks:WaitForChild("useLocalSize"))
 local useInteraction = require(hooks:WaitForChild("useInteraction"))
 local useSessionState = require(hooks:WaitForChild("useSessionState"))
@@ -1430,6 +1431,7 @@ end
 
 local function OutfitScreen(props: { nav: any, look: any, source: string, index: number })
 	local skin = useSkin()
+	local layoutRef, contentHeight = useContentHeight()
 	local hud = React.useContext(HudContext)
 	local look = props.look
 	useRobloxOutfits(props.source == "RobloxSaved")
@@ -1533,7 +1535,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 	local ring = wearingExactly(look, items)
 
 	local rows: { [string]: any } = {
-		Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(6)) }),
+		Layout = e("UIListLayout", { ref = layoutRef, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(6)) }),
 		-- Inset so row strokes at the edges aren't clipped by the ScrollingFrame.
 		Inset = e("UIPadding", {
 			PaddingTop = UDim.new(0, skin.px(3)),
@@ -1975,7 +1977,7 @@ local function OutfitScreen(props: { nav: any, look: any, source: string, index:
 				Size = UDim2.new(1, 0, 1, -(headerHeight + skin.px(10) + buttonsHeight + skin.px(10))),
 				BackgroundTransparency = 1,
 				BorderSizePixel = 0,
-				CanvasSize = UDim2.fromOffset(0, (#items - math.max(#bodyIndices - 1, 0) + (if skinTone then 1 else 0) + (if scaleRow then 1 else 0)) * (skin.px(64) + skin.px(6)) + skin.px(6)),
+				CanvasSize = UDim2.fromOffset(0, math.max(contentHeight, (#items - math.max(#bodyIndices - 1, 0) + (if skinTone then 1 else 0) + (if scaleRow then 1 else 0)) * (skin.px(64) + skin.px(6))) + skin.px(6)),
 				ScrollingDirection = Enum.ScrollingDirection.Y,
 				ScrollBarThickness = skin.px(8),
 				ScrollBarImageColor3 = Tokens.color.accent,

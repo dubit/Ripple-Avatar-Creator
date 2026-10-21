@@ -523,23 +523,33 @@ export type ListRowProps = {
 	colour: Color3,
 	image: string?,
 	trailing: any?, -- elements on the right (price, buttons)
-	trailingWidth: number?, -- design px for them (default 250)
+	trailingWidth: number?, -- design px for them (default 250); a row too narrow
+	                        -- for them beside the title puts them on a second line
 	leading: any?, -- element before the thumb (e.g. a checkbox)
 	flat: boolean?, -- the thumb is a plain colour swatch
 	onActivated: (() -> ())?,
 	layoutOrder: number?,
 }
 
+local ROW_TITLE_ROOM = 160 -- design px the title keeps beside the buttons before they drop
+
 function Parts.ListRow(props: ListRowProps)
 	local skin = useSkin()
 	local interaction = useInteraction()
-	local height = skin.px(64)
+	local line = skin.px(64)
 	local thumb = skin.px(48)
 	local leadingWidth = if props.leading then skin.px(34) else 0
 	local trailingWidth = skin.px(props.trailingWidth or 250)
+	local ref = React.useRef(nil :: GuiObject?)
+	local size = useLocalSize(ref)
+	local textLeft = skin.px(8) + leadingWidth + (if props.leading then skin.px(8) else 0) + thumb + skin.px(12)
+	-- Too narrow for the title and the buttons side by side: two lines.
+	local stacked = size.X > 0 and size.X < textLeft + skin.px(ROW_TITLE_ROOM) + trailingWidth + skin.px(10)
+	local height = if stacked then line * 2 else line
 
 	return e("TextButton", {
 		Name = "ListRow",
+		ref = ref,
 		Size = UDim2.new(1, 0, 0, height),
 		BackgroundColor3 = Tokens.color.white,
 		BackgroundTransparency = if interaction.hovered then 1 - 0.07 else 1 - 0.04,
@@ -572,13 +582,13 @@ function Parts.ListRow(props: ListRowProps)
 			flat = props.flat,
 			radius = 10,
 			anchorPoint = Vector2.new(0, 0.5),
-			position = UDim2.new(0, skin.px(8) + leadingWidth + (if props.leading then skin.px(8) else 0), 0.5, 0),
+			position = UDim2.new(0, skin.px(8) + leadingWidth + (if props.leading then skin.px(8) else 0), 0, line / 2),
 			size = UDim2.fromOffset(thumb, thumb),
 		}),
 		Text = e("Frame", {
 			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, skin.px(8) + leadingWidth + (if props.leading then skin.px(8) else 0) + thumb + skin.px(12), 0.5, 0),
-			Size = UDim2.new(1, -(skin.px(8) + leadingWidth + thumb + skin.px(12) + trailingWidth), 0, skin.px(40)),
+			Position = UDim2.new(0, textLeft, 0, line / 2),
+			Size = UDim2.new(1, -(textLeft + (if stacked then skin.px(10) else trailingWidth)), 0, skin.px(40)),
 			BackgroundTransparency = 1,
 		}, {
 			Layout = e("UIListLayout", {
@@ -614,7 +624,7 @@ function Parts.ListRow(props: ListRowProps)
 		}),
 		Trailing = e("Frame", {
 			AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.new(1, -skin.px(10), 0.5, 0),
+			Position = UDim2.new(1, -skin.px(10), 0, if stacked then line * 1.5 - skin.px(6) else line / 2),
 			Size = UDim2.fromOffset(trailingWidth, skin.px(40)),
 			BackgroundTransparency = 1,
 		}, {
