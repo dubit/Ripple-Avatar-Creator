@@ -3,7 +3,7 @@
 --[[
 	WorldHud (design frame 5a: the HUD over the world)
 
-	Tab bar top centre. Down the middle of the left edge, Basket and Wearing;
+	Tab bar top centre. Down the middle of the left edge, Wearing then Basket;
 	down the middle of the right edge, the World options toggle (as big as
 	them) with Create avatar, Save to Roblox and Reset avatar under it, and World options'
 	side panel opens just inside that column. Both bottom corners stay clear
@@ -239,7 +239,7 @@ local function WorldHud(props: Props)
 				icon = "shopping_basket",
 				iconSize = basket.icon,
 				glowRadius = basket.glow,
-				layoutOrder = 1,
+				layoutOrder = 2,
 				zIndex = 2,
 				sound = false, -- opening the panel plays its own sound
 				onActivated = function()
@@ -256,7 +256,7 @@ local function WorldHud(props: Props)
 				icon = "checkroom",
 				iconSize = basket.icon,
 				glowRadius = basket.glow,
-				layoutOrder = 2,
+				layoutOrder = 1,
 				zIndex = 2,
 				sound = false, -- opening the panel plays its own sound
 				onActivated = function()
