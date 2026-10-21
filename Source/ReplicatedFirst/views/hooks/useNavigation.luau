@@ -8,9 +8,11 @@
 	for the breadcrumbs (e.g. Outfits › Neon Rider › Varsity Jacket).
 
 	Mirrors the design prototype (logic.js `ui.full` + `stack`):
-	  toggleTab(tab)   open a tab with an empty stack; tapping the tab that's
+	  toggleTab(tab)   open a tab where you left it; tapping the tab that's
 	                   already open closes the panel
-	  openRoot(root)   open Basket / Wearing (no toggle)
+	  resume(root)     open a root (Basket / Wearing, from the HUD) where you
+	                   left it
+	  openRoot(root)   open a root fresh, at its top (deep links, pick mode)
 	  push(entry)      go one level deeper
 	  replaceTop(entry) swap the deepest page (e.g. "More like this")
 	  popTo(depth)     jump back to a crumb (0 = the root screen)
@@ -21,6 +23,11 @@
 
 	Entries carry their own crumb label so the breadcrumb row never needs to
 	look anything up.
+
+	Each root remembers its stack for the session (issue #4): closing the
+	panel or switching root, then coming back by its tab, a HUD button or
+	tapping your avatar (resume), opens the page you were on. Going back to a
+	root's top forgets it; openRoot starts fresh on purpose.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -41,6 +48,7 @@ export type Navigation = {
 	top: Entry?,
 	isOpen: boolean,
 	toggleTab: (tab: Root) -> (),
+	resume: (root: Root) -> (),
 	openRoot: (root: Root) -> (),
 	push: (entry: Entry) -> (),
 	replaceTop: (entry: Entry) -> (),
@@ -56,14 +64,23 @@ local CLOSED: State = { root = nil, stack = {} }
 
 local function useNavigation(): Navigation
 	local state, setState = React.useState(CLOSED)
+	-- Where each root was left: its stack as of the last render showing it.
+	local remembered = React.useRef({} :: { [string]: { Entry } })
+	if state.root then
+		remembered.current[state.root] = state.stack
+	end
 
 	local toggleTab = React.useCallback(function(tab: Root)
 		setState(function(current: State): State
 			if current.root == tab then
 				return CLOSED
 			end
-			return { root = tab, stack = {} }
+			return { root = tab, stack = table.clone(remembered.current[tab] or {}) }
 		end)
+	end, {})
+
+	local resume = React.useCallback(function(root: Root)
+		setState({ root = root, stack = table.clone(remembered.current[root] or {}) })
 	end, {})
 
 	local openRoot = React.useCallback(function(root: Root)
@@ -115,6 +132,7 @@ local function useNavigation(): Navigation
 		top = state.stack[#state.stack],
 		isOpen = state.root ~= nil,
 		toggleTab = toggleTab,
+		resume = resume,
 		openRoot = openRoot,
 		push = push,
 		replaceTop = replaceTop,

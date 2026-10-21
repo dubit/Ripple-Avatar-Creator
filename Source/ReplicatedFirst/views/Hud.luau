@@ -334,7 +334,7 @@ local function Hud()
 
 	-- Tapping your own avatar in the world opens Wearing (design 5a).
 	useTapAvatar(function()
-		nav.openRoot("Wearing") -- the open sound plays from the effect below
+		nav.resume("Wearing") -- the open sound plays from the effect below
 	end, not nav.isOpen)
 
 	-- Open / close sounds on panel state changes.
