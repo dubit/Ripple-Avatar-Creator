@@ -337,12 +337,15 @@ local function FullPanel(props: Props)
 	local baseTransparency = if skin.glass == "blur" then 0.25 else 0
 	local margin = skin.px(6)
 
-	-- Basket / Wearing from inside the open panel: same "switch" as changing tab.
+	-- Basket / Wearing from inside the open panel: same "switch" as changing
+	-- tab, back where you left that list; its card again goes to its top.
 	local function openList(root: string)
 		if nav.root ~= root then
 			Sounds.play("switch")
+			nav.resume(root)
+		else
+			nav.openRoot(root)
 		end
-		nav.openRoot(root)
 	end
 
 	return e("Frame", {

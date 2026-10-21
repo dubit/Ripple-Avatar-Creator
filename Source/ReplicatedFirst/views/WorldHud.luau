@@ -178,7 +178,7 @@ local function WorldHud(props: Props)
 				zIndex = 2,
 				sound = false, -- opening the panel plays its own sound
 				onActivated = function()
-					props.nav.openRoot("Basket")
+					props.nav.resume("Basket")
 				end,
 				badge = if #props.look.basket == 0 then nil
 					elseif props.look.basketTotal > 0 then callout(Tokens.robux(total))
@@ -195,7 +195,7 @@ local function WorldHud(props: Props)
 				zIndex = 2,
 				sound = false, -- opening the panel plays its own sound
 				onActivated = function()
-					props.nav.openRoot("Wearing")
+					props.nav.resume("Wearing")
 				end,
 				badge = if #props.look.worn > 0 then callout(tostring(wornCount)) else nil,
 			}),
