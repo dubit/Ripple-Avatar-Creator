@@ -532,6 +532,7 @@ export type ListRowProps = {
 }
 
 local ROW_TITLE_ROOM = 160 -- design px the title keeps beside the buttons before they drop
+local STACK_AT = 2 / 3 -- of the side-by-side width, where a row goes to two lines
 
 function Parts.ListRow(props: ListRowProps)
 	local skin = useSkin()
@@ -543,8 +544,10 @@ function Parts.ListRow(props: ListRowProps)
 	local ref = React.useRef(nil :: GuiObject?)
 	local size = useLocalSize(ref)
 	local textLeft = skin.px(8) + leadingWidth + (if props.leading then skin.px(8) else 0) + thumb + skin.px(12)
-	-- Too narrow for the title and the buttons side by side: two lines.
-	local stacked = size.X > 0 and size.X < textLeft + skin.px(ROW_TITLE_ROOM) + trailingWidth + skin.px(10)
+	-- Too narrow for the title and the buttons side by side: two lines. It
+	-- holds on to one line down to two thirds of that width (the title just
+	-- truncates harder), so it only drops when it really must.
+	local stacked = size.X > 0 and size.X < (textLeft + skin.px(ROW_TITLE_ROOM) + trailingWidth + skin.px(10)) * STACK_AT
 	local height = if stacked then line * 2 else line
 
 	return e("TextButton", {
