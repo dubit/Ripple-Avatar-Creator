@@ -21,8 +21,9 @@
 	              (a dense Atmosphere fogged the floor blue-grey)
 	  floor       colour of every part tagged "WorldFloor", times floorLightness %
 	              (the pattern colour likewise times patternLightness %)
-	  pattern     its top-face Texture (SkinAssets.floorTextures: Grid, Studs,
-	              Checker) at PATTERN_STUDS studs per tile, drawn in
+	  pattern     the Texture on its upward face, whichever way the part is
+	              turned (one is added if it has none; SkinAssets.floorTextures:
+	              Grid, Studs, Checker) at PATTERN_STUDS studs per tile, drawn in
 	              patternColor at patternStrength % opacity (the textures are
 	              white/greyscale, so the colour is what's chosen)
 
@@ -65,13 +66,39 @@ type Snapshot = {
 	textures: { [Texture]: { texture: string, studsU: number, studsV: number, transparency: number, color: Color3 } },
 }
 
-local function topTexture(part: BasePart): Texture?
+-- The part's face that points up in the world: Top only if the part isn't
+-- turned (the place's Baseplate is stood on its side, 16 x 2048 x 2048, so
+-- its floor is its Right face).
+local function upFace(part: BasePart): Enum.NormalId
+	local best, bestDot = Enum.NormalId.Top, -math.huge
+	for _, face in Enum.NormalId:GetEnumItems() do
+		local dot = part.CFrame:VectorToWorldSpace(Vector3.FromNormalId(face)).Y
+		if dot > bestDot then
+			best, bestDot = face, dot
+		end
+	end
+	return best
+end
+
+-- The Texture on the floor's upward face. A floor without one gets one (this
+-- client only), starting as Roblox's grid, so every pattern can show on it.
+local function topTexture(part: BasePart): Texture
+	local face = upFace(part)
 	for _, child in part:GetChildren() do
-		if child:IsA("Texture") and child.Face == Enum.NormalId.Top then
+		if child:IsA("Texture") and child.Face == face then
 			return child
 		end
 	end
-	return nil
+	local texture = Instance.new("Texture")
+	texture.Name = "WorldPattern"
+	texture.Face = face
+	texture.Texture = "rbxassetid://" .. SkinAssets.floorTextures.Grid
+	texture.StudsPerTileU = 8
+	texture.StudsPerTileV = 8
+	texture.Transparency = 0.8
+	texture.Color3 = Color3.new(0, 0, 0)
+	texture.Parent = part
+	return texture
 end
 
 -- The texture's original look, recorded the first time we touch it.
@@ -188,8 +215,8 @@ local function applyFloor(options: any, config: any, original: Snapshot)
 		if part:IsA("BasePart") then
 			part.Color = colour
 			local texture = topTexture(part)
-			local base = texture and baseFor(texture, original)
-			if texture and base then
+			local base = baseFor(texture, original)
+			do
 				local id = SkinAssets.floorTextures[options.pattern]
 				local studs = PATTERN_STUDS[options.pattern]
 				texture.Texture = if id and id ~= 0 then "rbxassetid://" .. id else base.texture
