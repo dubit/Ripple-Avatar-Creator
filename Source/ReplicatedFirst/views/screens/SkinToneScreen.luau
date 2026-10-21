@@ -21,6 +21,7 @@ local SkinColours = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild
 local views = script.Parent.Parent
 local Tokens = require(views:WaitForChild("Tokens"))
 local useSkin = require(views:WaitForChild("hooks"):WaitForChild("useSkin"))
+local useContentHeight = require(views:WaitForChild("hooks"):WaitForChild("useContentHeight"))
 local ShadowText = require(views:WaitForChild("components"):WaitForChild("ShadowText"))
 local PillButton = require(views:WaitForChild("components"):WaitForChild("PillButton"))
 local BodyFigure = require(views:WaitForChild("components"):WaitForChild("BodyFigure"))
@@ -32,6 +33,7 @@ local LEFT = 300
 
 local function SkinToneScreen(props: { nav: any, look: any, colours: any, from: string })
 	local skin = useSkin()
+	local layoutRef, contentHeight = useContentHeight()
 	local colours = SkinColours.normalise(props.colours)
 	local own = SkinColours.normalise(props.look.ownSkin)
 	local wearing = SkinColours.normalise(props.look.skin)
@@ -41,7 +43,7 @@ local function SkinToneScreen(props: { nav: any, look: any, colours: any, from: 
 	end
 
 	local rows: { [string]: any } = {
-		Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(6)) }),
+		Layout = e("UIListLayout", { ref = layoutRef, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(6)) }),
 		Inset = e("UIPadding", {
 			PaddingTop = UDim.new(0, skin.px(3)),
 			PaddingLeft = UDim.new(0, skin.px(3)),
@@ -119,7 +121,7 @@ local function SkinToneScreen(props: { nav: any, look: any, colours: any, from: 
 			Size = UDim2.new(1, -(left + skin.px(20)), 1, 0),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			CanvasSize = UDim2.fromOffset(0, #SkinColours.PARTS * (skin.px(64) + skin.px(6)) + skin.px(6)),
+			CanvasSize = UDim2.fromOffset(0, math.max(contentHeight, #SkinColours.PARTS * (skin.px(64) + skin.px(6))) + skin.px(6)),
 			ScrollingDirection = Enum.ScrollingDirection.Y,
 			ScrollBarThickness = skin.px(8),
 			ScrollBarImageColor3 = Tokens.color.accent,

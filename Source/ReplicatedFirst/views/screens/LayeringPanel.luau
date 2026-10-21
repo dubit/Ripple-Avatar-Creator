@@ -21,6 +21,7 @@ local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("R
 local views = script.Parent.Parent
 local Tokens = require(views:WaitForChild("Tokens"))
 local useSkin = require(views:WaitForChild("hooks"):WaitForChild("useSkin"))
+local useContentHeight = require(views:WaitForChild("hooks"):WaitForChild("useContentHeight"))
 local ShadowText = require(views:WaitForChild("components"):WaitForChild("ShadowText"))
 local PillButton = require(views:WaitForChild("components"):WaitForChild("PillButton"))
 local Parts = require(script.Parent:WaitForChild("Parts"))
@@ -60,6 +61,7 @@ end
 
 local function LayeringPanel(props: { look: any, nav: any, size: UDim2, position: UDim2 })
 	local skin = useSkin()
+	local layoutRef, contentHeight = useContentHeight()
 	local layered = {}
 	for _, id in props.look.worn do
 		local item = PlaceholderData.item(id)
@@ -69,7 +71,7 @@ local function LayeringPanel(props: { look: any, nav: any, size: UDim2, position
 	end
 
 	local rows: { [string]: any } = {
-		Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(6)) }),
+		Layout = e("UIListLayout", { ref = layoutRef, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(6)) }),
 		Inset = e("UIPadding", {
 			PaddingTop = UDim.new(0, skin.px(3)),
 			PaddingLeft = UDim.new(0, skin.px(3)),
@@ -120,7 +122,7 @@ local function LayeringPanel(props: { look: any, nav: any, size: UDim2, position
 			Size = UDim2.new(1, 0, 1, -skin.px(28)),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			CanvasSize = UDim2.fromOffset(0, #layered * (skin.px(64) + skin.px(6)) + skin.px(6)),
+			CanvasSize = UDim2.fromOffset(0, math.max(contentHeight, #layered * (skin.px(64) + skin.px(6))) + skin.px(6)),
 			ScrollingDirection = Enum.ScrollingDirection.Y,
 			ScrollBarThickness = skin.px(8),
 			ScrollBarImageColor3 = Tokens.color.accent,

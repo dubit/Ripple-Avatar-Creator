@@ -48,6 +48,7 @@ local useColourFilter = require(hooks:WaitForChild("useColourFilter"))
 local useBackInput = require(hooks:WaitForChild("useBackInput"))
 local useSessionState = require(hooks:WaitForChild("useSessionState"))
 local useTextWidth = require(hooks:WaitForChild("useTextWidth"))
+local useLocalSize = require(hooks:WaitForChild("useLocalSize"))
 local CatalogueFilters = require(script.Parent:WaitForChild("CatalogueFilters"))
 local HudContext = require(views:WaitForChild("HudContext"))
 local CatalogueClient = require(views:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
@@ -69,6 +70,8 @@ local PASTE_MESSAGES = {
 }
 
 local BAR_HEIGHT = 52
+local PASTE_WIDTH = 320 -- design px: the paste box at full size
+local PASTE_MIN = 140 -- design px: below this the item count gives up its room
 local ROW_CARDS = 12 -- items in a home carousel
 local ROW_CARD = 132 -- design px: an item card's width in a carousel (as in a store)
 
@@ -393,6 +396,17 @@ local function CatalogueScreen(props: { nav: any, look: any })
 		+ CatalogueFilters.useButtonWidth(priceLabel)
 		+ CatalogueFilters.useButtonWidth(filtersLabel)
 		+ skin.px(8) * 4
+	-- The paste box gets what the filter buttons leave, up to its full size;
+	-- when even that's tight, the item count goes first.
+	local barRef = React.useRef(nil :: GuiObject?)
+	local barWidth = useLocalSize(barRef).X
+	local pasteRoom = barWidth - (countWidth + filterButtonsWidth) - skin.px(12)
+	local showCount = barWidth == 0 or pasteRoom >= skin.px(PASTE_MIN)
+	if not showCount then
+		pasteRoom += countWidth
+		countWidth = 0
+	end
+	local pasteWidth = if barWidth == 0 then skin.px(PASTE_WIDTH) else math.clamp(pasteRoom, skin.px(80), skin.px(PASTE_WIDTH))
 
 	local searchWidth = skin.px(230)
 	local tabsHeight = skin.px(Tokens.size.textTabHeight)
@@ -636,10 +650,16 @@ local function CatalogueScreen(props: { nav: any, look: any })
 				PaddingLeft = UDim.new(0, skin.px(7)),
 				PaddingRight = UDim.new(0, skin.px(14)),
 			}),
+			-- Measures the bar's inside (for the paste box's width).
+			Measure = e("Frame", {
+				ref = barRef,
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+			}),
 			Paste = e("Frame", {
 				AnchorPoint = Vector2.new(0, 0.5),
 				Position = UDim2.fromScale(0, 0.5),
-				Size = UDim2.fromOffset(skin.px(320), skin.px(38)),
+				Size = UDim2.fromOffset(pasteWidth, skin.px(38)),
 				BackgroundColor3 = Tokens.color.inputWell,
 				BorderSizePixel = 0,
 			}, {
@@ -682,8 +702,8 @@ local function CatalogueScreen(props: { nav: any, look: any })
 			Status = if pasteStatus
 				then e("TextLabel", {
 					AnchorPoint = Vector2.new(0, 0.5),
-					Position = UDim2.new(0, skin.px(334), 0.5, 0),
-					Size = UDim2.new(1, -(skin.px(334 + 14) + countWidth + filterButtonsWidth + skin.px(8)), 1, 0),
+					Position = UDim2.new(0, pasteWidth + skin.px(14), 0.5, 0),
+					Size = UDim2.new(1, -(pasteWidth + skin.px(14 + 14) + countWidth + filterButtonsWidth + skin.px(8)), 1, 0),
 					BackgroundTransparency = 1,
 					Text = pasteStatus,
 					TextColor3 = if pasteStatus == PASTE_MESSAGES.looking then Tokens.color.white else Tokens.color.accentText,
@@ -707,7 +727,7 @@ local function CatalogueScreen(props: { nav: any, look: any })
 					SortOrder = Enum.SortOrder.LayoutOrder,
 					Padding = UDim.new(0, skin.px(8)),
 				}),
-				Count = e("TextLabel", {
+				Count = if not showCount then nil else e("TextLabel", {
 					Size = UDim2.new(0, countWidth, 1, 0),
 					BackgroundTransparency = 1,
 					Text = countLabel,

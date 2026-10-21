@@ -27,6 +27,7 @@ local components = views:WaitForChild("components")
 local hooks = views:WaitForChild("hooks")
 local Tokens = require(views:WaitForChild("Tokens"))
 local useSkin = require(hooks:WaitForChild("useSkin"))
+local useContentHeight = require(hooks:WaitForChild("useContentHeight"))
 local PillButton = require(components:WaitForChild("PillButton"))
 local ConfirmButton = require(components:WaitForChild("ConfirmButton"))
 local GlassPanel = require(components:WaitForChild("GlassPanel"))
@@ -79,7 +80,12 @@ local function smallButton(label: string, order: number, active: boolean?, onAct
 	})
 end
 
-local function rowList(skin, rows: { [string]: any }, count: number, emptyText: string, fullWidth: boolean?)
+-- The rows, scrolling (sized to them: a narrow row is two lines tall), or a
+-- message when there are none.
+local function RowList(props: { rows: { [string]: any }, count: number, emptyText: string, fullWidth: boolean? })
+	local skin = useSkin()
+	local layoutRef, contentHeight = useContentHeight()
+	local rows, count, emptyText, fullWidth = props.rows, props.count, props.emptyText, props.fullWidth
 	local width = if fullWidth then UDim2.fromScale(1, 1) else UDim2.new(1, -skin.px(SIDE_WIDTH + 16), 1, 0)
 	if count == 0 then
 		return e("Frame", {
@@ -93,7 +99,7 @@ local function rowList(skin, rows: { [string]: any }, count: number, emptyText: 
 			Text = e(ShadowText, { text = emptyText, style = Tokens.type.cardTitle, transparency = Tokens.alpha.textDim, shadow = false }),
 		})
 	end
-	rows.Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(8)) })
+	rows.Layout = e("UIListLayout", { ref = layoutRef, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(8)) })
 	-- Inset so row strokes at the edges aren't clipped by the ScrollingFrame.
 	rows.Inset = e("UIPadding", {
 		PaddingTop = UDim.new(0, skin.px(3)),
@@ -105,7 +111,7 @@ local function rowList(skin, rows: { [string]: any }, count: number, emptyText: 
 		Size = width,
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		CanvasSize = UDim2.fromOffset(0, count * (skin.px(64) + skin.px(8)) + skin.px(6)),
+		CanvasSize = UDim2.fromOffset(0, math.max(contentHeight, count * (skin.px(64) + skin.px(8))) + skin.px(6)),
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollBarThickness = skin.px(8),
 		ScrollBarImageColor3 = Tokens.color.accent,
@@ -272,7 +278,7 @@ local function OutfitPicker(props: { look: any, onPicked: () -> (), onClose: () 
 			Position = UDim2.fromOffset(0, titleHeight),
 			Size = UDim2.new(1, 0, 1, -titleHeight),
 			BackgroundTransparency = 1,
-		}, { Rows = rowList(skin, rows, count, "No saved outfits yet", true) }),
+		}, { Rows = e(RowList, { rows = rows, count = count, emptyText = "No saved outfits yet", fullWidth = true }) }),
 	})
 end
 
@@ -324,7 +330,7 @@ local function BasketScreen(props: { nav: any, look: any })
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 	}, {
-		Rows = rowList(skin, rows, #look.basket, "Your basket is empty"),
+		Rows = e(RowList, { rows = rows, count = #look.basket, emptyText = "Your basket is empty" }),
 		Summary = sidePanel(skin, "Summary", {
 			summaryLine(skin, "Items", tostring(#look.basket), 1),
 			summaryLine(skin, "Already owned", tostring(owned), 2),
@@ -468,7 +474,7 @@ local function WearingScreen(props: { nav: any, look: any })
 		BackgroundTransparency = 1,
 	}, {
 		-- (Hidden under the picker: glass shows what's behind it.)
-		Rows = if picking then nil else rowList(skin, rows, #look.worn - math.max(#bodyIds - 1, 0), "You're not wearing anything"),
+		Rows = if picking then nil else e(RowList, { rows = rows, count = #look.worn - math.max(#bodyIds - 1, 0), emptyText = "You're not wearing anything" }),
 		Picker = if picking
 			then e(OutfitPicker, {
 				look = look,

@@ -10,7 +10,8 @@
 
 	Also starts background preloads of the UI sounds, icons and world textures
 	(floor patterns, flat skies), so their first use isn't delayed by
-	downloading the asset.
+	downloading the asset, and holds phones and tablets in landscape (the
+	HUD isn't laid out for portrait).
 ]]
 
 local Players = game:GetService("Players")
@@ -41,13 +42,18 @@ task.spawn(function()
 	ContentProvider:PreloadAsync(images)
 end)
 
+-- Landscape only, either way up. The place's StarterGui says so too; this
+-- keeps it so if that setting ever changes.
+local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
+playerGui.ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
+
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "HudApp"
 screenGui.DisplayOrder = 100
 screenGui.IgnoreGuiInset = true
 screenGui.ResetOnSpawn = false
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+screenGui.Parent = playerGui
 
 local root = ReactRoblox.createRoot(screenGui)
 root:render(React.createElement(Hud))
