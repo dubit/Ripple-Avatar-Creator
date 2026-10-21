@@ -21,7 +21,9 @@
 	outfit) and Save to Roblox (make it their Roblox avatar) open Roblox's own
 	prompts (AccountPrompts). Reset avatar, at the bottom of the right
 	column, puts your own Roblox avatar back (undoable; Outfits › Current
-	does it too).
+	does it too). It asks first: the first press slides it out leftwards
+	into an orange "Tap again to reset" pill for CONFIRM_SECONDS, and a
+	second press within that resets.
 
 	Props:
 		nav, look
@@ -41,6 +43,7 @@ local Tokens = require(views:WaitForChild("Tokens"))
 local useSkin = require(hooks:WaitForChild("useSkin"))
 local useSpring = require(hooks:WaitForChild("useSpring"))
 local useSpringNumber = require(hooks:WaitForChild("useSpringNumber"))
+local useTextWidth = require(hooks:WaitForChild("useTextWidth"))
 local useTransition = require(hooks:WaitForChild("useTransition"))
 local PillButton = require(components:WaitForChild("PillButton"))
 local AccountPrompts = require(views:WaitForChild("AccountPrompts"))
@@ -65,6 +68,64 @@ export type Props = {
 }
 
 local COLUMN_GAP = 12 -- design px between the buttons in a side column
+local CONFIRM_SECONDS = 3 -- how long Reset avatar waits for its second press
+local CONFIRM_LABEL = "Tap again to reset"
+
+-- A round action button that asks before it acts: the first press slides it
+-- out to the left (it sits at the right edge) as an orange pill with
+-- CONFIRM_LABEL; a second press within CONFIRM_SECONDS acts, otherwise it
+-- slides back.
+local function ConfirmAction(props: { icon: string, onConfirm: () -> (), layoutOrder: number })
+	local skin = useSkin()
+	local action = Tokens.size.action
+	local armed, setArmed = React.useState(false)
+	React.useEffect(function()
+		if not armed then
+			return nil
+		end
+		local thread = task.delay(CONFIRM_SECONDS, function()
+			setArmed(false)
+		end)
+		return function()
+			task.cancel(thread)
+		end
+	end, { armed })
+	local style = Tokens.type.cta
+	local textWidth = useTextWidth(CONFIRM_LABEL, Tokens.font(style.weight), skin.textPx(style.size))
+	-- Design px: icon, gaps and padding around the label.
+	local full = math.ceil(textWidth) + action.icon + 44
+	local width = useSpringNumber(if armed then full else action.size, Tokens.spring.state)
+	-- The slot keeps its place in the column; the button grows out of it.
+	return e("Frame", {
+		Size = UDim2.fromOffset(skin.px(action.size), skin.px(action.size)),
+		BackgroundTransparency = 1,
+		LayoutOrder = props.layoutOrder,
+		ZIndex = 2,
+	}, {
+		Button = e(PillButton, {
+			variant = "pill",
+			size = action.size,
+			width = math.max(width, action.size),
+			icon = props.icon,
+			iconSize = action.icon,
+			label = if armed and width >= full - 4 then CONFIRM_LABEL else nil,
+			active = armed,
+			glowRadius = action.glow,
+			anchorPoint = Vector2.new(1, 0),
+			position = UDim2.fromScale(1, 0),
+			zIndex = 2,
+			sound = if armed then false else nil, -- the reset plays its own sound
+			onActivated = function()
+				if armed then
+					setArmed(false)
+					props.onConfirm()
+				else
+					setArmed(true)
+				end
+			end,
+		}),
+	})
+end
 
 local function WorldHud(props: Props)
 	local skin = useSkin()
@@ -233,8 +294,9 @@ local function WorldHud(props: Props)
 			}),
 			CreateAvatar = actionButton("person_add", 2, AccountPrompts.createOutfit),
 			SaveToRoblox = actionButton("cloud_upload", 3, AccountPrompts.saveAvatar),
-			-- Back to your own Roblox avatar (its own sound; Undo reverses it).
-			ResetAvatar = actionButton("restart_alt", 4, props.look.reset, false),
+			-- Back to your own Roblox avatar, after a second press (its own
+			-- sound; Undo reverses it).
+			ResetAvatar = e(ConfirmAction, { icon = "restart_alt", onConfirm = props.look.reset, layoutOrder = 4 }),
 		}),
 		World = e(React.Fragment, nil, worldPanels),
 	})
