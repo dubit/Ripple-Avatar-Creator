@@ -16,7 +16,7 @@ local config: WorldOptionsConfig = {
 	brightnessMax = 200,
 	brightnessStep = 5,
 	skies = { "Clear", "Clouds", "Studio", "Void" },
-	patterns = { "Grid", "Studs", "Checker" },
+	patterns = { "Grid", "Studs", "Checker", "Clouds", "Grass", "Water" },
 	-- Both palettes share one order: orange, yellow, green, teal, purple, white.
 	-- No black: each colour has a lightness multiplier that takes it down to
 	-- black. Orange is the place's own Baseplate colour (the default floor).

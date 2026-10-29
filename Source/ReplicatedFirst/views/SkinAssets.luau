@@ -104,6 +104,9 @@ SkinAssets.floorTextures = {
 	Grid = 6372755229, -- Roblox's default baseplate grid
 	Studs = 10455712361, -- classic studs, 2×2 per image
 	Checker = 92292194903425, -- 2×2 white/transparent checker
+	Clouds = 113580888960089, -- assets/world/clouds.png (tools/build_clouds.py)
+	Grass = 100227557484882, -- assets/world/grass.png
+	Water = 98759281326939, -- assets/world/water.png
 } :: { [string]: number }
 
 -- Flat skybox images for the Studio / Void sky presets (WorldRenderer).

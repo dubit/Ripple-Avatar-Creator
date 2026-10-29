@@ -73,13 +73,17 @@ local TABS_HEIGHT = 40
 local SWATCH = 36
 local SWATCH_GAP = 6
 
--- Pattern preview tiles (design px): three across the ~295px scrolling body.
-local PATTERN_TILE = { width = 92, height = 48, caption = 17 }
+-- Pattern preview tiles (design px): three across the ~295px scrolling body,
+-- wrapping onto more rows.
+local PATTERN_TILE = { width = 92, height = 48, caption = 17, gap = 8 }
 -- Preview texture tile size per pattern, so each shows a recognisable patch.
 local PATTERN_PREVIEW_TILE: { [string]: number } = {
 	Grid = 48,
 	Studs = 24,
 	Checker = 32,
+	Clouds = 96,
+	Grass = 48,
+	Water = 64,
 }
 
 local function label(text: string, style: Tokens.TypeStyle, order: number, color: Color3?, transparency: number?)
@@ -102,6 +106,22 @@ local function row(skin, order: number, height: number, gap: number, children: {
 	})
 	return e("Frame", {
 		Size = UDim2.new(1, 0, 0, skin.px(height)),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+	}, children)
+end
+
+-- The pattern tiles, three to a row.
+local function patternGrid(skin, order: number, count: number, children: { [string]: any })
+	local cellHeight = PATTERN_TILE.height + PATTERN_TILE.caption
+	local rows = math.ceil(count / 3)
+	children.Layout = e("UIGridLayout", {
+		CellSize = UDim2.fromOffset(skin.px(PATTERN_TILE.width), skin.px(cellHeight)),
+		CellPadding = UDim2.fromOffset(skin.px(PATTERN_TILE.gap), skin.px(PATTERN_TILE.gap)),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	return e("Frame", {
+		Size = UDim2.new(1, 0, 0, skin.px(rows * cellHeight + (rows - 1) * PATTERN_TILE.gap)),
 		BackgroundTransparency = 1,
 		LayoutOrder = order,
 	}, children)
@@ -439,7 +459,7 @@ local function WorldOptionsView(props: Props)
 					config.patternStrengthStep,
 					12
 				),
-				Patterns = row(skin, 13, PATTERN_TILE.height + PATTERN_TILE.caption, 8, patternTiles),
+				Patterns = patternGrid(skin, 13, #config.patterns, patternTiles),
 				})
 				else nil,
 			Music = if section == "music" and props.music
