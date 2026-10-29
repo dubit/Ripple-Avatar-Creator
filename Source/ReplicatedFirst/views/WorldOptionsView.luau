@@ -3,8 +3,11 @@
 --[[
 	WorldOptionsView (design: World options side panel)
 
-	Time of day, sky preset, floor colour, pattern (+ its colour and strength),
-	lighting and shadows, and the flight hint. Controls apply instantly (`onChange` — the world renders
+	Three sections under tabs (WorldOptionsSections): Sky (time of day, sky
+	preset, lighting and shadows, the flight hint), Floor (floor colour,
+	pattern colour, pattern and its strength) and Music (the music player,
+	MusicPanel). The open one is kept for the session, and Reset resets only
+	it. Controls apply instantly (`onChange` — the world renders
 	from the draft) and save once per gesture (`onCommit` — on slider release
 	or tap), so dragging never floods the server.
 
@@ -16,7 +19,8 @@
 		config: WorldOptionsConfig
 		onChange: (changes: { [string]: any }) -> ()
 		onCommit: (changes: { [string]: any }) -> ()
-		onReset: () -> ()   back to the defaults
+		onReset: (section: string) -> ()   the open section back to its defaults
+		music: useMusic result?   the music player (Music section)
 		onClose: () -> ()
 		t: binding?   slide progress (0 off the right edge → 1 in place)
 		inset: number?   design px from the right edge (default edgeInset)
@@ -40,6 +44,9 @@ local ShadowText = require(components:WaitForChild("ShadowText"))
 local Slider = require(components:WaitForChild("Slider"))
 local Toggle = require(components:WaitForChild("Toggle"))
 local SkinAssets = require(views:WaitForChild("SkinAssets"))
+local PillTabs = require(components:WaitForChild("PillTabs"))
+local MusicPanel = require(views:WaitForChild("MusicPanel"))
+local useSessionState = require(hooks:WaitForChild("useSessionState"))
 
 local e = React.createElement
 
@@ -48,11 +55,19 @@ export type Props = {
 	config: any,
 	onChange: (changes: { [string]: any }) -> (),
 	onCommit: (changes: { [string]: any }) -> (),
-	onReset: () -> (),
+	onReset: (section: string) -> (),
 	onClose: () -> (),
 	t: any?,
 	inset: number?,
+	music: any?,
 }
+
+local TABS = {
+	{ id = "sky", label = "Sky", icon = "wb_sunny" },
+	{ id = "floor", label = "Floor", icon = "grid_on" },
+	{ id = "music", label = "Music", icon = "music_note" },
+}
+local TABS_HEIGHT = 40
 
 -- Colour swatches (design px): six across the scrolling body's width.
 local SWATCH = 36
@@ -123,6 +138,7 @@ local function WorldOptionsView(props: Props)
 	local skin = useSkin()
 	local options = props.options
 	local config = props.config
+	local section, setSection = useSessionState("world.section", "sky")
 
 	-- Height of the scrolling content in local units (for the canvas size).
 	local layoutRef = React.useRef(nil :: UIListLayout?)
@@ -140,7 +156,7 @@ local function WorldOptionsView(props: Props)
 		return function()
 			connection:Disconnect()
 		end
-	end, { skin.scale })
+	end, { skin.scale, section } :: { any })
 
 	-- Taps change and save in one go.
 	local function choose(changes: { [string]: any })
@@ -279,6 +295,8 @@ local function WorldOptionsView(props: Props)
 
 	local header = skin.px(36)
 	local headerGap = skin.px(10)
+	local tabsTop = header + headerGap
+	local bodyTop = tabsTop + skin.px(TABS_HEIGHT) + skin.px(12)
 
 	return e(GlassPanel, {
 		variant = "dark",
@@ -316,7 +334,9 @@ local function WorldOptionsView(props: Props)
 				anchorPoint = Vector2.new(1, 0),
 				position = UDim2.new(1, -skin.px(Tokens.size.small.size + 8), 0, 0),
 				sound = "back",
-				onActivated = props.onReset,
+				onActivated = function()
+					props.onReset(section)
+				end,
 			}),
 			Close = e(PillButton, {
 				variant = "round",
@@ -329,9 +349,17 @@ local function WorldOptionsView(props: Props)
 				onActivated = props.onClose,
 			}),
 		}),
+		Tabs = e(PillTabs, {
+			tabs = TABS,
+			activeId = section,
+			onSelect = setSection,
+			tabWidth = math.floor((Tokens.size.sidePanelWidth - 18 - 14) / 3),
+			height = TABS_HEIGHT,
+			position = UDim2.fromOffset(0, tabsTop),
+		}),
 		Body = e("ScrollingFrame", {
-			Position = UDim2.fromOffset(0, header + headerGap),
-			Size = UDim2.new(1, 0, 1, -(header + headerGap)),
+			Position = UDim2.fromOffset(0, bodyTop),
+			Size = UDim2.new(1, 0, 1, -bodyTop),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			-- Explicit canvas height from the measured content (AutomaticCanvasSize
@@ -351,59 +379,71 @@ local function WorldOptionsView(props: Props)
 				Padding = UDim.new(0, skin.px(10)),
 				ref = layoutRef,
 			}),
-			TimeHeader = valueHeader(skin, "Time of day", formatTime(options.time), 1),
-			TimeSlider = slider("time", config.timeMin, config.timeMax, config.timeStep, 2),
-			SkyLabel = label("Sky", Tokens.type.sectionLabel, 3),
-			Skies = row(skin, 4, 36, 6, skyButtons),
-			-- Pairs, each header + its slider + its choices: floor colour
-			-- (lightness), pattern colour (lightness), pattern texture (strength).
-			-- Headers carry their slider's value.
-			FloorHeader = valueHeader(skin, "Floor", percent(options.floorLightness), 5),
-			FloorLightness = slider("floorLightness", config.lightnessMin, config.lightnessMax, config.lightnessStep, 6),
-			Floors = row(skin, 7, SWATCH, SWATCH_GAP, swatches(config.floorColors, "floor", "floorLightness")),
-			PatternColourHeader = valueHeader(skin, "Pattern colour", percent(options.patternLightness), 8),
-			PatternLightness = slider("patternLightness", config.lightnessMin, config.lightnessMax, config.lightnessStep, 9),
-			PatternColors = row(
-				skin,
-				10,
-				SWATCH,
-				SWATCH_GAP,
-				swatches(config.patternColors, "patternColor", "patternLightness")
-			),
-			PatternHeader = valueHeader(skin, "Pattern", percent(options.patternStrength), 11),
-			Strength = slider(
-				"patternStrength",
-				config.patternStrengthMin,
-				config.patternStrengthMax,
-				config.patternStrengthStep,
-				12
-			),
-			Patterns = row(skin, 13, PATTERN_TILE.height + PATTERN_TILE.caption, 8, patternTiles),
-			LightHeader = valueHeader(skin, "Lighting", percent(options.brightness), 14),
-			LightSlider = slider("brightness", config.brightnessMin, config.brightnessMax, config.brightnessStep, 15),
-			Shadows = e("Frame", {
-				Size = UDim2.new(1, 0, 0, skin.px(28)),
-				BackgroundTransparency = 1,
-				LayoutOrder = 16,
-			}, {
-				Label = row(skin, 1, 28, 0, {
-					Text = label("Shadows", Tokens.type.bodyStrong, 1),
+			-- One section at a time (the tabs above).
+			Sky = if section == "sky"
+				then e(React.Fragment, nil, {
+				TimeHeader = valueHeader(skin, "Time of day", formatTime(options.time), 1),
+				TimeSlider = slider("time", config.timeMin, config.timeMax, config.timeStep, 2),
+				SkyLabel = label("Sky", Tokens.type.sectionLabel, 3),
+				Skies = row(skin, 4, 36, 6, skyButtons),
+				LightHeader = valueHeader(skin, "Lighting", percent(options.brightness), 14),
+				LightSlider = slider("brightness", config.brightnessMin, config.brightnessMax, config.brightnessStep, 15),
+				Shadows = e("Frame", {
+					Size = UDim2.new(1, 0, 0, skin.px(28)),
+					BackgroundTransparency = 1,
+					LayoutOrder = 16,
+				}, {
+					Label = row(skin, 1, 28, 0, {
+						Text = label("Shadows", Tokens.type.bodyStrong, 1),
+					}),
+					Toggle = e(Toggle, {
+						on = options.shadows,
+						anchorPoint = Vector2.new(1, 0.5),
+						position = UDim2.fromScale(1, 0.5),
+						onToggle = function(on: boolean)
+							props.onChange({ shadows = on })
+							props.onCommit({ shadows = on })
+						end,
+					}),
 				}),
-				Toggle = e(Toggle, {
-					on = options.shadows,
-					anchorPoint = Vector2.new(1, 0.5),
-					position = UDim2.fromScale(1, 0.5),
-					onToggle = function(on: boolean)
-						props.onChange({ shadows = on })
-						props.onCommit({ shadows = on })
-					end,
-				}),
-			}),
-			Hint = if config.flight.enabled
-				then row(skin, 17, 20, 6, {
-					Icon = e(Icon, { name = "flight", size = 18, color = Tokens.color.accentText, layoutOrder = 1 }),
-					Text = label("Double-jump to fly. Use it to find a quiet spot.", Tokens.type.hint, 2, nil, Tokens.alpha.textSoft),
+				Hint = if config.flight.enabled
+					then row(skin, 17, 20, 6, {
+						Icon = e(Icon, { name = "flight", size = 18, color = Tokens.color.accentText, layoutOrder = 1 }),
+						Text = label("Double-jump to fly. Use it to find a quiet spot.", Tokens.type.hint, 2, nil, Tokens.alpha.textSoft),
+					})
+					else nil,
 				})
+				else nil,
+			Floor = if section == "floor"
+				then e(React.Fragment, nil, {
+				-- Pairs, each header + its slider + its choices: floor colour
+				-- (lightness), pattern colour (lightness), pattern texture (strength).
+				-- Headers carry their slider's value.
+				FloorHeader = valueHeader(skin, "Floor", percent(options.floorLightness), 5),
+				FloorLightness = slider("floorLightness", config.lightnessMin, config.lightnessMax, config.lightnessStep, 6),
+				Floors = row(skin, 7, SWATCH, SWATCH_GAP, swatches(config.floorColors, "floor", "floorLightness")),
+				PatternColourHeader = valueHeader(skin, "Pattern colour", percent(options.patternLightness), 8),
+				PatternLightness = slider("patternLightness", config.lightnessMin, config.lightnessMax, config.lightnessStep, 9),
+				PatternColors = row(
+					skin,
+					10,
+					SWATCH,
+					SWATCH_GAP,
+					swatches(config.patternColors, "patternColor", "patternLightness")
+				),
+				PatternHeader = valueHeader(skin, "Pattern", percent(options.patternStrength), 11),
+				Strength = slider(
+					"patternStrength",
+					config.patternStrengthMin,
+					config.patternStrengthMax,
+					config.patternStrengthStep,
+					12
+				),
+				Patterns = row(skin, 13, PATTERN_TILE.height + PATTERN_TILE.caption, 8, patternTiles),
+				})
+				else nil,
+			Music = if section == "music" and props.music
+				then e(MusicPanel, { music = props.music, layoutOrder = 1 })
 				else nil,
 		}),
 	})

@@ -4,7 +4,8 @@
 	WorldOptionsModel (User scope — persisted per player)
 
 	The player's saved World options: time of day, sky preset, floor colour,
-	pattern (+ its colour and strength), brightness and shadows. Logical state only — each client renders
+	pattern (+ its colour and strength), brightness and shadows, and the music
+	player's playlist, on / off and volume. Logical state only — each client renders
 	its own world from it (nothing here touches the Workspace), so one player's
 	settings never reach another's screen.
 
@@ -16,6 +17,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local AbstractModel = require(script.Parent.Parent.AbstractModel)
 
 local WorldOptionsConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("WorldOptionsConfig"))
+local WorldOptionsSections = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("WorldOptionsSections"))
 
 local WorldOptionsModel = {}
 WorldOptionsModel.__index = WorldOptionsModel
@@ -32,6 +34,8 @@ export type Changes = {
 	patternStrength: number?,
 	brightness: number?,
 	shadows: boolean?,
+	playlist: { string }?,
+	musicOn: boolean?,
 }
 
 export type WorldOptionsModel = typeof(setmetatable({} :: {
@@ -45,20 +49,18 @@ export type WorldOptionsModel = typeof(setmetatable({} :: {
 	patternStrength: number,
 	brightness: number,
 	shadows: boolean,
+	playlist: { string },
+	musicOn: boolean,
 }, WorldOptionsModel)) & AbstractModel.AbstractModel
 
-local function applyDefaults(self: any)
-	local defaults = WorldOptionsConfig.defaults
-	self.time = defaults.time
-	self.sky = defaults.sky
-	self.floor = defaults.floor
-	self.floorLightness = defaults.floorLightness
-	self.pattern = defaults.pattern
-	self.patternColor = defaults.patternColor
-	self.patternLightness = defaults.patternLightness
-	self.patternStrength = defaults.patternStrength
-	self.brightness = defaults.brightness
-	self.shadows = defaults.shadows
+-- The config defaults, for every setting or (`keys`) just one section's.
+local function applyDefaults(self: any, keys: { string }?)
+	local defaults = WorldOptionsConfig.defaults :: any
+	for key, value in defaults do
+		if keys == nil or table.find(keys, key) then
+			self[key] = if type(value) == "table" then table.clone(value) else value
+		end
+	end
 end
 
 function WorldOptionsModel.new(ownerId: string): WorldOptionsModel
@@ -86,8 +88,9 @@ function WorldOptionsModel:apply(changes: Changes): ()
 	self:syncState()
 end
 
-function WorldOptionsModel:reset(): ()
-	applyDefaults(self)
+-- Back to the defaults: one section's settings (WorldOptionsSections), or all.
+function WorldOptionsModel:reset(section: string?): ()
+	applyDefaults(self, if section then WorldOptionsSections.KEYS[section] else nil)
 	self:syncState()
 end
 

@@ -19,3 +19,8 @@ Refs/
 bigquery/.analytics-config.json
 bigquery/.venv/
 bigquery/output/
+
+# Music source files (uploaded to Roblox; only the resized covers are kept)
+assets/music/*.wav
+assets/music/*.png
+assets/music/ogg/

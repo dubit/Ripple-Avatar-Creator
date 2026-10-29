@@ -2,6 +2,10 @@
 
 Usage: python tools/build_icons.py <MaterialSymbolsRounded.(ttf|woff2)> [out_dir]
 
+The font is the variable Material Symbols Rounded instanced at FILL 1,
+GRAD 0, opsz 24, wght 500 (fontTools.varLib.instancer): that matches every
+icon built so far exactly.
+
 Writes one 128px PNG per icon to out_dir (default assets/ui/icons). Upload
 new ones via Studio's Asset Manager and add their IMAGE asset IDs to
 Source/ReplicatedFirst/views/SkinAssets.luau.
@@ -24,7 +28,8 @@ ICONS = (
     "undo remove delete delete_sweep star visibility bookmark_add add_circle edit share "
     "add_business lock link ios_share content_copy check check_circle landscape "
     "flight flag cloud_off "
-    "accessibility_new directions_walk directions_run sports_gymnastics paragliding stairs pool emoji_people"
+    "accessibility_new directions_walk directions_run sports_gymnastics paragliding stairs pool emoji_people "
+    "play_arrow pause skip_next skip_previous volume_up volume_off music_note wb_sunny grid_on graphic_eq"
 ).split()
 
 CELL = 128

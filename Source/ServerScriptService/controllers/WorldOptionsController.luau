@@ -8,9 +8,13 @@
 	tick). Every field is checked against WorldOptionsConfig; unknown keys and
 	bad values are dropped, numbers are clamped and snapped to their step.
 
+	The music player's settings ride along: `playlist` (track keys, known
+	ones only, in library order, never empty) and `musicOn`.
+
 	Actions:
-		Set(changes)   apply validated changes
-		Reset()        back to the config defaults
+		Set(changes)     apply validated changes
+		Reset(section?)  back to the config defaults: one section's settings
+		                 ("sky" | "floor" | "music", WorldOptionsSections), or all
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,6 +24,7 @@ local WorldOptionsModel = require(script.Parent.Parent.models.user.WorldOptionsM
 local Network = require(ReplicatedStorage.Network)
 
 local WorldOptionsConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("WorldOptionsConfig"))
+local WorldOptionsSections = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("WorldOptionsSections"))
 
 local WorldOptionsController = {}
 WorldOptionsController.__index = WorldOptionsController
@@ -63,6 +68,11 @@ local function validate(raw: any): WorldOptionsModel.Changes
 	if type(raw.shadows) == "boolean" then
 		changes.shadows = raw.shadows
 	end
+	local music = config.music
+	changes.playlist = WorldOptionsSections.playlist(raw.playlist, music.tracks)
+	if type(raw.musicOn) == "boolean" then
+		changes.musicOn = raw.musicOn
+	end
 	return changes
 end
 
@@ -73,8 +83,8 @@ local function set(model: any, raw: any)
 	end
 end
 
-local function reset(model: any, _raw: any)
-	model:reset()
+local function reset(model: any, raw: any)
+	model:reset(if type(raw) == "string" and WorldOptionsSections.KEYS[raw] then raw else nil)
 end
 
 local ACTIONS = {
