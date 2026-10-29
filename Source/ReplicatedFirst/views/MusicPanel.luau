@@ -5,10 +5,10 @@
 
 	The music player's controls, laid out in the side panel's scrolling body:
 
-	  · now playing: the track's cover; beside it its name and mood, spectrum
-	    bars (AudioAnalyzer) that move while it plays, and Previous, Play /
-	    Pause (orange) and Next (shuffled)
+	  · now playing: the track's cover; beside it its name and mood, and
+	    spectrum bars (AudioAnalyzer) that move while it plays
 	  · progress: a bar you can tap or drag along to seek, with elapsed / length
+	  · transport: Previous, Play / Pause (orange), Next (shuffled)
 	  · the playlist: a 4x4 grid of covers. Lit (orange ring, tick) ones are in
 	    the playlist; the one playing shows an equaliser. Tapping a dim one adds
 	    it and plays it; tapping a lit one takes it out. The last one stays
@@ -45,13 +45,12 @@ local e = React.createElement
 
 local COVER = 68 -- design px: a grid cell (four across the ~295 px body)
 local COVER_GAP = 6
-local NOW_COVER = 104 -- as tall as the column beside it
+local NOW_COVER = 76 -- as tall as the column beside it
 local BARS = 20
 local BAR_GAP = 2
-local SPECTRUM_HEIGHT = 22
-local PLAY_SIZE = 34
-local NEXT_SIZE = 30 -- Previous and Next
+local SPECTRUM_HEIGHT = 26
 local PROGRESS_HEIGHT = 30
+local TRANSPORT_HEIGHT = 52
 local SHAKE_SECONDS = 0.35
 local SHAKE_PX = 4 -- design px, either side
 local SHAKE_SWINGS = 3
@@ -348,13 +347,12 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 	end
 	local namePosition, nameSize = place(0, 18)
 	local moodPosition, moodSize = place(20, 17)
-	local spectrumPosition, spectrumSize = place(42, SPECTRUM_HEIGHT)
-	local transportPosition, transportSize = place(NOW_COVER - PLAY_SIZE, PLAY_SIZE)
+	local spectrumPosition, spectrumSize = place(NOW_COVER - SPECTRUM_HEIGHT, SPECTRUM_HEIGHT)
 
 	return e("Frame", {
-		-- Its rows (now playing, progress, label 20, grid, caption 18) and the
-		-- four 12 px gaps between them.
-		Size = UDim2.new(1, 0, 0, skin.px(NOW_COVER + PROGRESS_HEIGHT + 20 + 18 + 4 * 12) + gridHeight),
+		-- Its rows (now playing, progress, transport, label 20, grid, caption 18)
+		-- and the five 12 px gaps between them.
+		Size = UDim2.new(1, 0, 0, skin.px(NOW_COVER + PROGRESS_HEIGHT + TRANSPORT_HEIGHT + 20 + 18 + 5 * 12) + gridHeight),
 		BackgroundTransparency = 1,
 		LayoutOrder = props.layoutOrder or 0,
 	}, {
@@ -413,21 +411,6 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 					Size = spectrumSize,
 					BackgroundTransparency = 1,
 				}, bars),
-				Transport = e("Frame", {
-					Position = transportPosition,
-					Size = transportSize,
-					BackgroundTransparency = 1,
-				}, {
-					Layout = e("UIListLayout", {
-						FillDirection = Enum.FillDirection.Horizontal,
-						VerticalAlignment = Enum.VerticalAlignment.Center,
-						SortOrder = Enum.SortOrder.LayoutOrder,
-						Padding = UDim.new(0, skin.px(8)),
-					}),
-					Previous = round("skip_previous", NEXT_SIZE, 18, 1, music.previous),
-					PlayPause = round(if music.playing then "pause" else "play_arrow", PLAY_SIZE, 20, 2, music.playPause, true),
-					Next = round("skip_next", NEXT_SIZE, 18, 3, music.next),
-				}),
 			}),
 		}),
 		Progress = e("Frame", {
@@ -501,15 +484,31 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 				TextXAlignment = Enum.TextXAlignment.Right,
 			}),
 		}),
+		Transport = e("Frame", {
+			Size = UDim2.new(1, 0, 0, skin.px(TRANSPORT_HEIGHT)),
+			BackgroundTransparency = 1,
+			LayoutOrder = 3,
+		}, {
+			Layout = e("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				HorizontalAlignment = Enum.HorizontalAlignment.Center,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, skin.px(14)),
+			}),
+			Previous = round("skip_previous", 40, 24, 1, music.previous),
+			PlayPause = round(if music.playing then "pause" else "play_arrow", 52, 30, 2, music.playPause, true),
+			Next = round("skip_next", 40, 24, 3, music.next),
+		}),
 		PlaylistLabel = e("Frame", {
 			Size = UDim2.new(1, 0, 0, skin.px(20)),
 			BackgroundTransparency = 1,
-			LayoutOrder = 3,
+			LayoutOrder = 4,
 		}, { Text = label("Playlist", Tokens.type.sectionLabel, 1) }),
 		Grid = e("Frame", {
 			Size = UDim2.new(1, 0, 0, gridHeight),
 			BackgroundTransparency = 1,
-			LayoutOrder = 4,
+			LayoutOrder = 5,
 		}, grid),
 		Caption = e("TextLabel", {
 			Size = UDim2.new(1, 0, 0, skin.px(18)),
@@ -521,7 +520,7 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 			FontFace = Tokens.font(Tokens.type.hint.weight),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-			LayoutOrder = 5,
+			LayoutOrder = 6,
 		}),
 	})
 end
