@@ -50,9 +50,12 @@ local NOW_COVER = 76
 local BARS = 20
 local BAR_GAP = 2
 local SPECTRUM_HEIGHT = 26
--- Spectrum level (dB) mapped to an empty / full bar.
-local DB_FLOOR = -72
-local DB_CEILING = -18
+-- Spectrum level (dB, at full volume) mapped to an empty / full bar. Music
+-- falls off toward the treble, so each bar up gets TILT dB more (measured on
+-- the tracks: ~30 dB from the bass bar to the top one).
+local DB_FLOOR = -62
+local DB_CEILING = -12
+local TILT = 1.4
 local FALL = 0.82 -- each frame a bar keeps this much of its height as it falls
 
 local function clock(seconds: number): string
@@ -62,22 +65,26 @@ end
 
 -- Spectrum bins (linear in frequency) grouped into BARS bands spaced
 -- logarithmically, so the bass doesn't take one bar and the treble fifteen.
-local function bands(spectrum: { number }): { number }
+-- Every bar gets at least its own bin (the lowest bands are narrower than
+-- one). `volume` is the player's, divided out so the bars don't shrink with
+-- the volume slider.
+local function bands(spectrum: { number }, volume: number): { number }
 	local n = #spectrum
 	local out = table.create(BARS, 0)
-	if n < 2 then
+	if n < BARS + 2 or volume <= 0 then
 		return out
 	end
-	local low, high = 1, n * 0.7 -- the top bins are mostly empty
+	local low, high = 2, n * 0.7 -- bin 1 is DC; the top bins are mostly empty
+	local from = low
 	for bar = 1, BARS do
-		local from = math.floor(low * (high / low) ^ ((bar - 1) / BARS))
-		local to = math.max(from, math.floor(low * (high / low) ^ (bar / BARS)) - 1)
+		local to = math.max(from, math.floor(low * (high / low) ^ (bar / BARS)))
 		local peak = 0
 		for i = from, math.min(to, n) do
-			peak = math.max(peak, spectrum[i] or 0)
+			peak = math.max(peak, spectrum[i])
 		end
-		local db = 20 * math.log10(peak + 1e-9)
+		local db = 20 * math.log10(peak / volume + 1e-9) + (bar - 1) * TILT
 		out[bar] = math.clamp((db - DB_FLOOR) / (DB_CEILING - DB_FLOOR), 0, 1)
+		from = to + 1
 	end
 	return out
 end
@@ -190,7 +197,7 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 				setElapsed(clock(player.TimePosition))
 			end
 			setLength(clock(total))
-			local target = if player.IsPlaying then bands(audio.analyzer:GetSpectrum()) else table.create(BARS, 0)
+			local target = if player.IsPlaying then bands(audio.analyzer:GetSpectrum(), player.Volume) else table.create(BARS, 0)
 			for i = 1, BARS do
 				held[i] = math.max(target[i], held[i] * FALL)
 			end

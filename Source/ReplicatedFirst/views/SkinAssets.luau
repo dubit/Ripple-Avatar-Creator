@@ -66,6 +66,17 @@ SkinAssets.icons = {
 	stairs = 78234124652504, -- climb
 	pool = 107183700626092, -- swim
 	emoji_people = 107200103596168, -- emotes
+	-- World options tabs + the music player
+	wb_sunny = 139103723332673, -- Sky
+	grid_on = 80848591679330, -- Floor
+	music_note = 82485118182956, -- Music
+	play_arrow = 78845549983838,
+	pause = 83770782533186,
+	skip_next = 106490187937706,
+	skip_previous = 98701137308324,
+	volume_up = 136975718563958,
+	volume_off = 85932727839184,
+	graphic_eq = 88626857826555, -- the playing track
 } :: { [string]: number }
 
 -- UI sounds (views/Sounds plays them). 0 = no sound (silent).
