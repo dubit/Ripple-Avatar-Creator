@@ -460,6 +460,15 @@ local function WorldOptionsView(props: Props)
 					12
 				),
 				Patterns = patternGrid(skin, 13, #config.patterns, patternTiles),
+				-- The floor as a whole: down to invisible (still solid).
+				OpacityHeader = valueHeader(skin, "Floor opacity", percent(options.floorOpacity), 14),
+				Opacity = slider(
+					"floorOpacity",
+					config.floorOpacityMin,
+					config.floorOpacityMax,
+					config.floorOpacityStep,
+					15
+				),
 				})
 				else nil,
 			Music = if section == "music" and props.music

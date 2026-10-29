@@ -120,6 +120,7 @@ local NetworkConfig = {
 			sky = "Clear",
 			floor = "#cc5f00",
 			floorLightness = 100,
+			floorOpacity = 100,
 			pattern = "Grid",
 			patternColor = "#ffffff",
 			patternLightness = 0,
@@ -230,6 +231,7 @@ export type WorldOptionsState = {
 	sky: string, -- WorldOptionsConfig.skies
 	floor: string, -- hex, one of WorldOptionsConfig.floorColors
 	floorLightness: number, -- percent multiplier on the floor colour
+	floorOpacity: number, -- percent; 0 is an invisible (still solid) floor
 	pattern: string, -- WorldOptionsConfig.patterns
 	patternColor: string, -- hex, one of WorldOptionsConfig.patternColors
 	patternLightness: number, -- percent multiplier on the pattern colour

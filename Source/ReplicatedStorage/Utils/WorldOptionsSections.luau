@@ -24,7 +24,7 @@ WorldOptionsSections.ORDER = { "sky", "floor", "music" } :: { Section }
 
 WorldOptionsSections.KEYS = {
 	sky = { "time", "sky", "brightness", "shadows" },
-	floor = { "floor", "floorLightness", "pattern", "patternColor", "patternLightness", "patternStrength" },
+	floor = { "floor", "floorLightness", "pattern", "patternColor", "patternLightness", "patternStrength", "floorOpacity" },
 	music = { "playlist", "musicOn" },
 } :: { [string]: { string } }
 

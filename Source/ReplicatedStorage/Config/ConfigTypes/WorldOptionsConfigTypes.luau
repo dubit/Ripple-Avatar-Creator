@@ -11,6 +11,7 @@ export type WorldOptionsDefaults = {
     sky: string,
     floor: string, -- hex, one of floorColors
     floorLightness: number, -- percent multiplier on the floor colour
+    floorOpacity: number, -- percent; 0 is an invisible (still solid) floor
     pattern: string,
     patternColor: string, -- hex, one of patternColors
     patternLightness: number, -- percent multiplier on the pattern colour
@@ -65,6 +66,9 @@ export type WorldOptionsConfig = {
     patternStrengthMin: number, -- percent
     patternStrengthMax: number,
     patternStrengthStep: number,
+    floorOpacityMin: number, -- percent
+    floorOpacityMax: number,
+    floorOpacityStep: number,
     defaults: WorldOptionsDefaults,
     music: MusicConfig,
     flight: FlightConfig,
