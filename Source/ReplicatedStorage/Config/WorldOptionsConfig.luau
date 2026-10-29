@@ -15,7 +15,13 @@ local config: WorldOptionsConfig = {
 	brightnessMin = 0,
 	brightnessMax = 200,
 	brightnessStep = 5,
-	skies = { "Clear", "Clouds", "Studio", "Void", "Space", "Pink", "Pastel", "Orange", "Rainbow", "Dune", "Rune", "Prism" },
+	skies = { "Clear", "Clouds", "Studio", "Void", "Space", "Daydream", "Lullaby", "Ember", "Aura", "Nova", "Rune", "Prism" },
+	-- The time slider under these skies is something else (0..24 still):
+	-- Studio warm → neutral → cool white, Void once round the colour wheel.
+	skyDials = {
+		Studio = { kind = "warmth", default = 12 },
+		Void = { kind = "hue", default = 18 },
+	},
 	patterns = { "Grid", "Studs", "Checker", "Clouds", "Grass", "Water" },
 	-- Both palettes share one order: orange, yellow, green, teal, purple, white.
 	-- No black: each colour has a lightness multiplier that takes it down to

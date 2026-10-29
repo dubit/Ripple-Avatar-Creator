@@ -7,7 +7,8 @@
 	replicated, so each player's settings stay private by construction.
 
 	  time        Lighting.ClockTime — Roblox moves the sun/moon and brings out
-	              the stars itself (pinned at midday under the Studio sky)
+	              the stars itself. Under Studio and Void it's their colour
+	              instead (SkyDial) and the clock stays at midday
 	  brightness  Lighting.ExposureCompensation = log2(percent / 100), so the
 	              sky dims/brightens with the scene. Roblox clamps exposure to
 	              ±3 stops, so 0% bottoms out at 1/8 brightness (very dark, not
@@ -15,12 +16,17 @@
 	  shadows     Lighting.GlobalShadows
 	  sky         Clear  = the place's own Sky + Atmosphere
 	              Clouds = that plus terrain Clouds
-	              Studio / Void = flat light-grey / black skybox images on all
-	              six Sky faces (SkinAssets.skyTextures), sun, moon and stars
-	              hidden; Studio keeps a light grey horizon haze, Void none
+	              Studio / Void = a dome of Neon walls round the camera in the
+	              slider's colour (a Sky image can't be tinted and haze doesn't
+	              reach overhead), with a horizon haze in that colour; sun, moon
+	              and stars hidden. The flat skybox images (SkinAssets.skyTextures)
+	              sit behind it
 	              the rest = full skyboxes (SkinAssets.skyboxes), with their own
 	              sun / moon / stars settings and no haze (it would fog them)
 	              (a dense Atmosphere fogged the floor blue-grey)
+	  light       every sky but Clear / Clouds tints the ambient light and the
+	              sunlight with its colour (the skybox's `light`, or the dial's),
+	              so the avatar looks like it's under that sky
 	  floor       colour of every part tagged "WorldFloor", times floorLightness %
 	              (the pattern colour likewise times patternLightness %)
 	  pattern     the Texture on its upward face, whichever way the part is
@@ -45,14 +51,27 @@
 local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
 
 local SkinAssets = require(script.Parent:WaitForChild("SkinAssets"))
+local SkyDial = require(script.Parent:WaitForChild("SkyDial"))
 
 local FLOOR_TAG = "WorldFloor"
 local STUDIO_CLOCK_TIME = 14
-local STUDIO_COLOUR = Color3.fromHex("#c9ccd2")
+-- The dome: walls this far from the camera each way (2048 studs square, so
+-- they meet at the corners), following it so you never reach them.
+local DOME = "WorldOptionsDome"
+local DOME_REACH = 1000
+-- Neon brightens and saturates its colour (and blows out near white), so the
+-- walls get a softer, darker one to land near the slider's.
+local DOME_SATURATION = 0.67
+local DOME_VALUE = 0.83
+-- Sky light: how far the ambient light moves to the sky's colour (kept at
+-- its own brightness), and how much of the colour tints the sunlight.
+local AMBIENT_MIX = 0.6
+local SUN_TINT = 0.25
 -- Studs per texture tile. Grid uses the floor texture's own tiling (the
 -- place's baseplate: 8). Studs: the image holds 2×2 studs. Checker: 4-stud
 -- squares, matching the grid tile. Clouds: large soft patches. Grass: blades
@@ -75,6 +94,9 @@ type Snapshot = {
 	moonSize: number,
 	orientation: Vector3,
 	skybox: { [string]: string },
+	ambient: Color3,
+	outdoorAmbient: Color3,
+	colorShiftTop: Color3,
 	atmosphere: { density: number, offset: number, color: Color3, decay: Color3, haze: number, glare: number }?,
 	textures: { [Texture]: { texture: string, studsU: number, studsV: number, transparency: number, color: Color3 } },
 }
@@ -147,6 +169,9 @@ local function snapshot(): Snapshot
 		moonSize = if sky then sky.MoonAngularSize else 11,
 		orientation = if sky then sky.SkyboxOrientation else Vector3.zero,
 		skybox = skybox,
+		ambient = Lighting.Ambient,
+		outdoorAmbient = Lighting.OutdoorAmbient,
+		colorShiftTop = Lighting.ColorShift_Top,
 		atmosphere = if atmosphere
 			then {
 				density = atmosphere.Density,
@@ -212,14 +237,7 @@ local function applySky(options: any, original: Snapshot)
 			atmosphere.Decay = saved.decay
 			atmosphere.Haze = saved.haze
 			atmosphere.Glare = saved.glare
-		elseif options.sky == "Studio" then
-			atmosphere.Density = 0.3
-			atmosphere.Offset = 0.25
-			atmosphere.Color = STUDIO_COLOUR
-			atmosphere.Decay = STUDIO_COLOUR
-			atmosphere.Haze = 0
-			atmosphere.Glare = 0
-		else -- Void and the skyboxes: no haze at all
+		else -- no haze for the skyboxes; Studio / Void get theirs in applyTint
 			atmosphere.Density = 0
 			atmosphere.Haze = 0
 			atmosphere.Glare = 0
@@ -238,6 +256,74 @@ local function applySky(options: any, original: Snapshot)
 			created.Parent = terrain
 		elseif options.sky ~= "Clouds" and clouds then
 			clouds:Destroy()
+		end
+	end
+end
+
+-- Six inward-facing Neon walls round the origin (moved to the camera).
+local function makeDome(): Model
+	local dome = Instance.new("Model")
+	dome.Name = DOME
+	for _, direction in { Vector3.xAxis, -Vector3.xAxis, Vector3.yAxis, -Vector3.yAxis, Vector3.zAxis, -Vector3.zAxis } do
+		local wall = Instance.new("Part")
+		wall.Anchored = true
+		wall.CanCollide = false
+		wall.CanQuery = false
+		wall.CanTouch = false
+		wall.CastShadow = false
+		wall.Material = Enum.Material.Neon
+		wall.Size = Vector3.new(2048, 2048, 1)
+		local up = if math.abs(direction.Y) > 0 then Vector3.zAxis else Vector3.yAxis
+		wall.CFrame = CFrame.lookAt(direction * DOME_REACH, Vector3.zero, up)
+		wall.Parent = dome
+	end
+	dome.WorldPivot = CFrame.new()
+	return dome
+end
+
+-- `colour` at `base`'s brightness.
+local function atBrightness(colour: Color3, base: Color3): Color3
+	local function luminance(c: Color3): number
+		return 0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B
+	end
+	local scale = luminance(base) / math.max(luminance(colour), 0.01)
+	return Color3.new(math.min(colour.R * scale, 1), math.min(colour.G * scale, 1), math.min(colour.B * scale, 1))
+end
+
+-- The sky's colour on the light (nil: the place's own), and on the dome and
+-- haze under Studio / Void.
+local function applyTint(options: any, config: any, original: Snapshot, dome: Model?)
+	local kind = SkyDial.kind(config, options.sky)
+	local box = SkinAssets.skyboxes[options.sky]
+	local tint = if kind ~= "time"
+		then SkyDial.colour(kind, options.time, config)
+		elseif box then Color3.fromHex(box.light)
+		else nil
+
+	if tint then
+		Lighting.Ambient = original.ambient:Lerp(atBrightness(tint, original.ambient), AMBIENT_MIX)
+		Lighting.OutdoorAmbient = original.outdoorAmbient:Lerp(atBrightness(tint, original.outdoorAmbient), AMBIENT_MIX)
+		Lighting.ColorShift_Top = Color3.new():Lerp(tint, SUN_TINT)
+	else
+		Lighting.Ambient = original.ambient
+		Lighting.OutdoorAmbient = original.outdoorAmbient
+		Lighting.ColorShift_Top = original.colorShiftTop
+	end
+
+	if kind ~= "time" and tint then
+		if dome then
+			local hue, saturation, value = tint:ToHSV()
+			local wallColour = Color3.fromHSV(hue, saturation * DOME_SATURATION, value * DOME_VALUE)
+			for _, wall in dome:GetChildren() do
+				(wall :: BasePart).Color = wallColour
+			end
+		end
+		local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+		if atmosphere then
+			atmosphere.Density = 0.3
+			atmosphere.Offset = 0.25
+			atmosphere.Color = tint
+			atmosphere.Decay = tint
 		end
 	end
 end
@@ -283,6 +369,8 @@ local function WorldRenderer(props: { options: any, config: any })
 	local latest = React.useRef(props)
 	latest.current = props
 	local options = props.options
+	local dialKind = SkyDial.kind(props.config, options.sky)
+	local dome = React.useRef(nil :: Model?)
 
 	React.useEffect(function()
 		if not ready then
@@ -305,9 +393,9 @@ local function WorldRenderer(props: { options: any, config: any })
 
 	React.useEffect(function()
 		if ready then
-			Lighting.ClockTime = if options.sky == "Studio" then STUDIO_CLOCK_TIME else options.time
+			Lighting.ClockTime = if dialKind ~= "time" then STUDIO_CLOCK_TIME else options.time
 		end
-	end, { ready, options.time, options.sky } :: { any })
+	end, { ready, options.time, dialKind } :: { any })
 
 	React.useEffect(function()
 		if ready then
@@ -326,6 +414,34 @@ local function WorldRenderer(props: { options: any, config: any })
 			applySky(options, original.current :: Snapshot)
 		end
 	end, { ready, options.sky } :: { any })
+
+	-- The dome, while a Studio / Void sky is on.
+	React.useEffect(function()
+		if not ready or dialKind == "time" then
+			return
+		end
+		local created = makeDome()
+		created.Parent = workspace
+		dome.current = created
+		local follow = RunService.RenderStepped:Connect(function()
+			local camera = workspace.CurrentCamera
+			if camera then
+				created:PivotTo(CFrame.new(camera.CFrame.Position))
+			end
+		end)
+		return function()
+			follow:Disconnect()
+			created:Destroy()
+			dome.current = nil
+		end
+	end, { ready, dialKind } :: { any })
+
+	-- After the sky and the dome, which it colours.
+	React.useEffect(function()
+		if ready then
+			applyTint(options, props.config, original.current :: Snapshot, dome.current)
+		end
+	end, { ready, options.sky, options.time } :: { any })
 
 	React.useEffect(function()
 		if ready then

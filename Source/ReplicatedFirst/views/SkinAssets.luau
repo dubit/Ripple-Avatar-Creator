@@ -111,8 +111,9 @@ SkinAssets.floorTextures = {
 
 -- Full skyboxes for the other sky presets (WorldRenderer): the six Sky
 -- faces, from Creator Store skies (the store asset in each comment). `bodies`
--- shows the sun, moon and stars; `sunSize` / `moonSize` (degrees) and `turn`
--- (SkyboxOrientation Y, degrees) as the store sky set them.
+-- shows the sun, moon and stars (they follow the time of day); `sunSize` /
+-- `moonSize` (degrees) and `turn` (SkyboxOrientation Y, degrees) as the store
+-- sky set them. `light` is a colour from the sky the avatar is lit with.
 export type Skybox = {
 	Bk: number,
 	Dn: number,
@@ -124,25 +125,42 @@ export type Skybox = {
 	sunSize: number?,
 	moonSize: number?,
 	turn: number?,
+	light: string,
 }
 SkinAssets.skyboxes = {
 	-- 16262385808 Space Sky HD
-	Space = { Bk = 16262356578, Dn = 16262358026, Ft = 16262360469, Lf = 16262362003, Rt = 16262363873, Up = 16262366016, bodies = false },
+	Space = { Bk = 16262356578, Dn = 16262358026, Ft = 16262360469, Lf = 16262362003, Rt = 16262363873, Up = 16262366016, bodies = false, light = "#7a62a8" },
 	-- 8202961731 Pink sky
-	Pink = { Bk = 271042516, Dn = 271077243, Ft = 271042556, Lf = 271042310, Rt = 271042467, Up = 271077958, bodies = false },
+	Daydream = { Bk = 271042516, Dn = 271077243, Ft = 271042556, Lf = 271042310, Rt = 271042467, Up = 271077958, bodies = true, light = "#f0a3b3" },
 	-- 2128675717 AnimePastel Hills Sky (no sun / moon images: stars only)
-	Pastel = { Bk = 2128458653, Dn = 2128462480, Ft = 2128458653, Lf = 2128462027, Rt = 2128462027, Up = 2128462236, bodies = true, sunSize = 0, moonSize = 0 },
+	Lullaby = { Bk = 2128458653, Dn = 2128462480, Ft = 2128458653, Lf = 2128462027, Rt = 2128462027, Up = 2128462236, bodies = true, sunSize = 0, moonSize = 0, light = "#f6d2ee" },
 	-- 239322399 Orange Sky
-	Orange = { Bk = 150939022, Dn = 150939038, Ft = 150939047, Lf = 150939056, Rt = 150939063, Up = 150939082, bodies = true },
+	Ember = { Bk = 150939022, Dn = 150939038, Ft = 150939047, Lf = 150939056, Rt = 150939063, Up = 150939082, bodies = true, light = "#f08a2c" },
 	-- 12877202335 Rainbow Sky
-	Rainbow = { Bk = 12877085497, Dn = 12877086914, Ft = 12877085497, Lf = 12877085497, Rt = 12877085497, Up = 12877083856, bodies = false },
+	Aura = { Bk = 12877085497, Dn = 12877086914, Ft = 12877085497, Lf = 12877085497, Rt = 12877085497, Up = 12877083856, bodies = false, light = "#b4c8f0" },
 	-- 138907351102721 Dune Sky
-	Dune = { Bk = 119761561936004, Dn = 112913253029218, Ft = 71766471664507, Lf = 73469705958603, Rt = 130460752130304, Up = 73402351227920, bodies = true, sunSize = 0, moonSize = 0 },
+	Nova = { Bk = 119761561936004, Dn = 112913253029218, Ft = 71766471664507, Lf = 73469705958603, Rt = 130460752130304, Up = 73402351227920, bodies = true, sunSize = 0, moonSize = 0, light = "#e0b878" },
 	-- 115260535914035 Rune Forest Sky
-	Rune = { Bk = 73287257796967, Dn = 95571517151564, Ft = 93852950520084, Lf = 73675662307776, Rt = 111303043418465, Up = 84372379620971, bodies = true, sunSize = 0, moonSize = 0, turn = 280 },
+	Rune = { Bk = 73287257796967, Dn = 95571517151564, Ft = 93852950520084, Lf = 73675662307776, Rt = 111303043418465, Up = 84372379620971, bodies = true, sunSize = 0, moonSize = 0, turn = 280, light = "#c8a27e" },
 	-- 16573629759 Rainbow Skybox
-	Prism = { Bk = 16573503947, Dn = 16573505309, Ft = 16573505942, Lf = 16573506632, Rt = 16573507805, Up = 16573508618, bodies = true },
+	Prism = { Bk = 16573503947, Dn = 16573505309, Ft = 16573505942, Lf = 16573506632, Rt = 16573507805, Up = 16573508618, bodies = true, light = "#8cc8f4" },
 } :: { [string]: Skybox }
+
+-- The colour line along the bottom of each sky chip (World options), left to
+-- right: the sky's top down to its horizon, brightened to read on the dark
+-- panel. Studio and Void draw their slider's gradient instead (SkyDial).
+SkinAssets.skyStrips = {
+	Clear = { "#5d9ce6", "#cfe5ff" },
+	Clouds = { "#8fb3dd", "#ffffff" },
+	Space = { "#8a6fc0", "#5b4f8f" },
+	Daydream = { "#e08f9a", "#ffc2c4" },
+	Lullaby = { "#ffc4f4", "#cfe3ea" },
+	Ember = { "#c4581a", "#f5b83a" },
+	Aura = { "#efcba0", "#9fd8d8", "#a79ffc" },
+	Nova = { "#3d4fa8", "#f2b552", "#3b8ad8" },
+	Rune = { "#a8706a", "#a8b07e" },
+	Prism = { "#5f8ee6", "#b8eaff" },
+} :: { [string]: { string } }
 
 -- Flat skybox images for the Studio / Void sky presets (WorldRenderer).
 -- 0 = not uploaded (the dense Atmosphere alone tints the sky).
