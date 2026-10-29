@@ -23,9 +23,11 @@
 	              (the pattern colour likewise times patternLightness %)
 	  pattern     the Texture on its upward face, whichever way the part is
 	              turned (one is added if it has none; SkinAssets.floorTextures:
-	              Grid, Studs, Checker) at PATTERN_STUDS studs per tile, drawn in
+	              Grid, Studs, Checker, Clouds, Grass, Water) at PATTERN_STUDS studs per tile, drawn in
 	              patternColor at patternStrength % opacity (the textures are
 	              white/greyscale, so the colour is what's chosen)
+	  floorOpacity  the floor as a whole, part and pattern; at 0 it's invisible
+	              (and casts no shadow) but still solid
 
 	The place's original Sky/Atmosphere values are captured once the game has
 	loaded (the HUD mounts from ReplicatedFirst, before Lighting may exist on
@@ -51,10 +53,14 @@ local STUDIO_CLOCK_TIME = 14
 local STUDIO_COLOUR = Color3.fromHex("#c9ccd2")
 -- Studs per texture tile. Grid uses the floor texture's own tiling (the
 -- place's baseplate: 8). Studs: the image holds 2×2 studs. Checker: 4-stud
--- squares, matching the grid tile.
+-- squares, matching the grid tile. Clouds: large soft patches. Grass: blades
+-- about avatar-shin height. Water: ripples a few avatars across.
 local PATTERN_STUDS: { [string]: number } = {
 	Studs = 2,
 	Checker = 8,
+	Clouds = 64,
+	Grass = 12,
+	Water = 32,
 }
 
 local SKYBOX_FACES = { "SkyboxBk", "SkyboxDn", "SkyboxFt", "SkyboxLf", "SkyboxRt", "SkyboxUp" }
@@ -210,10 +216,15 @@ local function applyFloor(options: any, config: any, original: Snapshot)
 		patternPicked.G * patternLightness,
 		patternPicked.B * patternLightness
 	)
-	local patternTransparency = 1 - math.clamp(options.patternStrength / 100, 0, 1)
+	local opacity = math.clamp(options.floorOpacity / 100, 0, 1)
+	local patternTransparency = 1 - math.clamp(options.patternStrength / 100, 0, 1) * opacity
 	for _, part in CollectionService:GetTagged(FLOOR_TAG) do
 		if part:IsA("BasePart") then
 			part.Color = colour
+			-- Still solid at 0 (you walk on nothing); no shadow from a floor
+			-- you can't see.
+			part.Transparency = 1 - opacity
+			part.CastShadow = opacity > 0
 			local texture = topTexture(part)
 			local base = baseFor(texture, original)
 			do
@@ -291,6 +302,7 @@ local function WorldRenderer(props: { options: any, config: any })
 		options.patternColor,
 		options.patternLightness,
 		options.patternStrength,
+		options.floorOpacity,
 	} :: { any })
 
 	return nil

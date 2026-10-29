@@ -16,7 +16,7 @@ local config: WorldOptionsConfig = {
 	brightnessMax = 200,
 	brightnessStep = 5,
 	skies = { "Clear", "Clouds", "Studio", "Void" },
-	patterns = { "Grid", "Studs", "Checker" },
+	patterns = { "Grid", "Studs", "Checker", "Clouds", "Grass", "Water" },
 	-- Both palettes share one order: orange, yellow, green, teal, purple, white.
 	-- No black: each colour has a lightness multiplier that takes it down to
 	-- black. Orange is the place's own Baseplate colour (the default floor).
@@ -32,11 +32,16 @@ local config: WorldOptionsConfig = {
 	patternStrengthMin = 0,
 	patternStrengthMax = 100,
 	patternStrengthStep = 5,
+	-- The whole floor (part and pattern); at 0% it's invisible but still solid.
+	floorOpacityMin = 0,
+	floorOpacityMax = 100,
+	floorOpacityStep = 5,
 	defaults = {
 		time = 14.5, -- the place's Lighting.ClockTime
 		sky = "Clear",
 		floor = "#cc5f00",
 		floorLightness = 100,
+		floorOpacity = 100,
 		pattern = "Grid",
 		patternColor = "#ffffff",
 		patternLightness = 0,

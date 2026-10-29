@@ -50,6 +50,7 @@ local function validate(raw: any): WorldOptionsModel.Changes
 	changes.time = snap(raw.time, config.timeMin, config.timeMax, config.timeStep)
 	changes.brightness = snap(raw.brightness, config.brightnessMin, config.brightnessMax, config.brightnessStep)
 	changes.floorLightness = snap(raw.floorLightness, config.lightnessMin, config.lightnessMax, config.lightnessStep)
+	changes.floorOpacity = snap(raw.floorOpacity, config.floorOpacityMin, config.floorOpacityMax, config.floorOpacityStep)
 	changes.patternLightness = snap(raw.patternLightness, config.lightnessMin, config.lightnessMax, config.lightnessStep)
 	changes.patternStrength =
 		snap(raw.patternStrength, config.patternStrengthMin, config.patternStrengthMax, config.patternStrengthStep)

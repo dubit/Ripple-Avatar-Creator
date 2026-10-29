@@ -78,9 +78,12 @@ local function useWorldOptions()
 	if not table.find(WorldOptionsConfig.patternColors, options.patternColor) then
 		options.patternColor = WorldOptionsConfig.defaults.patternColor
 	end
-	-- Saves from before the music player have none of its settings.
+	-- Settings added since some saves were made.
+	if type(options.floorOpacity) ~= "number" then
+		options.floorOpacity = WorldOptionsConfig.defaults.floorOpacity
+	end
 	options.playlist = WorldOptionsSections.playlist(options.playlist, WorldOptionsConfig.music.tracks)
-		or table.clone(WorldOptionsConfig.defaults.playlist)
+		or table.clone(WorldOptionsConfig.defaults.playlist) -- (from before the music player)
 	if type(options.musicOn) ~= "boolean" then
 		options.musicOn = WorldOptionsConfig.defaults.musicOn
 	end
