@@ -14,11 +14,14 @@
 	              ±3 stops, so 0% bottoms out at 1/8 brightness (very dark, not
 	              black) and 200% is +1 stop
 	  shadows     Lighting.GlobalShadows
-	  sky         Clear  = the place's own Sky + Atmosphere
+	  sky         Clear  = a cloudless blue skybox (SkinAssets.clearSkybox) with
+	              the place's Atmosphere, sun, moon and stars
 	              Clouds = that plus terrain Clouds
 	              Studio / Void = a dome of Neon walls round the camera in the
 	              slider's colour (a Sky image can't be tinted and haze doesn't
-	              reach overhead), with a horizon haze in that colour; sun, moon
+	              reach overhead), darkened against the Lighting slider's
+	              exposure so it doesn't wash out to white, with a horizon haze
+	              in that colour; sun, moon
 	              and stars hidden. The flat skybox images (SkinAssets.skyTextures)
 	              sit behind it
 	              the rest = full skyboxes (SkinAssets.skyboxes), with their own
@@ -60,10 +63,12 @@ local SkyDial = require(script.Parent:WaitForChild("SkyDial"))
 
 local FLOOR_TAG = "WorldFloor"
 local STUDIO_CLOCK_TIME = 14
--- The dome: walls this far from the camera each way (2048 studs square, so
--- they meet at the corners), following it so you never reach them.
+-- The dome: walls this far from the camera each way (just over twice that
+-- square, so they meet at the corners), following it so you never reach
+-- them. Close in: at 1000 studs Roblox stopped drawing them when it dropped
+-- the graphics quality, leaving the black sky.
 local DOME = "WorldOptionsDome"
-local DOME_REACH = 1000
+local DOME_REACH = 250
 -- Neon brightens and saturates its colour (and blows out near white), so the
 -- walls get a softer, darker one to land near the slider's.
 local DOME_SATURATION = 0.67
@@ -85,6 +90,7 @@ local PATTERN_STUDS: { [string]: number } = {
 }
 
 local ADDED_SKY = "WorldOptionsSky"
+local SKYBOX_SIDES = { "SkyboxBk", "SkyboxFt", "SkyboxLf", "SkyboxRt" }
 local SKYBOX_FACES = { "SkyboxBk", "SkyboxDn", "SkyboxFt", "SkyboxLf", "SkyboxRt", "SkyboxUp" }
 
 type Snapshot = {
@@ -190,13 +196,10 @@ local function applySky(options: any, original: Snapshot)
 	local open = options.sky == "Clear" or options.sky == "Clouds"
 	local box = SkinAssets.skyboxes[options.sky]
 
-	-- A place without a Sky gets one (this client only) for the presets that
-	-- replace the skybox, and loses it again for Clear / Clouds.
+	-- A place without a Sky gets one (this client only): every preset sets
+	-- the skybox.
 	local sky = Lighting:FindFirstChildOfClass("Sky")
-	if sky and open and sky.Name == ADDED_SKY then
-		sky:Destroy()
-		sky = nil
-	elseif not sky and not open then
+	if not sky then
 		local added = Instance.new("Sky")
 		added.Name = ADDED_SKY
 		added.Parent = Lighting
@@ -213,16 +216,20 @@ local function applySky(options: any, original: Snapshot)
 			sky.MoonAngularSize = box.moonSize or original.moonSize
 			sky.SkyboxOrientation = Vector3.new(0, box.turn or 0, 0)
 		else
-			sky.CelestialBodiesShown = if open then original.bodies else false
+			sky.CelestialBodiesShown = open
 			sky.StarCount = if open then original.starCount else 0
 			sky.SunAngularSize = original.sunSize
 			sky.MoonAngularSize = original.moonSize
 			sky.SkyboxOrientation = original.orientation
 			local flatId = SkinAssets.skyTextures[options.sky]
+			local clear = SkinAssets.clearSkybox
 			for _, face in SKYBOX_FACES do
-				(sky :: any)[face] = if not open and flatId and flatId ~= 0
-					then "rbxassetid://" .. flatId
-					else original.skybox[face]
+				local id = if not open and flatId and flatId ~= 0
+					then flatId
+					elseif table.find(SKYBOX_SIDES, face) then clear.side
+					elseif face == "SkyboxUp" then clear.top
+					else clear.down;
+				(sky :: any)[face] = "rbxassetid://" .. id
 			end
 		end
 	end
@@ -272,7 +279,7 @@ local function makeDome(): Model
 		wall.CanTouch = false
 		wall.CastShadow = false
 		wall.Material = Enum.Material.Neon
-		wall.Size = Vector3.new(2048, 2048, 1)
+		wall.Size = Vector3.new(DOME_REACH * 2 + 8, DOME_REACH * 2 + 8, 1)
 		local up = if math.abs(direction.Y) > 0 then Vector3.zAxis else Vector3.yAxis
 		wall.CFrame = CFrame.lookAt(direction * DOME_REACH, Vector3.zero, up)
 		wall.Parent = dome
@@ -313,7 +320,10 @@ local function applyTint(options: any, config: any, original: Snapshot, dome: Mo
 	if kind ~= "time" and tint then
 		if dome then
 			local hue, saturation, value = tint:ToHSV()
-			local wallColour = Color3.fromHSV(hue, saturation * DOME_SATURATION, value * DOME_VALUE)
+			-- Undo the Lighting slider's exposure, which would blow it out.
+			local exposure = 2 ^ -Lighting.ExposureCompensation
+			local wallColour =
+				Color3.fromHSV(hue, saturation * DOME_SATURATION, math.min(value * DOME_VALUE * exposure, 1))
 			for _, wall in dome:GetChildren() do
 				(wall :: BasePart).Color = wallColour
 			end
@@ -436,12 +446,12 @@ local function WorldRenderer(props: { options: any, config: any })
 		end
 	end, { ready, dialKind } :: { any })
 
-	-- After the sky and the dome, which it colours.
+	-- After the sky, the dome and the exposure, which it reads.
 	React.useEffect(function()
 		if ready then
 			applyTint(options, props.config, original.current :: Snapshot, dome.current)
 		end
-	end, { ready, options.sky, options.time } :: { any })
+	end, { ready, options.sky, options.time, options.brightness } :: { any })
 
 	React.useEffect(function()
 		if ready then

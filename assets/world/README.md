@@ -14,3 +14,4 @@ patterns use existing Roblox images, so they have no source file here.
 | checker.png | Floor pattern "Checker" (white 2×2 checker, tinted by the pattern colour in-game). Uploaded as `92292194903425` | `floorTextures.Checker` |
 | sky_studio.png | Sky preset "Studio" — flat light grey on all six skybox faces | `skyTextures.Studio` |
 | sky_void.png | Sky preset "Void" — flat near-black on all six skybox faces | `skyTextures.Void` |
+| sky_clear_down.png | Bottom face of the Clear / Clouds sky — flat, the horizon's colour. Uploaded as `134814657408892` | `clearSkybox.down` |

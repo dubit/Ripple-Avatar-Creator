@@ -16,9 +16,9 @@ local SkyDial = {}
 
 export type Kind = "time" | "warmth" | "hue"
 
-local WARM = Color3.fromHex("#ffd2a8")
+local WARM = Color3.fromHex("#ffc48f")
 local NEUTRAL = Color3.fromHex("#e9ebef")
-local COOL = Color3.fromHex("#c3d6ff")
+local COOL = Color3.fromHex("#b0c8ff")
 local HUE_SATURATION = 0.6
 local HUE_VALUE = 1
 local HUE_STOPS = 6

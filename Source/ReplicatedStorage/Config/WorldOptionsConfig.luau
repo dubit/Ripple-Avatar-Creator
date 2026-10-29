@@ -15,7 +15,7 @@ local config: WorldOptionsConfig = {
 	brightnessMin = 0,
 	brightnessMax = 200,
 	brightnessStep = 5,
-	skies = { "Clear", "Clouds", "Studio", "Void", "Space", "Daydream", "Lullaby", "Ember", "Aura", "Nova", "Rune", "Prism" },
+	skies = { "Clear", "Clouds", "Studio", "Void", "Space", "Daydream", "Breeze", "Ember", "Aura", "Nova", "Rune", "Prism" },
 	-- The time slider under these skies is something else (0..24 still):
 	-- Studio warm → neutral → cool white, Void once round the colour wheel.
 	skyDials = {

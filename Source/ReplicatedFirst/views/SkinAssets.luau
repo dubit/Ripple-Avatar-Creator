@@ -132,8 +132,8 @@ SkinAssets.skyboxes = {
 	Space = { Bk = 16262356578, Dn = 16262358026, Ft = 16262360469, Lf = 16262362003, Rt = 16262363873, Up = 16262366016, bodies = false, light = "#7a62a8" },
 	-- 8202961731 Pink sky
 	Daydream = { Bk = 271042516, Dn = 271077243, Ft = 271042556, Lf = 271042310, Rt = 271042467, Up = 271077958, bodies = true, light = "#f0a3b3" },
-	-- 2128675717 AnimePastel Hills Sky (no sun / moon images: stars only)
-	Lullaby = { Bk = 2128458653, Dn = 2128462480, Ft = 2128458653, Lf = 2128462027, Rt = 2128462027, Up = 2128462236, bodies = true, sunSize = 0, moonSize = 0, light = "#f6d2ee" },
+	-- 14559810477 Warped Anime Sky (its sun is a 1 degree speck)
+	Breeze = { Bk = 14556558767, Dn = 14556564331, Ft = 14556576655, Lf = 14556567190, Rt = 14556579194, Up = 14556582671, bodies = true, sunSize = 1, light = "#a8e4f4" },
 	-- 239322399 Orange Sky
 	Ember = { Bk = 150939022, Dn = 150939038, Ft = 150939047, Lf = 150939056, Rt = 150939063, Up = 150939082, bodies = true, light = "#f08a2c" },
 	-- 12877202335 Rainbow Sky
@@ -154,13 +154,20 @@ SkinAssets.skyStrips = {
 	Clouds = { "#8fb3dd", "#ffffff" },
 	Space = { "#8a6fc0", "#5b4f8f" },
 	Daydream = { "#e08f9a", "#ffc2c4" },
-	Lullaby = { "#ffc4f4", "#cfe3ea" },
+	Breeze = { "#1fc4ec", "#e8f6fb" },
 	Ember = { "#c4581a", "#f5b83a" },
 	Aura = { "#efcba0", "#9fd8d8", "#a79ffc" },
 	Nova = { "#3d4fa8", "#f2b552", "#3b8ad8" },
 	Rune = { "#a8706a", "#a8b07e" },
 	Prism = { "#5f8ee6", "#b8eaff" },
 } :: { [string]: { string } }
+
+-- The cloudless blue sky under Clear and Clouds (WorldRenderer), from
+-- Creator Store 96012904102415 "Clear Blue Sky - No clouds": one image on the
+-- four sides, one on top. Its bottom (seen through a see-through floor) is
+-- ours, the horizon's colour: assets/world/sky_clear_down.png. (The place's
+-- own Sky has clouds painted in.)
+SkinAssets.clearSkybox = { side = 13805860897, top = 13500260075, down = 134814657408892 }
 
 -- Flat skybox images for the Studio / Void sky presets (WorldRenderer).
 -- 0 = not uploaded (the dense Atmosphere alone tints the sky).
