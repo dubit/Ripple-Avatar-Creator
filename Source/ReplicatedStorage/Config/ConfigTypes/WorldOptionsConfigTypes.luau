@@ -17,6 +17,25 @@ export type WorldOptionsDefaults = {
     patternStrength: number, -- percent opacity of the pattern
     brightness: number,
     shadows: boolean,
+    playlist: { string }, -- music track keys, in library order
+    musicOn: boolean, -- playing (false: stopped)
+    musicVolume: number, -- percent
+}
+
+export type MusicTrack = {
+    key: string, -- saved in playlists; never reuse one for a different track
+    name: string,
+    mood: string, -- a few words under the name
+    audio: number, -- audio asset id
+    cover: number, -- image asset id (256px square)
+}
+
+export type MusicConfig = {
+    volumeMin: number, -- percent
+    volumeMax: number,
+    volumeStep: number,
+    maxVolume: number, -- AudioPlayer.Volume at 100%
+    tracks: { MusicTrack }, -- the 4x4 grid, in order; the first is the default
 }
 
 export type FlightConfig = {
@@ -51,6 +70,7 @@ export type WorldOptionsConfig = {
     patternStrengthMax: number,
     patternStrengthStep: number,
     defaults: WorldOptionsDefaults,
+    music: MusicConfig,
     flight: FlightConfig,
     sprint: SprintConfig,
 }

@@ -29,6 +29,7 @@
 		nav, look
 		tabs: { PillTabs.Tab }
 		world: useWorldOptions result { options, config, change, commit }
+		music: useMusic result?   for World options' Music section
 		leaving: boolean?   the panel is opening over it: the columns slide away
 ]]
 
@@ -64,6 +65,7 @@ export type Props = {
 	look: any,
 	tabs: { any },
 	world: any,
+	music: any?,
 	leaving: boolean?,
 }
 
@@ -171,6 +173,7 @@ local function WorldHud(props: Props)
 			onChange = props.world.change,
 			onCommit = props.world.commit,
 			onReset = props.world.reset,
+			music = props.music,
 			onClose = function()
 				setWorld(false)
 			end,

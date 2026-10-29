@@ -40,6 +40,7 @@ local useBackInput = require(hooks:WaitForChild("useBackInput"))
 local useTapAvatar = require(hooks:WaitForChild("useTapAvatar"))
 local useTransition = require(hooks:WaitForChild("useTransition"))
 local useWorldOptions = require(hooks:WaitForChild("useWorldOptions"))
+local useMusic = require(hooks:WaitForChild("useMusic"))
 local SessionStore = require(hooks:WaitForChild("SessionStore"))
 local PlaceholderData = require(views:WaitForChild("screens"):WaitForChild("PlaceholderData"))
 local usePlaceholderLook = require(views:WaitForChild("screens"):WaitForChild("usePlaceholderLook"))
@@ -220,6 +221,8 @@ local function Hud()
 	local buyRequest, setBuyRequest = React.useState(nil :: number?)
 	local buyingKey, setBuyingKey = React.useState(nil :: string?)
 	local world = useWorldOptions()
+	-- Background music: plays all session, panel open or shut.
+	local music = useMusic(world)
 	local look = withFeedback(rawLook)
 	local latestLook = React.useRef(rawLook)
 	latestLook.current = rawLook
@@ -656,6 +659,7 @@ local function Hud()
 			look = look,
 			tabs = TABS,
 			world = world,
+			music = music,
 			leaving = transition.phase == "leaving",
 		})
 	end

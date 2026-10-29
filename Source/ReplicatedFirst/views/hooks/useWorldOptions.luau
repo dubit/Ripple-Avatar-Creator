@@ -9,7 +9,8 @@
 
 	  change(changes)  apply live (e.g. while dragging a slider) — client only
 	  commit(changes)  apply and save (WorldOptions intent: Set)
-	  reset()          back to the config defaults, applied instantly and saved
+	  reset(section?)  back to the config defaults (one section's settings,
+	                   WorldOptionsSections, or all), applied instantly and saved
 	                   (WorldOptions intent: Reset)
 
 	A drafted value stays until the saved state catches up with it, so there's
@@ -24,10 +25,19 @@ local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("R
 
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
 local WorldOptionsConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("WorldOptionsConfig"))
+local WorldOptionsSections = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("WorldOptionsSections"))
 local useBoltState = require(script.Parent:WaitForChild("useBoltState"))
 
 local DEFAULT = table.clone(WorldOptionsConfig.defaults) :: any
 DEFAULT.ownerId = ""
+
+-- A drafted value the saved state now holds (playlists compare by contents).
+local function agrees(saved: any, value: any): boolean
+	if type(value) == "table" then
+		return WorldOptionsSections.samePlaylist(saved, value)
+	end
+	return saved == value
+end
 
 local function useWorldOptions()
 	local saved = useBoltState(Network.State.WorldOptions, DEFAULT)
@@ -39,7 +49,7 @@ local function useWorldOptions()
 			local pending = {}
 			local changed = false
 			for key, value in current do
-				if saved[key] == value then
+				if agrees(saved[key], value) then
 					changed = true
 				else
 					pending[key] = value
@@ -68,6 +78,15 @@ local function useWorldOptions()
 	if not table.find(WorldOptionsConfig.patternColors, options.patternColor) then
 		options.patternColor = WorldOptionsConfig.defaults.patternColor
 	end
+	-- Saves from before the music player have none of its settings.
+	options.playlist = WorldOptionsSections.playlist(options.playlist, WorldOptionsConfig.music.tracks)
+		or table.clone(WorldOptionsConfig.defaults.playlist)
+	if type(options.musicOn) ~= "boolean" then
+		options.musicOn = WorldOptionsConfig.defaults.musicOn
+	end
+	if type(options.musicVolume) ~= "number" then
+		options.musicVolume = WorldOptionsConfig.defaults.musicVolume
+	end
 
 	local change = React.useCallback(function(changes: { [string]: any })
 		setDraft(function(current: { [string]: any })
@@ -84,9 +103,16 @@ local function useWorldOptions()
 		Network.Intent.WorldOptions:FireServer(Network.Actions.WorldOptions.Set, changes)
 	end, { change })
 
-	local reset = React.useCallback(function()
-		change(WorldOptionsConfig.defaults :: any)
-		Network.Intent.WorldOptions:FireServer(Network.Actions.WorldOptions.Reset)
+	local reset = React.useCallback(function(section: string?)
+		local keys = if section then WorldOptionsSections.KEYS[section] else nil
+		local defaults: { [string]: any } = {}
+		for key, value in WorldOptionsConfig.defaults :: any do
+			if keys == nil or table.find(keys, key) then
+				defaults[key] = value
+			end
+		end
+		change(defaults)
+		Network.Intent.WorldOptions:FireServer(Network.Actions.WorldOptions.Reset, section)
 	end, { change })
 
 	return {
