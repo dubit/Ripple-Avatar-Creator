@@ -57,6 +57,8 @@ export type WorldOptionsConfig = {
     brightnessMax: number,
     brightnessStep: number,
     skies: { string }, -- preset names, in panel order
+    -- Skies whose time slider means something else (SkyDial), and where it starts.
+    skyDials: { [string]: { kind: "warmth" | "hue", default: number } },
     patterns: { string },
     floorColors: { string }, -- hex, in panel order; saved as the hex itself
     lightnessMin: number, -- percent, shared by floor and pattern lightness

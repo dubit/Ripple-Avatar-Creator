@@ -3,8 +3,9 @@
 --[[
 	WorldOptionsView (design: World options side panel)
 
-	Three sections under tabs (WorldOptionsSections): Sky (time of day, sky
-	preset, lighting and shadows, the flight hint), Floor (floor colour,
+	Three sections under tabs (WorldOptionsSections): Sky (time of day — or
+	Studio's warmth / Void's colour, SkyDial — sky preset, lighting and
+	shadows, the flight hint), Floor (floor colour,
 	pattern colour, pattern and its strength) and Music (the music player,
 	MusicPanel). The open one is kept for the session, and Reset resets only
 	it. Controls apply instantly (`onChange` — the world renders
@@ -44,6 +45,7 @@ local ShadowText = require(components:WaitForChild("ShadowText"))
 local Slider = require(components:WaitForChild("Slider"))
 local Toggle = require(components:WaitForChild("Toggle"))
 local SkinAssets = require(views:WaitForChild("SkinAssets"))
+local SkyDial = require(views:WaitForChild("SkyDial"))
 local PillTabs = require(components:WaitForChild("PillTabs"))
 local MusicPanel = require(views:WaitForChild("MusicPanel"))
 local useSessionState = require(hooks:WaitForChild("useSessionState"))
@@ -111,6 +113,23 @@ local function row(skin, order: number, height: number, gap: number, children: {
 	}, children)
 end
 
+-- The sky chips, four to a row, each with a colour line along its bottom
+-- (the sky's colours, SkinAssets.skyStrips).
+local SKY_CHIP = { width = 68, height = 36, gap = 6, strip = 3, stripInset = 14, stripLift = 5 }
+local function chipGrid(skin, order: number, count: number, children: { [string]: any })
+	local rows = math.ceil(count / 4)
+	children.Layout = e("UIGridLayout", {
+		CellSize = UDim2.fromOffset(skin.px(SKY_CHIP.width), skin.px(SKY_CHIP.height)),
+		CellPadding = UDim2.fromOffset(skin.px(SKY_CHIP.gap), skin.px(SKY_CHIP.gap)),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	return e("Frame", {
+		Size = UDim2.new(1, 0, 0, skin.px(rows * SKY_CHIP.height + (rows - 1) * SKY_CHIP.gap)),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+	}, children)
+end
+
 -- The pattern tiles, three to a row.
 local function patternGrid(skin, order: number, count: number, children: { [string]: any })
 	local cellHeight = PATTERN_TILE.height + PATTERN_TILE.caption
@@ -154,6 +173,35 @@ local function formatTime(t: number): string
 	return string.format("%02d:%02d", hours, minutes)
 end
 
+-- The slider's header under each kind of sky (SkyDial).
+local DIAL_TITLES: { [SkyDial.Kind]: string } = { time = "Time of day", warmth = "Warmth", hue = "Colour" }
+local function dialValue(kind: SkyDial.Kind, value: number, config: any): string
+	if kind == "time" then
+		return formatTime(value)
+	elseif kind == "warmth" then
+		local t = (value - config.timeMin) / (config.timeMax - config.timeMin)
+		return if t < 1 / 3 then "Warm" elseif t > 2 / 3 then "Cool" else "Neutral"
+	end
+	return ""
+end
+
+-- A sky chip's colour line: the sky's own colours, or its slider's range.
+local function stripColours(config: any, sky: string): ColorSequence
+	local kind = SkyDial.kind(config, sky)
+	if kind ~= "time" then
+		return SkyDial.track(kind)
+	end
+	local hexes = SkinAssets.skyStrips[sky] or { "#ffffff" }
+	if #hexes == 1 then
+		return ColorSequence.new(Color3.fromHex(hexes[1]))
+	end
+	local points = {}
+	for index, hex in hexes do
+		table.insert(points, ColorSequenceKeypoint.new((index - 1) / (#hexes - 1), Color3.fromHex(hex)))
+	end
+	return ColorSequence.new(points)
+end
+
 local function WorldOptionsView(props: Props)
 	local skin = useSkin()
 	local options = props.options
@@ -185,20 +233,38 @@ local function WorldOptionsView(props: Props)
 		props.onCommit(changes)
 	end
 
+	local dialKind = SkyDial.kind(config, options.sky)
 	local skyButtons: { [string]: any } = {}
 	for index, name in config.skies do
-		skyButtons[name] = e(PillButton, {
-			variant = "pill",
-			size = 36,
-			width = 68,
-			label = name,
-			textStyle = Tokens.type.small,
-			active = options.sky == name,
-			sound = false,
-			layoutOrder = index,
-			onActivated = function()
-				choose({ sky = name })
-			end,
+		skyButtons[name] = e("Frame", {
+			BackgroundTransparency = 1,
+			LayoutOrder = index,
+		}, {
+			Chip = e(PillButton, {
+				variant = "pill",
+				size = SKY_CHIP.height,
+				width = SKY_CHIP.width,
+				label = name,
+				textStyle = Tokens.type.small,
+				active = options.sky == name,
+				sound = false,
+				onActivated = function()
+					-- The slider means something else here: start it afresh.
+					local kind = SkyDial.kind(config, name)
+					choose(if kind ~= dialKind then { sky = name, time = SkyDial.default(config, name) } else { sky = name })
+				end,
+			}),
+			Strip = e("Frame", {
+				AnchorPoint = Vector2.new(0.5, 1),
+				Position = UDim2.new(0.5, 0, 1, -skin.px(SKY_CHIP.stripLift)),
+				Size = UDim2.new(1, -skin.px(SKY_CHIP.stripInset * 2), 0, skin.px(SKY_CHIP.strip)),
+				BackgroundColor3 = Color3.new(1, 1, 1),
+				BorderSizePixel = 0,
+				ZIndex = 2,
+			}, {
+				Corner = e("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+				Gradient = e("UIGradient", { Color = stripColours(config, name) }),
+			}),
 		})
 	end
 
@@ -293,13 +359,15 @@ local function WorldOptionsView(props: Props)
 	end
 
 	-- A saved slider: applies live while dragging, saves on release.
-	local function slider(key: string, min: number, max: number, step: number, order: number)
+	local function slider(key: string, min: number, max: number, step: number, order: number, colours: any?)
 		return e(Slider, {
 			value = options[key],
 			min = min,
 			max = max,
 			step = step,
 			layoutOrder = order,
+			trackColours = colours and colours.track,
+			knobColour = colours and colours.knob,
 			onChange = function(value: number)
 				props.onChange({ [key] = value })
 			end,
@@ -402,10 +470,19 @@ local function WorldOptionsView(props: Props)
 			-- One section at a time (the tabs above).
 			Sky = if section == "sky"
 				then e(React.Fragment, nil, {
-				TimeHeader = valueHeader(skin, "Time of day", formatTime(options.time), 1),
-				TimeSlider = slider("time", config.timeMin, config.timeMax, config.timeStep, 2),
+				TimeHeader = valueHeader(skin, DIAL_TITLES[dialKind], dialValue(dialKind, options.time, config), 1),
+				TimeSlider = slider(
+					"time",
+					config.timeMin,
+					config.timeMax,
+					config.timeStep,
+					2,
+					if dialKind ~= "time"
+						then { track = SkyDial.track(dialKind), knob = SkyDial.colour(dialKind, options.time, config) }
+						else nil
+				),
 				SkyLabel = label("Sky", Tokens.type.sectionLabel, 3),
-				Skies = row(skin, 4, 36, 6, skyButtons),
+				Skies = chipGrid(skin, 4, #config.skies, skyButtons),
 				LightHeader = valueHeader(skin, "Lighting", percent(options.brightness), 14),
 				LightSlider = slider("brightness", config.brightnessMin, config.brightnessMax, config.brightnessStep, 15),
 				Shadows = e("Frame", {
