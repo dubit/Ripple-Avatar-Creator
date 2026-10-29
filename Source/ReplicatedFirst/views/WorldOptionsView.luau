@@ -111,6 +111,22 @@ local function row(skin, order: number, height: number, gap: number, children: {
 	}, children)
 end
 
+-- The sky chips, four to a row.
+local SKY_CHIP = { width = 68, height = 36, gap = 6 }
+local function chipGrid(skin, order: number, count: number, children: { [string]: any })
+	local rows = math.ceil(count / 4)
+	children.Layout = e("UIGridLayout", {
+		CellSize = UDim2.fromOffset(skin.px(SKY_CHIP.width), skin.px(SKY_CHIP.height)),
+		CellPadding = UDim2.fromOffset(skin.px(SKY_CHIP.gap), skin.px(SKY_CHIP.gap)),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	return e("Frame", {
+		Size = UDim2.new(1, 0, 0, skin.px(rows * SKY_CHIP.height + (rows - 1) * SKY_CHIP.gap)),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+	}, children)
+end
+
 -- The pattern tiles, three to a row.
 local function patternGrid(skin, order: number, count: number, children: { [string]: any })
 	local cellHeight = PATTERN_TILE.height + PATTERN_TILE.caption
@@ -405,7 +421,7 @@ local function WorldOptionsView(props: Props)
 				TimeHeader = valueHeader(skin, "Time of day", formatTime(options.time), 1),
 				TimeSlider = slider("time", config.timeMin, config.timeMax, config.timeStep, 2),
 				SkyLabel = label("Sky", Tokens.type.sectionLabel, 3),
-				Skies = row(skin, 4, 36, 6, skyButtons),
+				Skies = chipGrid(skin, 4, #config.skies, skyButtons),
 				LightHeader = valueHeader(skin, "Lighting", percent(options.brightness), 14),
 				LightSlider = slider("brightness", config.brightnessMin, config.brightnessMax, config.brightnessStep, 15),
 				Shadows = e("Frame", {

@@ -109,6 +109,41 @@ SkinAssets.floorTextures = {
 	Water = 98759281326939, -- assets/world/water.png
 } :: { [string]: number }
 
+-- Full skyboxes for the other sky presets (WorldRenderer): the six Sky
+-- faces, from Creator Store skies (the store asset in each comment). `bodies`
+-- shows the sun, moon and stars; `sunSize` / `moonSize` (degrees) and `turn`
+-- (SkyboxOrientation Y, degrees) as the store sky set them.
+export type Skybox = {
+	Bk: number,
+	Dn: number,
+	Ft: number,
+	Lf: number,
+	Rt: number,
+	Up: number,
+	bodies: boolean,
+	sunSize: number?,
+	moonSize: number?,
+	turn: number?,
+}
+SkinAssets.skyboxes = {
+	-- 16262385808 Space Sky HD
+	Space = { Bk = 16262356578, Dn = 16262358026, Ft = 16262360469, Lf = 16262362003, Rt = 16262363873, Up = 16262366016, bodies = false },
+	-- 8202961731 Pink sky
+	Pink = { Bk = 271042516, Dn = 271077243, Ft = 271042556, Lf = 271042310, Rt = 271042467, Up = 271077958, bodies = false },
+	-- 2128675717 AnimePastel Hills Sky (no sun / moon images: stars only)
+	Pastel = { Bk = 2128458653, Dn = 2128462480, Ft = 2128458653, Lf = 2128462027, Rt = 2128462027, Up = 2128462236, bodies = true, sunSize = 0, moonSize = 0 },
+	-- 239322399 Orange Sky
+	Orange = { Bk = 150939022, Dn = 150939038, Ft = 150939047, Lf = 150939056, Rt = 150939063, Up = 150939082, bodies = true },
+	-- 12877202335 Rainbow Sky
+	Rainbow = { Bk = 12877085497, Dn = 12877086914, Ft = 12877085497, Lf = 12877085497, Rt = 12877085497, Up = 12877083856, bodies = false },
+	-- 138907351102721 Dune Sky
+	Dune = { Bk = 119761561936004, Dn = 112913253029218, Ft = 71766471664507, Lf = 73469705958603, Rt = 130460752130304, Up = 73402351227920, bodies = true, sunSize = 0, moonSize = 0 },
+	-- 115260535914035 Rune Forest Sky
+	Rune = { Bk = 73287257796967, Dn = 95571517151564, Ft = 93852950520084, Lf = 73675662307776, Rt = 111303043418465, Up = 84372379620971, bodies = true, sunSize = 0, moonSize = 0, turn = 280 },
+	-- 16573629759 Rainbow Skybox
+	Prism = { Bk = 16573503947, Dn = 16573505309, Ft = 16573505942, Lf = 16573506632, Rt = 16573507805, Up = 16573508618, bodies = true },
+} :: { [string]: Skybox }
+
 -- Flat skybox images for the Studio / Void sky presets (WorldRenderer).
 -- 0 = not uploaded (the dense Atmosphere alone tints the sky).
 SkinAssets.skyTextures = {

@@ -18,6 +18,8 @@
 	              Studio / Void = flat light-grey / black skybox images on all
 	              six Sky faces (SkinAssets.skyTextures), sun, moon and stars
 	              hidden; Studio keeps a light grey horizon haze, Void none
+	              the rest = full skyboxes (SkinAssets.skyboxes), with their own
+	              sun / moon / stars settings and no haze (it would fog them)
 	              (a dense Atmosphere fogged the floor blue-grey)
 	  floor       colour of every part tagged "WorldFloor", times floorLightness %
 	              (the pattern colour likewise times patternLightness %)
@@ -63,10 +65,15 @@ local PATTERN_STUDS: { [string]: number } = {
 	Water = 32,
 }
 
+local ADDED_SKY = "WorldOptionsSky"
 local SKYBOX_FACES = { "SkyboxBk", "SkyboxDn", "SkyboxFt", "SkyboxLf", "SkyboxRt", "SkyboxUp" }
 
 type Snapshot = {
 	starCount: number,
+	bodies: boolean,
+	sunSize: number,
+	moonSize: number,
+	orientation: Vector3,
 	skybox: { [string]: string },
 	atmosphere: { density: number, offset: number, color: Color3, decay: Color3, haze: number, glare: number }?,
 	textures: { [Texture]: { texture: string, studsU: number, studsV: number, transparency: number, color: Color3 } },
@@ -135,6 +142,10 @@ local function snapshot(): Snapshot
 	end
 	return {
 		starCount = if sky then sky.StarCount else 3000,
+		bodies = if sky then sky.CelestialBodiesShown else true,
+		sunSize = if sky then sky.SunAngularSize else 21,
+		moonSize = if sky then sky.MoonAngularSize else 11,
+		orientation = if sky then sky.SkyboxOrientation else Vector3.zero,
 		skybox = skybox,
 		atmosphere = if atmosphere
 			then {
@@ -152,16 +163,42 @@ end
 
 local function applySky(options: any, original: Snapshot)
 	local open = options.sky == "Clear" or options.sky == "Clouds"
+	local box = SkinAssets.skyboxes[options.sky]
 
+	-- A place without a Sky gets one (this client only) for the presets that
+	-- replace the skybox, and loses it again for Clear / Clouds.
 	local sky = Lighting:FindFirstChildOfClass("Sky")
+	if sky and open and sky.Name == ADDED_SKY then
+		sky:Destroy()
+		sky = nil
+	elseif not sky and not open then
+		local added = Instance.new("Sky")
+		added.Name = ADDED_SKY
+		added.Parent = Lighting
+		sky = added
+	end
 	if sky then
-		sky.CelestialBodiesShown = open
-		sky.StarCount = if open then original.starCount else 0
-		local flatId = SkinAssets.skyTextures[options.sky]
-		for _, face in SKYBOX_FACES do
-			(sky :: any)[face] = if not open and flatId and flatId ~= 0
-				then "rbxassetid://" .. flatId
-				else original.skybox[face]
+		if box then
+			for _, face in SKYBOX_FACES do
+				(sky :: any)[face] = "rbxassetid://" .. (box :: any)[string.sub(face, 7)]
+			end
+			sky.CelestialBodiesShown = box.bodies
+			sky.StarCount = original.starCount
+			sky.SunAngularSize = box.sunSize or original.sunSize
+			sky.MoonAngularSize = box.moonSize or original.moonSize
+			sky.SkyboxOrientation = Vector3.new(0, box.turn or 0, 0)
+		else
+			sky.CelestialBodiesShown = if open then original.bodies else false
+			sky.StarCount = if open then original.starCount else 0
+			sky.SunAngularSize = original.sunSize
+			sky.MoonAngularSize = original.moonSize
+			sky.SkyboxOrientation = original.orientation
+			local flatId = SkinAssets.skyTextures[options.sky]
+			for _, face in SKYBOX_FACES do
+				(sky :: any)[face] = if not open and flatId and flatId ~= 0
+					then "rbxassetid://" .. flatId
+					else original.skybox[face]
+			end
 		end
 	end
 
@@ -182,7 +219,7 @@ local function applySky(options: any, original: Snapshot)
 			atmosphere.Decay = STUDIO_COLOUR
 			atmosphere.Haze = 0
 			atmosphere.Glare = 0
-		else -- Void: no haze at all
+		else -- Void and the skyboxes: no haze at all
 			atmosphere.Density = 0
 			atmosphere.Haze = 0
 			atmosphere.Glare = 0

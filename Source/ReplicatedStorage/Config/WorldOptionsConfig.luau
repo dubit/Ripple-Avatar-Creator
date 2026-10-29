@@ -15,7 +15,7 @@ local config: WorldOptionsConfig = {
 	brightnessMin = 0,
 	brightnessMax = 200,
 	brightnessStep = 5,
-	skies = { "Clear", "Clouds", "Studio", "Void" },
+	skies = { "Clear", "Clouds", "Studio", "Void", "Space", "Pink", "Pastel", "Orange", "Rainbow", "Dune", "Rune", "Prism" },
 	patterns = { "Grid", "Studs", "Checker", "Clouds", "Grass", "Water" },
 	-- Both palettes share one order: orange, yellow, green, teal, purple, white.
 	-- No black: each colour has a lightness multiplier that takes it down to
