@@ -45,15 +45,11 @@ local config: WorldOptionsConfig = {
 		shadows = true,
 		playlist = { "vinyl_cradle" },
 		musicOn = true,
-		musicVolume = 40,
 	},
 	-- The music player (World options > Music): the 4x4 grid in this order;
 	-- the first is the default playlist. `audio` / `cover` are asset ids.
 	music = {
-		volumeMin = 0,
-		volumeMax = 100,
-		volumeStep = 5,
-		maxVolume = 0.6, -- AudioPlayer.Volume at 100%, so 100% never drowns the UI sounds
+		volume = 0.6, -- AudioPlayer.Volume (no control): under the UI sounds
 		tracks = {
 			{ key = "vinyl_cradle", name = "Vinyl Cradle", mood = "Dusty boom-bap jazz", audio = 84810861102488, cover = 128779126002416 },
 			{ key = "arcade_night", name = "Arcade Night", mood = "Neon chillwave", audio = 132723516994389, cover = 112332370885260 },
@@ -68,7 +64,7 @@ local config: WorldOptionsConfig = {
 			{ key = "fuzz_pedal_jangle", name = "Fuzz-Pedal Jangle", mood = "Sunlit fuzz-pop", audio = 79937625277834, cover = 78262495152234 },
 			{ key = "jaunty_march", name = "Jaunty March", mood = "Whimsical folk march", audio = 134535938606627, cover = 130838448989063 },
 			{ key = "fractured_warmth", name = "Fractured Warmth", mood = "Glitchy indie folk", audio = 88950803904745, cover = 89191688581625 },
-			{ key = "ready_in_five", name = "Ready in Five", mood = "Late-90s girl-group pop", audio = 98946168717679, cover = 86058242721739 },
+			{ key = "ready_in_five", name = "Ready in Five", mood = "Late-90s girl-group pop", audio = 98946168717679, cover = 102654941344012 },
 			{ key = "looking_fresh", name = "Looking Fresh", mood = "Y2K arcade breakbeat", audio = 130253538064862, cover = 76644051031280 },
 			{ key = "soft_rain_on_leaves", name = "Soft Rain on Leaves", mood = "Rain and distant thunder", audio = 138117962370258, cover = 139840591712987 },
 		},

@@ -11,20 +11,20 @@
 	What it plays comes from the saved World options (useWorldOptions):
 	  playlist     track keys (WorldOptionsConfig.music.tracks), in grid order
 	  musicOn      playing; false is stopped (it resumes where it stopped)
-	  musicVolume  percent of music.maxVolume
+	The volume is fixed (music.volume).
 
-	The playlist plays in grid order and wraps. A track ending goes to the
-	next one (a one-track playlist repeats it).
+	The playlist plays shuffled: each next track is a random one not yet
+	played since every track had its turn, and never the one just playing
+	(a one-track playlist repeats it). It starts on a random one too.
 
 	Returns:
-		tracks, current (a track), playing, volume
+		tracks, current (a track), playing
 		toggle(key)       not in the playlist: add it and play it now. In it:
 		                  take it out (playing it? on to the next); the last one
 		                  can't go (an error sound, returns false)
 		playPause()       start / stop
-		next(), previous()   previous restarts the track if it's past 3 s
+		next()            a shuffled next track
 		seek(fraction)    0..1 of the track
-		changeVolume(v) / commitVolume(v)   live while dragging / saved
 		audio()           { player: AudioPlayer, analyzer: AudioAnalyzer }? for
 		                  the panel's clock, progress and spectrum
 ]]
@@ -37,8 +37,6 @@ local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("R
 local WorldOptionsSections = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("WorldOptionsSections"))
 local Sounds = require(script.Parent.Parent:WaitForChild("Sounds"))
 
-local RESTART_AFTER = 3 -- seconds in, Previous restarts the track instead
-
 export type Track = { key: string, name: string, mood: string, audio: number, cover: number }
 
 export type Audio = { player: AudioPlayer, analyzer: AudioAnalyzer }
@@ -50,7 +48,9 @@ local function useMusic(world: any)
 	local playlist: { string } = options.playlist
 	local playing: boolean = options.musicOn
 
-	local chosen, setChosen = React.useState(playlist[1])
+	local chosen, setChosen = React.useState(function()
+		return playlist[math.random(#playlist)]
+	end)
 	-- Bumped to (re)start the current track from the top, even the same one.
 	local start, setStart = React.useState(0)
 	local key = if table.find(playlist, chosen) then chosen else playlist[1]
@@ -66,36 +66,43 @@ local function useMusic(world: any)
 
 	local nodes = React.useRef(nil :: Audio?)
 	local resumeAt = React.useRef(0)
+	-- Tracks played since the shuffle last started over.
+	local played = React.useRef({ [key] = true } :: { [string]: boolean })
 
 	local function goTo(nextKey: string)
+		played.current[nextKey] = true
 		setChosen(nextKey)
 		setStart(function(n: number)
 			return n + 1
 		end)
 	end
 
-	-- The key `step` places on from `fromKey` in `list` (by grid order, so a
-	-- key that's just left the list still has a place), wrapping.
-	local function stepFrom(list: { string }, fromKey: string, step: number): string
-		local order: { string } = {}
-		for _, track in tracks do
-			if track.key == fromKey or table.find(list, track.key) then
-				table.insert(order, track.key)
+	-- A random track in `list` that isn't `fromKey` and hasn't played since
+	-- the shuffle started over (when every one has, it starts over).
+	local function shuffled(list: { string }, fromKey: string): string
+		local function fresh(): { string }
+			local out = {}
+			for _, candidate in list do
+				if candidate ~= fromKey and not played.current[candidate] then
+					table.insert(out, candidate)
+				end
 			end
+			return out
 		end
-		local at = table.find(order, fromKey) or 1
-		for i = 1, #order do
-			local candidate = order[((at - 1 + step * i) % #order) + 1]
-			if table.find(list, candidate) then
-				return candidate
-			end
+		local pool = fresh()
+		if #pool == 0 then
+			played.current = { [fromKey] = true }
+			pool = fresh()
 		end
-		return list[1]
+		if #pool == 0 then
+			return list[1] -- a one-track playlist: that one again
+		end
+		return pool[math.random(#pool)]
 	end
 
-	local function advance(step: number)
+	local function advance()
 		local now = latest.current
-		goTo(stepFrom(now.playlist, now.key, step))
+		goTo(shuffled(now.playlist, now.key))
 	end
 
 	-- The audio graph, once.
@@ -104,6 +111,7 @@ local function useMusic(world: any)
 		folder.Name = "MusicPlayer"
 		local player = Instance.new("AudioPlayer")
 		player.Looping = false
+		player.Volume = music.volume
 		player.Parent = folder
 		local output = Instance.new("AudioDeviceOutput")
 		output.Parent = folder
@@ -118,9 +126,7 @@ local function useMusic(world: any)
 		end
 		folder.Parent = SoundService
 		nodes.current = { player = player, analyzer = analyzer }
-		local ended = player.Ended:Connect(function()
-			advance(1)
-		end)
+		local ended = player.Ended:Connect(advance)
 		return function()
 			ended:Disconnect()
 			folder:Destroy()
@@ -169,13 +175,6 @@ local function useMusic(world: any)
 		end
 	end, { playing })
 
-	React.useEffect(function()
-		local audio = nodes.current
-		if audio then
-			audio.player.Volume = math.clamp(options.musicVolume / 100, 0, 1) * music.maxVolume
-		end
-	end, { options.musicVolume })
-
 	local function toggle(trackKey: string): boolean
 		local list = latest.current.playlist
 		if table.find(list, trackKey) then
@@ -187,7 +186,7 @@ local function useMusic(world: any)
 			table.remove(rest, table.find(rest, trackKey) :: number)
 			world.commit({ playlist = rest })
 			if latest.current.key == trackKey then
-				goTo(stepFrom(rest, trackKey, 1))
+				goTo(shuffled(rest, trackKey))
 			end
 			Sounds.play("back")
 			return true
@@ -201,15 +200,6 @@ local function useMusic(world: any)
 		goTo(trackKey)
 		Sounds.play("confirm")
 		return true
-	end
-
-	local function previous()
-		local audio = nodes.current
-		if audio and audio.player.TimePosition > RESTART_AFTER then
-			goTo(latest.current.key)
-		else
-			advance(-1)
-		end
 	end
 
 	local function seek(fraction: number)
@@ -226,22 +216,12 @@ local function useMusic(world: any)
 		playlist = playlist,
 		current = current,
 		playing = playing,
-		volume = options.musicVolume,
 		toggle = toggle,
 		playPause = function()
 			world.commit({ musicOn = not latest.current.playing })
 		end,
-		next = function()
-			advance(1)
-		end,
-		previous = previous,
+		next = advance,
 		seek = seek,
-		changeVolume = function(value: number)
-			world.change({ musicVolume = value })
-		end,
-		commitVolume = function(value: number)
-			world.commit({ musicVolume = value })
-		end,
 		audio = function(): Audio?
 			return nodes.current
 		end,

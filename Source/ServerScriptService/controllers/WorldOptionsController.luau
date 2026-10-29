@@ -9,7 +9,7 @@
 	bad values are dropped, numbers are clamped and snapped to their step.
 
 	The music player's settings ride along: `playlist` (track keys, known
-	ones only, in library order, never empty), `musicOn` and `musicVolume`.
+	ones only, in library order, never empty) and `musicOn`.
 
 	Actions:
 		Set(changes)     apply validated changes
@@ -73,7 +73,6 @@ local function validate(raw: any): WorldOptionsModel.Changes
 	if type(raw.musicOn) == "boolean" then
 		changes.musicOn = raw.musicOn
 	end
-	changes.musicVolume = snap(raw.musicVolume, music.volumeMin, music.volumeMax, music.volumeStep)
 	return changes
 end
 

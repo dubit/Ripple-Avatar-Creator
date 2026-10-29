@@ -84,9 +84,6 @@ local function useWorldOptions()
 	if type(options.musicOn) ~= "boolean" then
 		options.musicOn = WorldOptionsConfig.defaults.musicOn
 	end
-	if type(options.musicVolume) ~= "number" then
-		options.musicVolume = WorldOptionsConfig.defaults.musicVolume
-	end
 
 	local change = React.useCallback(function(changes: { [string]: any })
 		setDraft(function(current: { [string]: any })

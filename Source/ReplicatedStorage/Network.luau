@@ -128,7 +128,6 @@ local NetworkConfig = {
 			shadows = true,
 			playlist = { "vinyl_cradle" },
 			musicOn = true,
-			musicVolume = 40,
 		},
 	},
 }
@@ -239,7 +238,6 @@ export type WorldOptionsState = {
 	shadows: boolean,
 	playlist: { string }, -- music track keys (WorldOptionsConfig.music.tracks), in grid order
 	musicOn: boolean, -- music playing (false: stopped)
-	musicVolume: number, -- percent
 }
 
 -- ============================================================================

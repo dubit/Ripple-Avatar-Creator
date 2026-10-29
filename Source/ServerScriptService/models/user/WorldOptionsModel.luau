@@ -36,7 +36,6 @@ export type Changes = {
 	shadows: boolean?,
 	playlist: { string }?,
 	musicOn: boolean?,
-	musicVolume: number?,
 }
 
 export type WorldOptionsModel = typeof(setmetatable({} :: {
@@ -52,7 +51,6 @@ export type WorldOptionsModel = typeof(setmetatable({} :: {
 	shadows: boolean,
 	playlist: { string },
 	musicOn: boolean,
-	musicVolume: number,
 }, WorldOptionsModel)) & AbstractModel.AbstractModel
 
 -- The config defaults, for every setting or (`keys`) just one section's.

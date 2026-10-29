@@ -25,7 +25,7 @@ WorldOptionsSections.ORDER = { "sky", "floor", "music" } :: { Section }
 WorldOptionsSections.KEYS = {
 	sky = { "time", "sky", "brightness", "shadows" },
 	floor = { "floor", "floorLightness", "pattern", "patternColor", "patternLightness", "patternStrength" },
-	music = { "playlist", "musicOn", "musicVolume" },
+	music = { "playlist", "musicOn" },
 } :: { [string]: { string } }
 
 -- `raw` as a playlist of the library's track keys (tracks: { { key } }), in

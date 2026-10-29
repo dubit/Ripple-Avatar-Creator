@@ -19,7 +19,6 @@ export type WorldOptionsDefaults = {
     shadows: boolean,
     playlist: { string }, -- music track keys, in library order
     musicOn: boolean, -- playing (false: stopped)
-    musicVolume: number, -- percent
 }
 
 export type MusicTrack = {
@@ -31,10 +30,7 @@ export type MusicTrack = {
 }
 
 export type MusicConfig = {
-    volumeMin: number, -- percent
-    volumeMax: number,
-    volumeStep: number,
-    maxVolume: number, -- AudioPlayer.Volume at 100%
+    volume: number, -- AudioPlayer.Volume (fixed; no control)
     tracks: { MusicTrack }, -- the 4x4 grid, in order; the first is the default
 }
 

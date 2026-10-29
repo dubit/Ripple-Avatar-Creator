@@ -5,15 +5,15 @@
 
 	The music player's controls, laid out in the side panel's scrolling body:
 
-	  · now playing: the track's cover, name and mood, with spectrum bars
-	    (AudioAnalyzer) that move while it plays
+	  · now playing: the track's cover; beside it its name and mood, spectrum
+	    bars (AudioAnalyzer) that move while it plays, and Play / Pause
+	    (orange) and Next (shuffled)
 	  · progress: a bar you can tap or drag along to seek, with elapsed / length
-	  · transport: Previous, Play / Pause (orange), Next; volume with a mute
-	    shortcut (back to the last level when tapped again)
 	  · the playlist: a 4x4 grid of covers. Lit (orange ring, tick) ones are in
 	    the playlist; the one playing shows an equaliser. Tapping a dim one adds
-	    it and plays it; tapping a lit one takes it out (the last one stays).
-	    The track under the pointer is named under the grid.
+	    it and plays it; tapping a lit one takes it out. The last one stays
+	    (the cover shakes no). The track under the pointer is named under the
+	    grid.
 
 	The clock, progress and spectrum update from the audio every frame with
 	bindings (no re-render), and only while this is mounted.
@@ -40,16 +40,21 @@ local useSpring = require(hooks:WaitForChild("useSpring"))
 local PillButton = require(components:WaitForChild("PillButton"))
 local Icon = require(components:WaitForChild("Icon"))
 local ShadowText = require(components:WaitForChild("ShadowText"))
-local Slider = require(components:WaitForChild("Slider"))
 
 local e = React.createElement
 
 local COVER = 68 -- design px: a grid cell (four across the ~295 px body)
 local COVER_GAP = 6
-local NOW_COVER = 76
+local NOW_COVER = 104 -- as tall as the column beside it
 local BARS = 20
 local BAR_GAP = 2
-local SPECTRUM_HEIGHT = 26
+local SPECTRUM_HEIGHT = 22
+local PLAY_SIZE = 34
+local NEXT_SIZE = 30
+local PROGRESS_HEIGHT = 30
+local SHAKE_SECONDS = 0.35
+local SHAKE_PX = 4 -- design px, either side
+local SHAKE_SWINGS = 3
 -- Spectrum level (dB, at full volume) mapped to an empty / full bar. Music
 -- falls off toward the treble, so each bar up gets TILT dB more (measured on
 -- the tracks: ~30 dB from the bass bar to the top one).
@@ -99,7 +104,7 @@ local function CoverTile(props: {
 	selected: boolean,
 	current: boolean,
 	playing: boolean,
-	onToggle: () -> (),
+	onToggle: () -> boolean,
 	onHover: (key: string?) -> (),
 	layoutOrder: number,
 })
@@ -107,17 +112,52 @@ local function CoverTile(props: {
 	local interaction = useInteraction()
 	local press = useSpring({ v = if interaction.pressed then 1 else 0 }, Tokens.spring.press)
 	local lit = useSpring({ v = if props.selected then 1 else 0 }, Tokens.spring.state)
-	return e("ImageButton", {
-		Size = UDim2.fromOffset(skin.px(COVER), skin.px(COVER)),
+	-- A sideways shake when it says no (the last track can't come out).
+	local shake, setShake = React.useBinding(0)
+	local shakes, setShakes = React.useState(0)
+	React.useEffect(function()
+		if shakes == 0 then
+			return nil
+		end
+		local started = os.clock()
+		local connection
+		connection = RunService.RenderStepped:Connect(function()
+			local t = os.clock() - started
+			if t >= SHAKE_SECONDS then
+				connection:Disconnect()
+				setShake(0)
+				return
+			end
+			setShake(math.sin(t / SHAKE_SECONDS * SHAKE_SWINGS * 2 * math.pi) * (1 - t / SHAKE_SECONDS))
+		end)
+		return function()
+			connection:Disconnect()
+		end
+	end, { shakes })
+	local function toggle()
+		if not props.onToggle() then
+			setShakes(function(n: number)
+				return n + 1
+			end)
+		end
+	end
+	return e("Frame", {
+		BackgroundTransparency = 1,
+		LayoutOrder = props.layoutOrder,
+	}, {
+		Button = e("ImageButton", {
+		Size = UDim2.fromScale(1, 1),
+		Position = shake:map(function(amount: number)
+			return UDim2.fromOffset(amount * skin.px(SHAKE_PX), 0)
+		end),
 		BackgroundColor3 = Tokens.color.black,
 		Image = "rbxassetid://" .. props.track.cover,
 		ImageTransparency = lit.v:map(function(v: number)
 			return 0.55 * (1 - v)
 		end),
 		AutoButtonColor = false,
-		LayoutOrder = props.layoutOrder,
-		[React.Event.InputBegan] = Press.began(props.onToggle),
-		[React.Event.Activated] = Press.activated(props.onToggle),
+		[React.Event.InputBegan] = Press.began(toggle),
+		[React.Event.Activated] = Press.activated(toggle),
 		[React.Event.MouseEnter] = function()
 			interaction.onEnter()
 			props.onHover(props.track.key)
@@ -161,6 +201,7 @@ local function CoverTile(props: {
 				}),
 			})
 			else nil,
+		}),
 	})
 end
 
@@ -169,10 +210,6 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 	local music = props.music
 	local current = music.current
 	local hovered, setHovered = React.useState(nil :: string?)
-	local lastVolume = React.useRef(if music.volume > 0 then music.volume else 40)
-	if music.volume > 0 then
-		lastVolume.current = music.volume
-	end
 
 	-- Clock, progress and spectrum from the audio, every frame.
 	local progress, setProgress = React.useBinding(0)
@@ -282,7 +319,7 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 			playing = music.playing,
 			layoutOrder = index,
 			onToggle = function()
-				music.toggle(track.key)
+				return music.toggle(track.key)
 			end,
 			onHover = setHovered,
 		})
@@ -305,10 +342,19 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 		})
 	end
 
+	-- The column beside the cover, top to bottom (design px).
+	local function place(y: number, height: number): (UDim2, UDim2)
+		return UDim2.fromOffset(0, skin.px(y)), UDim2.new(1, 0, 0, skin.px(height))
+	end
+	local namePosition, nameSize = place(0, 18)
+	local moodPosition, moodSize = place(20, 17)
+	local spectrumPosition, spectrumSize = place(42, SPECTRUM_HEIGHT)
+	local transportPosition, transportSize = place(NOW_COVER - PLAY_SIZE, PLAY_SIZE)
+
 	return e("Frame", {
-		-- Its rows (now playing 76, progress 34, transport 52, volume 30, label 20,
-		-- grid, caption 18) and the six 12 px gaps between them.
-		Size = UDim2.new(1, 0, 0, skin.px(NOW_COVER + 34 + 52 + 30 + 20 + 18 + 6 * 12) + gridHeight),
+		-- Its rows (now playing, progress, label 20, grid, caption 18) and the
+		-- four 12 px gaps between them.
+		Size = UDim2.new(1, 0, 0, skin.px(NOW_COVER + PROGRESS_HEIGHT + 20 + 18 + 4 * 12) + gridHeight),
 		BackgroundTransparency = 1,
 		LayoutOrder = props.layoutOrder or 0,
 	}, {
@@ -339,9 +385,9 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 				Size = UDim2.new(1, -skin.px(NOW_COVER + 12), 1, 0),
 				BackgroundTransparency = 1,
 			}, {
-				Layout = e("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, skin.px(2)) }),
 				Name = e("TextLabel", {
-					Size = UDim2.new(1, 0, 0, skin.textPx(Tokens.type.bodyStrong.size) + skin.px(4)),
+					Position = namePosition,
+					Size = nameSize,
 					BackgroundTransparency = 1,
 					Text = current.name,
 					TextColor3 = Tokens.color.white,
@@ -349,10 +395,10 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 					FontFace = Tokens.font(Tokens.type.bodyStrong.weight),
 					TextXAlignment = Enum.TextXAlignment.Left,
 					TextTruncate = Enum.TextTruncate.AtEnd,
-					LayoutOrder = 1,
 				}),
 				Mood = e("TextLabel", {
-					Size = UDim2.new(1, 0, 0, skin.textPx(Tokens.type.meta.size) + skin.px(4)),
+					Position = moodPosition,
+					Size = moodSize,
 					BackgroundTransparency = 1,
 					Text = if music.playing then current.mood else "Stopped",
 					TextColor3 = if music.playing then Tokens.color.white else Tokens.color.accentText,
@@ -361,17 +407,30 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 					FontFace = Tokens.font(Tokens.type.meta.weight),
 					TextXAlignment = Enum.TextXAlignment.Left,
 					TextTruncate = Enum.TextTruncate.AtEnd,
-					LayoutOrder = 2,
 				}),
 				Spectrum = e("Frame", {
-					Size = UDim2.new(1, 0, 0, skin.px(SPECTRUM_HEIGHT)),
+					Position = spectrumPosition,
+					Size = spectrumSize,
 					BackgroundTransparency = 1,
-					LayoutOrder = 3,
 				}, bars),
+				Transport = e("Frame", {
+					Position = transportPosition,
+					Size = transportSize,
+					BackgroundTransparency = 1,
+				}, {
+					Layout = e("UIListLayout", {
+						FillDirection = Enum.FillDirection.Horizontal,
+						VerticalAlignment = Enum.VerticalAlignment.Center,
+						SortOrder = Enum.SortOrder.LayoutOrder,
+						Padding = UDim.new(0, skin.px(8)),
+					}),
+					PlayPause = round(if music.playing then "pause" else "play_arrow", PLAY_SIZE, 20, 1, music.playPause, true),
+					Next = round("skip_next", NEXT_SIZE, 18, 2, music.next),
+				}),
 			}),
 		}),
 		Progress = e("Frame", {
-			Size = UDim2.new(1, 0, 0, skin.px(34)),
+			Size = UDim2.new(1, 0, 0, skin.px(PROGRESS_HEIGHT)),
 			BackgroundTransparency = 1,
 			LayoutOrder = 2,
 		}, {
@@ -401,7 +460,9 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 					}, {
 						Corner = e("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
 					}),
+					-- In front of the fill.
 					Knob = e("Frame", {
+						ZIndex = 2,
 						AnchorPoint = Vector2.new(0.5, 0.5),
 						Position = progress:map(function(p: number)
 							return UDim2.fromScale(p, 0.5)
@@ -439,76 +500,15 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 				TextXAlignment = Enum.TextXAlignment.Right,
 			}),
 		}),
-		Transport = e("Frame", {
-			Size = UDim2.new(1, 0, 0, skin.px(52)),
-			BackgroundTransparency = 1,
-			LayoutOrder = 3,
-		}, {
-			Layout = e("UIListLayout", {
-				FillDirection = Enum.FillDirection.Horizontal,
-				HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				VerticalAlignment = Enum.VerticalAlignment.Center,
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				Padding = UDim.new(0, skin.px(14)),
-			}),
-			Previous = round("skip_previous", 40, 24, 1, music.previous),
-			PlayPause = round(if music.playing then "pause" else "play_arrow", 52, 30, 2, music.playPause, true),
-			Next = round("skip_next", 40, 24, 3, music.next),
-		}),
-		Volume = e("Frame", {
-			Size = UDim2.new(1, 0, 0, skin.px(30)),
-			BackgroundTransparency = 1,
-			LayoutOrder = 4,
-		}, {
-			Mute = e(PillButton, {
-				variant = "round",
-				size = 30,
-				icon = if music.volume > 0 then "volume_up" else "volume_off",
-				iconSize = 18,
-				anchorPoint = Vector2.new(0, 0.5),
-				position = UDim2.fromScale(0, 0.5),
-				sound = "tab",
-				onActivated = function()
-					music.commitVolume(if music.volume > 0 then 0 else lastVolume.current)
-				end,
-			}),
-			Slider = e("Frame", {
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.new(0, skin.px(40), 0.5, 0),
-				Size = UDim2.new(1, -skin.px(40 + 44), 1, 0),
-				BackgroundTransparency = 1,
-			}, {
-				Layout = e("UIListLayout", { VerticalAlignment = Enum.VerticalAlignment.Center }),
-				Slider = e(Slider, {
-					value = music.volume,
-					min = 0,
-					max = 100,
-					step = 5,
-					onChange = music.changeVolume,
-					onCommit = music.commitVolume,
-				}),
-			}),
-			Value = e("TextLabel", {
-				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.fromScale(1, 0.5),
-				Size = UDim2.fromOffset(skin.px(40), skin.px(20)),
-				BackgroundTransparency = 1,
-				Text = math.floor(music.volume + 0.5) .. "%",
-				TextColor3 = Tokens.color.accentText,
-				TextSize = skin.textPx(Tokens.type.sectionLabel.size),
-				FontFace = Tokens.font(800),
-				TextXAlignment = Enum.TextXAlignment.Right,
-			}),
-		}),
 		PlaylistLabel = e("Frame", {
 			Size = UDim2.new(1, 0, 0, skin.px(20)),
 			BackgroundTransparency = 1,
-			LayoutOrder = 5,
+			LayoutOrder = 3,
 		}, { Text = label("Playlist", Tokens.type.sectionLabel, 1) }),
 		Grid = e("Frame", {
 			Size = UDim2.new(1, 0, 0, gridHeight),
 			BackgroundTransparency = 1,
-			LayoutOrder = 6,
+			LayoutOrder = 4,
 		}, grid),
 		Caption = e("TextLabel", {
 			Size = UDim2.new(1, 0, 0, skin.px(18)),
@@ -520,7 +520,7 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 			FontFace = Tokens.font(Tokens.type.hint.weight),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-			LayoutOrder = 7,
+			LayoutOrder = 5,
 		}),
 	})
 end
