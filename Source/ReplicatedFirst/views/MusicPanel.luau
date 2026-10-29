@@ -6,8 +6,8 @@
 	The music player's controls, laid out in the side panel's scrolling body:
 
 	  · now playing: the track's cover; beside it its name and mood, spectrum
-	    bars (AudioAnalyzer) that move while it plays, and Play / Pause
-	    (orange) and Next (shuffled)
+	    bars (AudioAnalyzer) that move while it plays, and Previous, Play /
+	    Pause (orange) and Next (shuffled)
 	  · progress: a bar you can tap or drag along to seek, with elapsed / length
 	  · the playlist: a 4x4 grid of covers. Lit (orange ring, tick) ones are in
 	    the playlist; the one playing shows an equaliser. Tapping a dim one adds
@@ -50,7 +50,7 @@ local BARS = 20
 local BAR_GAP = 2
 local SPECTRUM_HEIGHT = 22
 local PLAY_SIZE = 34
-local NEXT_SIZE = 30
+local NEXT_SIZE = 30 -- Previous and Next
 local PROGRESS_HEIGHT = 30
 local SHAKE_SECONDS = 0.35
 local SHAKE_PX = 4 -- design px, either side
@@ -424,8 +424,9 @@ local function MusicPanel(props: { music: any, layoutOrder: number? })
 						SortOrder = Enum.SortOrder.LayoutOrder,
 						Padding = UDim.new(0, skin.px(8)),
 					}),
-					PlayPause = round(if music.playing then "pause" else "play_arrow", PLAY_SIZE, 20, 1, music.playPause, true),
-					Next = round("skip_next", NEXT_SIZE, 18, 2, music.next),
+					Previous = round("skip_previous", NEXT_SIZE, 18, 1, music.previous),
+					PlayPause = round(if music.playing then "pause" else "play_arrow", PLAY_SIZE, 20, 2, music.playPause, true),
+					Next = round("skip_next", NEXT_SIZE, 18, 3, music.next),
 				}),
 			}),
 		}),

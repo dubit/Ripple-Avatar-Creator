@@ -24,6 +24,8 @@
 		                  can't go (an error sound, returns false)
 		playPause()       start / stop
 		next()            a shuffled next track
+		previous()        back through the tracks played (still in the playlist);
+		                  past 3 s in, or with none to go back to, restarts it
 		seek(fraction)    0..1 of the track
 		audio()           { player: AudioPlayer, analyzer: AudioAnalyzer }? for
 		                  the panel's clock, progress and spectrum
@@ -33,6 +35,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
+
+local RESTART_AFTER = 3 -- seconds in, Previous restarts the track instead
 
 local WorldOptionsSections = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("WorldOptionsSections"))
 local Sounds = require(script.Parent.Parent:WaitForChild("Sounds"))
@@ -68,8 +72,13 @@ local function useMusic(world: any)
 	local resumeAt = React.useRef(0)
 	-- Tracks played since the shuffle last started over.
 	local played = React.useRef({ [key] = true } :: { [string]: boolean })
+	-- The tracks played before this one, most recent last (for Previous).
+	local history = React.useRef({} :: { string })
 
-	local function goTo(nextKey: string)
+	local function goTo(nextKey: string, back: boolean?)
+		if not back and nextKey ~= latest.current.key then
+			table.insert(history.current, latest.current.key)
+		end
 		played.current[nextKey] = true
 		setChosen(nextKey)
 		setStart(function(n: number)
@@ -202,6 +211,21 @@ local function useMusic(world: any)
 		return true
 	end
 
+	local function previous()
+		local audio = nodes.current
+		if not audio or audio.player.TimePosition <= RESTART_AFTER then
+			local list = latest.current.playlist
+			while #history.current > 0 do
+				local last = table.remove(history.current) :: string
+				if table.find(list, last) and last ~= latest.current.key then
+					goTo(last, true)
+					return
+				end
+			end
+		end
+		goTo(latest.current.key, true) -- from the top
+	end
+
 	local function seek(fraction: number)
 		local audio = nodes.current
 		if audio and audio.player.TimeLength > 0 then
@@ -221,6 +245,7 @@ local function useMusic(world: any)
 			world.commit({ musicOn = not latest.current.playing })
 		end,
 		next = advance,
+		previous = previous,
 		seek = seek,
 		audio = function(): Audio?
 			return nodes.current
