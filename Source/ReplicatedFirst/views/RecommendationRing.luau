@@ -131,7 +131,6 @@ end
 local function makePad(position: Vector3, folder: Folder): Pad
 	local part = Instance.new("Part")
 	part.Name = "Pad"
-	part.Shape = Enum.PartType.Cylinder
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false
@@ -140,9 +139,10 @@ local function makePad(position: Vector3, folder: Folder): Pad
 	part.Material = Enum.Material.SmoothPlastic
 	part.Color = Tokens.color.white
 	part.Transparency = PAD_TRANSPARENCY
-	-- A cylinder's axis is X: turn it upright.
-	part.CFrame = CFrame.new(position + Vector3.new(0, PAD_THICKNESS / 2, 0)) * CFrame.Angles(0, 0, math.rad(90))
-	part.Size = Vector3.new(PAD_THICKNESS, 0.1, 0.1)
+	-- A plain, unrotated block: the cards hang off it, and a turned part
+	-- (an upright cylinder) put them off to one side of the models.
+	part.CFrame = CFrame.new(position + Vector3.new(0, PAD_THICKNESS / 2, 0))
+	part.Size = Vector3.new(0.1, PAD_THICKNESS, 0.1)
 	part.Parent = folder
 
 	local card = Instance.new("BillboardGui")
@@ -186,6 +186,11 @@ local function makePad(position: Vector3, folder: Folder): Pad
 	label.TextColor3 = Color3.fromRGB(30, 30, 36)
 	label.Text = "…"
 	label.Parent = back
+	-- Cards are sized in studs, so text right by the camera would fill the
+	-- screen: cap it.
+	local limit = Instance.new("UITextSizeConstraint")
+	limit.MaxTextSize = 26
+	limit.Parent = label
 
 	return { part = part, card = card, thumb = thumb, label = label, fit = 1, bornAt = 0, phase = math.random() * math.pi * 2 }
 end
@@ -272,7 +277,7 @@ local function growPad(pad: Pad, delay: number)
 		if not pad.part.Parent then
 			return
 		end
-		TweenService:Create(pad.part, GROW, { Size = Vector3.new(PAD_THICKNESS, RING.padSize, RING.padSize) }):Play()
+		TweenService:Create(pad.part, GROW, { Size = Vector3.new(RING.padSize, PAD_THICKNESS, RING.padSize) }):Play()
 		TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize * 1.2) }):Play()
 		-- Loading: the card breathes until its item arrives.
 		local pulse = TweenService:Create(pad.thumb.Parent :: Frame, PULSE, { BackgroundTransparency = 0.6 })
@@ -306,7 +311,7 @@ local function closeRing(ring: Ring)
 		if pad.pulse then
 			pad.pulse:Cancel()
 		end
-		TweenService:Create(pad.part, SHRINK, { Size = Vector3.new(PAD_THICKNESS, 0.1, 0.1) }):Play()
+		TweenService:Create(pad.part, SHRINK, { Size = Vector3.new(0.1, PAD_THICKNESS, 0.1) }):Play()
 		TweenService:Create(pad.card, SHRINK, { Size = UDim2.fromScale(0, 0) }):Play()
 	end
 	task.delay(SHRINK.Time + 0.05, function()
