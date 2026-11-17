@@ -8,8 +8,8 @@
 	it opened (fixed in the world; it doesn't follow them). Each item sits
 	over an invisible pad that marks its spot: its 3D model
 	(catalogue/ItemModel, built on this client) turning slowly and bobbing,
-	with its name above. Until the model is ready (and for items with no 3D
-	view) a card shows the thumbnail and name; it breathes while the
+	no label (user, 2026-11-17). Until the model is ready (and for items with
+	no 3D view) a card shows the thumbnail; it breathes while the
 	Recommender is still choosing. Only this player sees any of it: the parts
 	are made by this client, so they never replicate.
 
@@ -321,11 +321,7 @@ local function modelPivot(pad: Pad, now: number): CFrame
 	return CFrame.new(top + Vector3.new(0, RING.modelHeight + bob, 0)) * CFrame.Angles(0, now * RING.spinSpeed + pad.phase, 0)
 end
 
-local function nameOf(pad: Pad, item: Item): string
-	return if pad.back then `↩ Back · {item.name}` else item.name
-end
-
--- The item's model above the pad; the card becomes a name tag over it.
+-- The item's model above the pad, in place of its card.
 local function showModel(pad: Pad, item: Item)
 	if not ItemModel.supports(item) then
 		return
@@ -364,17 +360,8 @@ local function showModel(pad: Pad, item: Item)
 	model.Parent = pad.part.Parent
 	pad.model = model
 
-	-- Card -> name tag above the model.
-	pad.thumb.Visible = false
-	local backing = pad.thumb.Parent :: Frame
-	backing.BackgroundTransparency = 1
-	pad.label.Position = UDim2.fromScale(0.5, 1)
-	pad.label.Size = UDim2.fromScale(1, 1)
-	pad.label.TextColor3 = if pad.back then Tokens.color.accentSoft else Tokens.color.white
-	pad.label.TextStrokeTransparency = 0.4
-	pad.card.StudsOffsetWorldSpace = Vector3.new(0, RING.modelHeight + RING.modelSize / 2 + 0.9, 0)
-	pad.card.Size = UDim2.fromScale(0, 0)
-	TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize * 1.4, 0.8) }):Play()
+	-- The card goes; the model stands on its own.
+	TweenService:Create(pad.card, SHRINK, { Size = UDim2.fromScale(0, 0) }):Play()
 end
 
 -- Which GLOW colour a pad shows now.
@@ -462,10 +449,13 @@ local function fillPad(pad: Pad, item: Item, delay: number)
 		end
 		(pad.thumb.Parent :: Frame).BackgroundTransparency = 0.1
 		pad.thumb.Image = item.thumbnail
-		pad.label.Text = nameOf(pad, item)
+		-- No name: the thumbnail fills a square card.
+		pad.label.Visible = false
+		pad.thumb.Position = UDim2.fromScale(0.5, 0.04)
+		pad.thumb.Size = UDim2.fromScale(0.92, 0.92)
 		-- A little pop as it fills.
-		pad.card.Size = UDim2.fromScale(RING.cardSize * 0.85, RING.cardSize * 1.2 * 0.85)
-		TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize * 1.2) }):Play()
+		pad.card.Size = UDim2.fromScale(RING.cardSize * 0.85, RING.cardSize * 0.85)
+		TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize) }):Play()
 		showModel(pad, item)
 	end)
 end

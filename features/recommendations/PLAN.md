@@ -69,6 +69,9 @@ Branch: `feature/recommendations`.
     the second colour, else cool white; the back pad white). Colour is
     identity, not information. The ring fills with light while you stand on
     it. Dwell cut to 0.25 s. Images drawn by `tools/build_rings.py`.
+  - [DONE] 2.6 No item labels (user, 2026-11-17): just the model (or, with no
+    3D view, a square thumbnail card). The back pad reads by its white ring and
+    ghosted model.
 - **Outcome:** Confirmed by the user (2026-11-17). Decisions: tapping yourself
   opens / closes the ring (not Wearing); items are turning, bobbing 3D models
   with no podia (the pad is an invisible marker). Lessons: a BillboardGui on a
