@@ -31,6 +31,7 @@ export type RecommendationRingConfig = {
     spinSpeed: number, -- radians per second
     bobHeight: number, -- studs up and down
     bobSpeed: number, -- radians per second of the bob's sine
+    dwell: number, -- seconds standing on a pad to choose it
 }
 
 export type RecommendationConfig = {

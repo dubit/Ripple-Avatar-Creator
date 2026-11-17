@@ -38,7 +38,7 @@ Branch: `feature/recommendations`.
     backoff (30 s).
 
 ### Task 2: The ring in the world
-- **Status:** [IN PROGRESS]
+- **Status:** [DONE]
 - **Why here:** The core of the milestone: seeing recommendations around you.
 - **Depends on:** 1
 - **Refs:** SPEC > The experience
@@ -63,9 +63,17 @@ Branch: `feature/recommendations`.
     (`ItemModel`, built on the client) turns slowly and bobs above its pad so
     it reads as collectable; the card shrinks to a name tag over it. Items with
     no 3D view (or a failed build) keep the thumbnail card.
+- **Outcome:** Confirmed by the user (2026-11-17). Decisions: tapping yourself
+  opens / closes the ring (not Wearing); items are turning, bobbing 3D models
+  with no podia (the pad is an invisible marker). Lessons: a BillboardGui on a
+  rotated part (an upright cylinder) sits off to one side, so cards hang off
+  an unrotated block; billboard text is sized in studs, so cap it
+  (UITextSizeConstraint) or names by the camera fill the screen;
+  `HumanoidDescription`'s shoulder property is `ShouldersAccessory` (ItemModel
+  had it wrong, so shoulder items never got a 3D view anywhere).
 
 ### Task 3: Walk on to wear, the next ring
-- **Status:** [TODO]
+- **Status:** [IN PROGRESS]
 - **Why here:** Turns the ring from a display into the loop.
 - **Depends on:** 2
 - **Refs:** SPEC > Decisions (automatic take-off); `AvatarController.TryOn`;
@@ -80,12 +88,13 @@ Branch: `feature/recommendations`.
 - **Replication:** `Avatar.TryOn` gains an optional replace-same-type flag
   (validated server-side); otherwise client-only.
 - **Sub-tasks:**
-  - [TODO] 3.1 Pad dwell and fill.
-  - [TODO] 3.2 TryOn replace-same-type (`AvatarController`, `AvatarModel`).
-  - [TODO] 3.3 Ring trail: a stack of rings (items, basis, centre).
+  - [DONE] 3.1 Pad dwell and fill (a disc grows under the item over `ring.dwell`; stepping off drains it).
+  - [DONE] 3.2 TryOn replace-same-type (`AvatarController`, `AvatarModel`).
+  - [DONE] 3.3 Ring trail: a stack of rings (items, back item, the outfit after the pick); nothing offered twice on a trail.
 
 ### Task 4: Back pad
-- **Status:** [TODO]
+- **Status:** [IN PROGRESS]
+- **Note:** built with Task 3 (a ring after the first needs its back pad).
 - **Depends on:** 3
 - **Acceptance criteria:**
   - Every ring after the first has a back pad that looks different and holds
@@ -96,8 +105,8 @@ Branch: `feature/recommendations`.
     returns to the previous ring and doesn't undo the wrong change.
 - **Replication:** none new (`Avatar.Undo`).
 - **Sub-tasks:**
-  - [TODO] 4.1 Back pad look and behaviour.
-  - [TODO] 4.2 Guard against undoing a HUD change.
+  - [DONE] 4.1 Back pad: on the side you came from, a ghosted model, "↩ Back · name" in the accent colour, a white disc.
+  - [DONE] 4.2 Guard: Undo only if the outfit still matches what the pick made it (signature of worn ids); otherwise it only goes back a ring. Not yet tested in Studio (needs a HUD change mid-trail).
 
 ### Task 5: Analytics
 - **Status:** [TODO]

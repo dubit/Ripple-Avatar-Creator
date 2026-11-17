@@ -221,8 +221,21 @@ function AvatarModel:moveLayer(item: WornItem, direction: number, isLayered: (ty
 	return true
 end
 
-function AvatarModel:wear(item: WornItem): ()
-	self:setWorn(wearOne(self.worn, item))
+-- Put one on. `replaceSameType`: a grouped item (an accessory) also takes
+-- off any worn item of its own type (a hat replaces your hat), as the
+-- recommendation ring does, rather than stacking up to the group's limit.
+function AvatarModel:wear(item: WornItem, replaceSameType: boolean?): ()
+	local list = self.worn
+	if replaceSameType and AvatarConfig.groups[item.typeName] then
+		local kept = {}
+		for _, other in list do
+			if other.typeName ~= item.typeName then
+				table.insert(kept, other)
+			end
+		end
+		list = kept
+	end
+	self:setWorn(wearOne(list, item))
 end
 
 -- Put several on (and, if given, change the skin colours and scale), as
