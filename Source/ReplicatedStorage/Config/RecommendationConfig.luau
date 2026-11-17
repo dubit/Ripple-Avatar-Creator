@@ -72,7 +72,7 @@ local config: RecommendationConfig = {
 		spinSpeed = 0.8,
 		bobHeight = 0.25,
 		bobSpeed = 1.8,
-		dwell = 0.5,
+		dwell = 0.25,
 	},
 }
 

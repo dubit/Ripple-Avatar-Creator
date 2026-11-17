@@ -16,8 +16,12 @@
 	The trail:
 	  · the first ring (RecommendationConfig.ring.count items) is based on
 	    the whole outfit being worn
-	  · standing on a pad for ring.dwell seconds wears its item (a disc fills
-	    under it; stepping off empties it). The item replaces its slot and,
+	  · each item has a soft glowing ring under it in its own colour
+	    (ItemColour's dominant colour from the thumbnail; black / grey / white
+	    items take their second colour, else a cool white; the back pad is
+	    always white). Colour is identity, not information (user, 2026-11-17)
+	  · standing on a pad for ring.dwell seconds wears its item (the ring
+	    fills with light; stepping off drains it). The item replaces its slot and,
 	    for accessories, the same accessory type (TryOn's replaceSameType).
 	    That ring goes, and a new one opens round the player, based on that
 	    item: count - 1 new items plus a back pad holding the item walked
@@ -59,6 +63,8 @@ local Sounds = require(views:WaitForChild("Sounds"))
 local CatalogueClient = require(views:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
 local Recommender = require(views:WaitForChild("catalogue"):WaitForChild("Recommender"))
 local ItemModel = require(views:WaitForChild("catalogue"):WaitForChild("ItemModel"))
+local ItemColour = require(views:WaitForChild("catalogue"):WaitForChild("ItemColour"))
+local SkinAssets = require(views:WaitForChild("SkinAssets"))
 
 type Item = CatalogueClient.Item
 
@@ -74,11 +80,32 @@ local GROW = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out
 local SHRINK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 local PULSE = TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 local MODEL_POP = 0.4 -- seconds for a model to grow in / out
-local DISC_THICKNESS = 0.15
+local GLOW_SPREAD = 1.3 -- the glow image is this much wider than the pad (its ring sits at 78%)
+local GLOW_BRIGHTNESS = 2.5
+local RING_IDLE = 0.15 -- the ring's ImageTransparency at rest (0 while you stand on it)
+
+-- Glow colour per ItemColour bucket: tuned to glow, not the raw swatches.
+local GLOW: { [string]: Color3 } = {
+	Red = Color3.fromHex("#ff5a6a"),
+	Orange = Color3.fromHex("#ffa040"),
+	Yellow = Color3.fromHex("#ffe066"),
+	Green = Color3.fromHex("#6cf59a"),
+	Blue = Color3.fromHex("#5cc8ff"),
+	Purple = Color3.fromHex("#b58cff"),
+	Pink = Color3.fromHex("#ff85dd"),
+	Brown = Color3.fromHex("#f0b070"),
+	Neutral = Color3.fromHex("#e8ecff"), -- black / grey / white items
+	Pending = Color3.fromHex("#ffffff"), -- loading, or colour not known yet
+	Back = Color3.fromHex("#ffffff"),
+}
+local NEUTRAL = { Black = true, Grey = true, White = true }
 
 type Pad = {
 	part: Part, -- invisible: marks the spot; the card hangs off it
-	disc: Part, -- fills while the player stands on the pad
+	glow: Part, -- flat, just above the ground: carries the glow images
+	ringImage: ImageLabel, -- the glowing ring
+	fillImage: ImageLabel, -- fills it while the player stands on the pad
+	glowKey: string, -- which GLOW colour it shows
 	card: BillboardGui,
 	thumb: ImageLabel,
 	label: TextLabel,
@@ -185,22 +212,43 @@ local function makePad(position: Vector3, folder: Folder, back: boolean): Pad
 	part.Size = Vector3.new(RING.padSize, PAD_THICKNESS, RING.padSize)
 	part.Parent = folder
 
-	-- The dwell disc (a cylinder's axis is X: turned upright). Nothing hangs
-	-- off it, so its turn doesn't matter.
-	local disc = Instance.new("Part")
-	disc.Name = "Disc"
-	disc.Shape = Enum.PartType.Cylinder
-	disc.Anchored = true
-	disc.CanCollide = false
-	disc.CanQuery = false
-	disc.CanTouch = false
-	disc.CastShadow = false
-	disc.Material = Enum.Material.Neon
-	disc.Color = if back then Tokens.color.white else Tokens.color.accent
-	disc.Transparency = 0.3
-	disc.CFrame = CFrame.new(position + Vector3.new(0, DISC_THICKNESS / 2 + 0.02, 0)) * CFrame.Angles(0, 0, math.rad(90))
-	disc.Size = Vector3.new(DISC_THICKNESS, 0, 0)
-	disc.Parent = folder
+	-- The glow: two white images on a flat, invisible part's top face, tinted
+	-- and lit (LightInfluence 0, Brightness > 1) so they read as light.
+	local glow = Instance.new("Part")
+	glow.Name = "Glow"
+	glow.Anchored = true
+	glow.CanCollide = false
+	glow.CanQuery = false
+	glow.CanTouch = false
+	glow.CastShadow = false
+	glow.Transparency = 1
+	glow.Size = Vector3.new(RING.padSize * GLOW_SPREAD, 0.05, RING.padSize * GLOW_SPREAD)
+	glow.CFrame = CFrame.new(position + Vector3.new(0, 0.04, 0))
+	glow.Parent = folder
+
+	local surface = Instance.new("SurfaceGui")
+	surface.Face = Enum.NormalId.Top
+	surface.LightInfluence = 0
+	surface.Brightness = GLOW_BRIGHTNESS
+	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	surface.PixelsPerStud = 40
+	surface.Parent = glow
+
+	local function glowImage(name: string, image: number, transparency: number): ImageLabel
+		local label = Instance.new("ImageLabel")
+		label.Name = name
+		label.BackgroundTransparency = 1
+		label.AnchorPoint = Vector2.new(0.5, 0.5)
+		label.Position = UDim2.fromScale(0.5, 0.5)
+		label.Size = UDim2.fromScale(0, 0)
+		label.Image = `rbxassetid://{image}`
+		label.ImageColor3 = GLOW.Pending
+		label.ImageTransparency = transparency
+		label.Parent = surface
+		return label
+	end
+	local fillImage = glowImage("Fill", SkinAssets.ringFill, 0.35)
+	local ringImage = glowImage("Ring", SkinAssets.ringGlow, 0.6)
 
 	local card = Instance.new("BillboardGui")
 	card.Name = "Card"
@@ -251,7 +299,10 @@ local function makePad(position: Vector3, folder: Folder, back: boolean): Pad
 
 	return {
 		part = part,
-		disc = disc,
+		glow = glow,
+		ringImage = ringImage,
+		fillImage = fillImage,
+		glowKey = "Pending",
 		card = card,
 		thumb = thumb,
 		label = label,
@@ -326,11 +377,44 @@ local function showModel(pad: Pad, item: Item)
 	TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize * 1.4, 0.8) }):Play()
 end
 
--- Spins and bobs the models; grows them in, and shrinks them as the ring
--- closes.
+-- Which GLOW colour a pad shows now.
+local function glowKeyOf(pad: Pad): string
+	local item = pad.item
+	if pad.back then
+		return "Back"
+	elseif not item or item.colour == "" then
+		return "Pending"
+	elseif not NEUTRAL[item.colour] then
+		return if GLOW[item.colour] then item.colour else "Neutral"
+	end
+	-- Black / grey / white: the item's second colour, if it has a real one.
+	for _, name in item.colours do
+		if not NEUTRAL[name] and GLOW[name] then
+			return name
+		end
+	end
+	return "Neutral"
+end
+
+local function updateGlow(pad: Pad)
+	local key = glowKeyOf(pad)
+	if key ~= pad.glowKey then
+		pad.glowKey = key
+		local colour = GLOW[key]
+		TweenService:Create(pad.ringImage, SHRINK, { ImageColor3 = colour }):Play()
+		TweenService:Create(pad.fillImage, SHRINK, { ImageColor3 = colour }):Play()
+	end
+end
+
+-- Spins and bobs the models, grows them in and shrinks them as the ring
+-- closes; keeps each glow in its item's colour (worked out in the
+-- background, so it can arrive late).
 local function animate(ring: Ring)
 	local now = os.clock()
 	for _, pad in ring.pads do
+		if not ring.closingAt then
+			updateGlow(pad)
+		end
 		local model = pad.model
 		if not model then
 			continue
@@ -354,6 +438,7 @@ local function growPad(pad: Pad, delay: number)
 			return
 		end
 		TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize * 1.2) }):Play()
+		TweenService:Create(pad.ringImage, GROW, { Size = UDim2.fromScale(1, 1) }):Play()
 		if not pad.item then
 			-- Loading: the card breathes until its item arrives.
 			local pulse = TweenService:Create(pad.thumb.Parent :: Frame, PULSE, { BackgroundTransparency = 0.6 })
@@ -365,6 +450,8 @@ end
 
 local function fillPad(pad: Pad, item: Item, delay: number)
 	pad.item = item
+	ItemColour.classify(item) -- no yield; fills item.colour in the background
+	TweenService:Create(pad.ringImage, SHRINK, { ImageTransparency = RING_IDLE }):Play()
 	task.delay(delay, function()
 		if not pad.part.Parent then
 			return
@@ -383,10 +470,14 @@ local function fillPad(pad: Pad, item: Item, delay: number)
 	end)
 end
 
--- The dwell disc for a pad's progress (0..1).
+-- The dwell fill for a pad's progress (0..1): the ring fills with light
+-- and burns brighter.
 local function setDisc(pad: Pad, progress: number)
-	local size = RING.padSize * math.clamp(progress, 0, 1)
-	pad.disc.Size = Vector3.new(DISC_THICKNESS, size, size)
+	local amount = math.clamp(progress, 0, 1)
+	pad.fillImage.Size = UDim2.fromScale(amount, amount)
+	if pad.item then
+		pad.ringImage.ImageTransparency = RING_IDLE * (1 - amount)
+	end
 end
 
 local function closeRing(ring: Ring)
@@ -396,7 +487,8 @@ local function closeRing(ring: Ring)
 			pad.pulse:Cancel()
 		end
 		TweenService:Create(pad.card, SHRINK, { Size = UDim2.fromScale(0, 0) }):Play()
-		TweenService:Create(pad.disc, SHRINK, { Size = Vector3.new(DISC_THICKNESS, 0, 0) }):Play()
+		TweenService:Create(pad.ringImage, SHRINK, { Size = UDim2.fromScale(0, 0) }):Play()
+		TweenService:Create(pad.fillImage, SHRINK, { Size = UDim2.fromScale(0, 0) }):Play()
 	end
 	task.delay(SHRINK.Time + 0.05, function()
 		ring.folder:Destroy()

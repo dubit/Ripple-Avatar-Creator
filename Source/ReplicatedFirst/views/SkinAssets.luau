@@ -167,6 +167,13 @@ SkinAssets.skyStrips = {
 -- four sides, one on top. Its bottom (seen through a see-through floor) is
 -- ours, the horizon's colour: assets/world/sky_clear_down.png. (The place's
 -- own Sky has clouds painted in.)
+-- The recommendation ring's glow (RecommendationRing): white images,
+-- tinted in-game. Drawn by a script (assets/world/ring_glow.png,
+-- ring_fill.png): a thin ring with a soft halo, and a soft disc for the
+-- dwell fill.
+SkinAssets.ringGlow = 108768722798713
+SkinAssets.ringFill = 138336969382071
+
 SkinAssets.clearSkybox = { side = 13805860897, top = 13500260075, down = 134814657408892 }
 
 -- Flat skybox images for the Studio / Void sky presets (WorldRenderer).

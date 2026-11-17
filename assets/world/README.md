@@ -15,3 +15,5 @@ patterns use existing Roblox images, so they have no source file here.
 | sky_studio.png | Sky preset "Studio" — flat light grey on all six skybox faces | `skyTextures.Studio` |
 | sky_void.png | Sky preset "Void" — flat near-black on all six skybox faces | `skyTextures.Void` |
 | sky_clear_down.png | Bottom face of the Clear / Clouds sky — flat, the horizon's colour. Uploaded as `134814657408892` | `clearSkybox.down` |
+| ring_glow.png | Recommendation ring: a thin ring at 78% with a soft halo, white on alpha, tinted per item in-game (`python tools/build_rings.py assets/world`). Uploaded as `108768722798713` | `ringGlow` |
+| ring_fill.png | Recommendation ring's dwell fill: a soft white disc. Uploaded as `138336969382071` | `ringFill` |

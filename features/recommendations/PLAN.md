@@ -63,6 +63,12 @@ Branch: `feature/recommendations`.
     (`ItemModel`, built on the client) turns slowly and bobs above its pad so
     it reads as collectable; the card shrinks to a name tag over it. Items with
     no 3D view (or a failed build) keep the thumbnail card.
+  - [DONE] 2.5 Glowing rings (user, 2026-11-17, after a Gemini mock-up): a soft
+    ring of light under each item in the item's own colour (ItemColour's
+    dominant bucket mapped to a tuned glow palette; black / grey / white take
+    the second colour, else cool white; the back pad white). Colour is
+    identity, not information. The ring fills with light while you stand on
+    it. Dwell cut to 0.25 s. Images drawn by `tools/build_rings.py`.
 - **Outcome:** Confirmed by the user (2026-11-17). Decisions: tapping yourself
   opens / closes the ring (not Wearing); items are turning, bobbing 3D models
   with no podia (the pad is an invisible marker). Lessons: a BillboardGui on a
