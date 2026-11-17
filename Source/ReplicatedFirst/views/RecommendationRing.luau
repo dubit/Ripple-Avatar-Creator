@@ -4,7 +4,8 @@
 	RecommendationRing (renders nothing in the HUD — builds the ring in this
 	client's world)
 
-	While `open`, a ring of pads lies on the ground around where the player
+	While `open`, a ring of pads (invisible: they only mark the spots; the
+	items float over them) lies on the ground around where the player
 	stood when it opened (fixed in the world; it doesn't follow them). Each
 	pad carries a card above it, facing the camera, with the item's thumbnail
 	and name. The pads appear empty (loading) at once, then fill in when the
@@ -20,7 +21,8 @@
 	  · the first ring is based on the whole outfit being worn
 	  · walking well away from the ring (RecommendationConfig.ring.walkAway
 	    beyond its radius), respawning or `open` going false closes it
-	  · in and out with motion (pads grow / sink, cards pop / shrink)
+	  · in and out with motion (cards pop / shrink, models grow / shrink);
+	    a card breathes while its item loads
 
 	Props:
 	  open      whether the ring is showing
@@ -53,7 +55,7 @@ export type Props = {
 
 local RING = RecommendationConfig.ring
 local PAD_THICKNESS = 0.4
-local PAD_TRANSPARENCY = 0.25
+local PAD_TRANSPARENCY = 1 -- no podia (user, 2026-11-17): the pad just marks the spot
 local GROW = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local SHRINK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 local PULSE = TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
@@ -135,7 +137,6 @@ local function makePad(position: Vector3, folder: Folder): Pad
 	part.CanQuery = false
 	part.CanTouch = false
 	part.CastShadow = false
-	-- Plain white: it reads on any floor colour (the floor is the player's).
 	part.Material = Enum.Material.SmoothPlastic
 	part.Color = Tokens.color.white
 	part.Transparency = PAD_TRANSPARENCY
@@ -273,8 +274,8 @@ local function growPad(pad: Pad, delay: number)
 		end
 		TweenService:Create(pad.part, GROW, { Size = Vector3.new(PAD_THICKNESS, RING.padSize, RING.padSize) }):Play()
 		TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize * 1.2) }):Play()
-		-- Loading: the pad breathes until its item arrives.
-		local pulse = TweenService:Create(pad.part, PULSE, { Transparency = 0.7 })
+		-- Loading: the card breathes until its item arrives.
+		local pulse = TweenService:Create(pad.thumb.Parent :: Frame, PULSE, { BackgroundTransparency = 0.6 })
 		pad.pulse = pulse
 		pulse:Play()
 	end)
@@ -289,7 +290,7 @@ local function fillPad(pad: Pad, item: Item, delay: number)
 			pad.pulse:Cancel()
 			pad.pulse = nil
 		end
-		pad.part.Transparency = PAD_TRANSPARENCY
+		(pad.thumb.Parent :: Frame).BackgroundTransparency = 0.1
 		pad.thumb.Image = item.thumbnail
 		pad.label.Text = item.name
 		-- A little pop as it fills.
