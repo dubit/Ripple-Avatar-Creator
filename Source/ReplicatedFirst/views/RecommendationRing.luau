@@ -34,6 +34,10 @@
 	    respawning or `open` going false closes it
 	  · in and out with motion (cards pop / shrink, models grow / shrink)
 
+	Analytics: each ring shown, pick, back and close is reported to
+	RecommendationsController (rec_open / rec_ring / rec_pick / rec_back /
+	rec_close), the feedback the external engine will learn from.
+
 	Props:
 	  open      whether the ring is showing
 	  wornIds   the item ids being worn (CatalogueClient ids), oldest first
@@ -80,6 +84,8 @@ type Pad = {
 	label: TextLabel,
 	pulse: Tween?,
 	item: Item?, -- nil while loading
+	reason: string?, -- why the recommender chose it
+	slot: number?, -- its place among the ring's new items (1..)
 	back: boolean, -- the back pad
 	dwell: number, -- seconds stood on it
 	model: Model?, -- the item's 3D model, once built
@@ -98,9 +104,17 @@ type Ring = {
 -- One ring on the trail.
 type Entry = {
 	items: { Item }?, -- its new items, once recommended
+	reasons: { string }?, -- why each was chosen
 	backItem: Item?, -- the item walked through to get here (the back pad)
 	wornAfter: string?, -- the outfit just after that item went on (to guard Undo)
 }
+
+local trails = 0 -- numbers each trail (rec_* trail_id)
+
+local function report(event: string, params: { [string]: any })
+	params.event = event
+	Network.Intent.Recommendations:FireServer(Network.Actions.Recommendations.Track, params)
+end
 
 -- Back easing (overshoots a little), 0..1 -> 0..1.
 local function backOut(t: number): number
@@ -420,6 +434,10 @@ local function RecommendationRing(props: Props)
 		local shown: { [number]: boolean } = {} -- every id offered on this trail
 		local ring: Ring? = nil
 		local picked: Item? = nil -- the latest pick, until its outfit change lands
+		trails += 1
+		local trailId = trails
+		local ringsShown, picks = 0, 0
+		local closeReason = "tap"
 
 		local function rootPosition(): Vector3?
 			local current = player.Character
@@ -472,10 +490,27 @@ local function RecommendationRing(props: Props)
 
 			-- New items: the ones this entry already has (coming back to it),
 			-- else from the recommender (yields; abandoned if the ring went).
-			local function fill(items: { Item })
+			local depth = #trail
+			local function fill(items: { Item }, reasons: { string }, revisit: boolean)
+				ringsShown += 1
+				local back = entry.backItem
+				local params: { [string]: any } = {
+					trail_id = trailId,
+					depth = depth,
+					basis_id = if back then back.id else 0,
+					back_id = if back then back.id else 0,
+					revisit = revisit,
+				}
+				for index, item in items do
+					params["item_" .. index] = item.id
+					params["reason_" .. index] = reasons[index]
+				end
+				report("rec_ring", params)
 				for index, pad in newPads do
 					local item = items[index]
 					if item then
+						pad.reason = reasons[index]
+						pad.slot = index
 						fillPad(pad, item, (index - 1) * 0.05)
 					else
 						pad.label.Text = "—"
@@ -483,7 +518,7 @@ local function RecommendationRing(props: Props)
 				end
 			end
 			if entry.items then
-				fill(entry.items)
+				fill(entry.items, entry.reasons or {}, true)
 			else
 				task.spawn(function()
 					local worn = itemsFor(latest.current.wornIds)
@@ -503,13 +538,15 @@ local function RecommendationRing(props: Props)
 					if ring ~= current or closed then
 						return
 					end
-					local items = {}
+					local items, reasons = {}, {}
 					for _, recommendation in list do
 						table.insert(items, recommendation.item)
+						table.insert(reasons, recommendation.reason)
 						shown[recommendation.item.id] = true
 					end
 					entry.items = items
-					fill(items)
+					entry.reasons = reasons
+					fill(items, reasons, false)
 				end)
 			end
 
@@ -539,6 +576,14 @@ local function RecommendationRing(props: Props)
 				{ targetId = item.targetId, kind = item.kind },
 				{ replaceSameType = true }
 			)
+			picks += 1
+			report("rec_pick", {
+				trail_id = trailId,
+				depth = #trail,
+				item_id = item.id,
+				reason = pad.reason or "fill",
+				slot = pad.slot or 1,
+			})
 			picked = item
 			local entry: Entry = { backItem = item }
 			table.insert(trail, entry)
@@ -547,11 +592,14 @@ local function RecommendationRing(props: Props)
 		end
 
 		local function goBack()
+			local depth = #trail
 			local entry = table.remove(trail) :: Entry
 			-- Undo only if the outfit is still what that pick made it.
-			if entry.wornAfter and entry.wornAfter == signature(latest.current.wornIds) then
+			local undone = entry.wornAfter ~= nil and entry.wornAfter == signature(latest.current.wornIds)
+			if undone then
 				Network.Intent.Avatar:FireServer(Network.Actions.Avatar.Undo)
 			end
+			report("rec_back", { trail_id = trailId, depth = depth, undone = undone })
 			picked = nil
 			Sounds.play("back")
 			local camera = workspace.CurrentCamera
@@ -559,13 +607,15 @@ local function RecommendationRing(props: Props)
 			replaceRing(trail[#trail], behind)
 		end
 
+		report("rec_open", { outfit_size = #latest.current.wornIds })
 		table.insert(trail, {})
 		openRing(trail[1], nil)
 		Sounds.play("open")
 
 		-- Standing on pads, the outfit change landing, walking away.
-		local function selfClose()
+		local function selfClose(reason: string)
 			if not closed then
+				closeReason = reason
 				latest.current.onClose()
 			end
 		end
@@ -573,7 +623,7 @@ local function RecommendationRing(props: Props)
 			local current = player.Character
 			local hrp = current and current:FindFirstChild("HumanoidRootPart") :: BasePart?
 			if current ~= character or not hrp then
-				selfClose()
+				selfClose("respawn")
 				return
 			end
 			-- The latest pick's outfit, once the server has put it on.
@@ -587,7 +637,7 @@ local function RecommendationRing(props: Props)
 			end
 			local feet = flat(hrp.Position)
 			if (feet - flat(active.centre)).Magnitude > RING.radius + RING.walkAway then
-				selfClose()
+				selfClose("walk_away")
 				return
 			end
 			for _, pad in active.pads do
@@ -609,6 +659,13 @@ local function RecommendationRing(props: Props)
 		return function()
 			closed = true
 			watch:Disconnect()
+			report("rec_close", {
+				trail_id = trailId,
+				depth = math.max(#trail, 1),
+				rings = math.max(ringsShown, 1),
+				picks = picks,
+				reason = closeReason,
+			})
 			Sounds.play("close")
 			if ring then
 				closeRing(ring)

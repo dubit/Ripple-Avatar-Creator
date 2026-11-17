@@ -114,7 +114,7 @@ Branch: `feature/recommendations`.
   matches the one recorded when the pick landed.
 
 ### Task 5: Analytics
-- **Status:** [TODO]
+- **Status:** [IN PROGRESS]
 - **Depends on:** 4
 - **Refs:** SPEC > Analytics; `.claude/commands/analytics.md` (event catalogue)
 - **Acceptance criteria:**
@@ -123,8 +123,8 @@ Branch: `feature/recommendations`.
   - The event catalogue in the analytics skill lists them.
 - **Replication:** a new intent to `RecommendationsController` (no state back).
 - **Sub-tasks:**
-  - [TODO] 5.1 `/create-controller` RecommendationsController (track only).
-  - [TODO] 5.2 Client reports from the ring.
+  - [DONE] 5.1 RecommendationsController (track only; one `Track` action, excluded from `controller_action`; every event and param validated; 30 reports / 10 s budget).
+  - [DONE] 5.2 Client reports from the ring. `rec_ring` lists its items as `item_1..7` / `reason_1..7` (GA4 caps a param value at 100 characters, so not one joined list). Checked in Studio: every event queues and the batch sends; arrival in GA4 is unchecked (no BigQuery link to Ripple's property, as in phase 1).
 
 ### Task 6: Playtest and tune
 - **Status:** [TODO]
