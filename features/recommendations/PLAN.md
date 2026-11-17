@@ -73,7 +73,7 @@ Branch: `feature/recommendations`.
   had it wrong, so shoulder items never got a 3D view anywhere).
 
 ### Task 3: Walk on to wear, the next ring
-- **Status:** [IN PROGRESS]
+- **Status:** [DONE]
 - **Why here:** Turns the ring from a display into the loop.
 - **Depends on:** 2
 - **Refs:** SPEC > Decisions (automatic take-off); `AvatarController.TryOn`;
@@ -93,7 +93,7 @@ Branch: `feature/recommendations`.
   - [DONE] 3.3 Ring trail: a stack of rings (items, back item, the outfit after the pick); nothing offered twice on a trail.
 
 ### Task 4: Back pad
-- **Status:** [IN PROGRESS]
+- **Status:** [DONE]
 - **Note:** built with Task 3 (a ring after the first needs its back pad).
 - **Depends on:** 3
 - **Acceptance criteria:**
@@ -106,7 +106,12 @@ Branch: `feature/recommendations`.
 - **Replication:** none new (`Avatar.Undo`).
 - **Sub-tasks:**
   - [DONE] 4.1 Back pad: on the side you came from, a ghosted model, "↩ Back · name" in the accent colour, a white disc.
-  - [DONE] 4.2 Guard: Undo only if the outfit still matches what the pick made it (signature of worn ids); otherwise it only goes back a ring. Not yet tested in Studio (needs a HUD change mid-trail).
+  - [DONE] 4.2 Guard: Undo only if the outfit still matches what the pick made it (signature of worn ids); otherwise it only goes back a ring. Confirmed by the user.
+- **Outcome (Tasks 3 and 4):** Confirmed by the user (2026-11-17): accessory
+  same-type replacement and the Undo guard both behave. Built together, since
+  every ring after the first needs its back pad. The pick sends TryOn with
+  `replaceSameType`; Back sends Undo only when the worn-id signature still
+  matches the one recorded when the pick landed.
 
 ### Task 5: Analytics
 - **Status:** [TODO]
