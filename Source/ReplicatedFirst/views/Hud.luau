@@ -11,7 +11,9 @@
 	  · buying, reachable anywhere through HudContext: straight to Roblox's
 	    own purchase prompt (no confirmation of ours in front of it), with a
 	    sound when it ends
-	  · tapping your own avatar in the world opens Wearing (useTapAvatar)
+	  · tapping your own avatar in the world opens / closes the
+	    recommendation ring (useTapAvatar, RecommendationRing); Wearing has its
+	    own HUD button
 	  · back input (mouse back button, Backspace): pops a breadcrumb, then
 	    closes the panel
 	  · World options (saved + live draft, useWorldOptions) and the renderer
@@ -47,6 +49,7 @@ local usePlaceholderLook = require(views:WaitForChild("screens"):WaitForChild("u
 local WorldHud = require(views:WaitForChild("WorldHud"))
 local FullPanel = require(views:WaitForChild("panel"):WaitForChild("FullPanel"))
 local WorldRenderer = require(views:WaitForChild("WorldRenderer"))
+local RecommendationRing = require(views:WaitForChild("RecommendationRing"))
 local ShareDialog = require(views:WaitForChild("screens"):WaitForChild("ShareDialog"))
 local StoreDialogs = require(views:WaitForChild("screens"):WaitForChild("StoreDialogs"))
 local StoresClient = require(views:WaitForChild("catalogue"):WaitForChild("StoresClient"))
@@ -335,10 +338,17 @@ local function Hud()
 		end
 	end, {})
 
-	-- Tapping your own avatar in the world opens Wearing (design 5a).
+	-- Tapping your own avatar in the world opens / closes the recommendation
+	-- ring (it used to open Wearing, design 5a; Wearing has its own button).
+	local ringOpen, setRingOpen = React.useState(false)
 	useTapAvatar(function()
-		nav.resume("Wearing") -- the open sound plays from the effect below
+		setRingOpen(function(open: boolean): boolean
+			return not open
+		end)
 	end, not nav.isOpen)
+	local closeRing = React.useCallback(function()
+		setRingOpen(false)
+	end, {})
 
 	-- Open / close sounds on panel state changes.
 	local wasOpen = React.useRef(false)
@@ -683,6 +693,7 @@ local function Hud()
 		}, {
 			Blur = e(BlurDriver, { active = nav.isOpen }),
 			Renderer = e(WorldRenderer, { options = world.options, config = world.config }),
+			Ring = e(RecommendationRing, { open = ringOpen, wornIds = rawLook.worn, onClose = closeRing }),
 			World = e(React.Fragment, nil, worldHuds),
 			Panel = e(React.Fragment, nil, panels),
 			Share = e(ShareDialog, {

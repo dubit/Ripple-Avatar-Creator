@@ -57,6 +57,17 @@ local config: RecommendationConfig = {
 	styleSort = "MostFavorited",
 	wildcardSort = "MostFavorited",
 	wildcardWindow = "PastMonth",
+	ring = {
+		count = 7,
+		radius = 10,
+		padSize = 5,
+		cardSize = 4,
+		cardHeight = 5,
+		cardMaxDistance = 120,
+		walkAway = 14,
+		maxStep = 4,
+		groundSearch = 30,
+	},
 }
 
 return config

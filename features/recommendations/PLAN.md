@@ -38,7 +38,7 @@ Branch: `feature/recommendations`.
     backoff (30 s).
 
 ### Task 2: The ring in the world
-- **Status:** [TODO]
+- **Status:** [IN PROGRESS]
 - **Why here:** The core of the milestone: seeing recommendations around you.
 - **Depends on:** 1
 - **Refs:** SPEC > The experience
@@ -50,13 +50,15 @@ Branch: `feature/recommendations`.
     wall or off a ledge is moved in or left out.
   - Closing removes the ring with motion.
   - Only the local player sees it.
-- **Associated UI:** a way to start and to close (see open question 1).
+- **Associated UI:** none on the HUD: tapping your own avatar opens and closes the ring (open question 1).
 - **Replication:** client-only.
 - **Sub-tasks:**
-  - [TODO] 2.1 The ring view (client): pads, thumbnails, names, appear and
+  - [DONE] 2.1 The ring view (client): pads, thumbnails, names, appear and
     disappear.
-  - [TODO] 2.2 Start and close (open question 1).
-  - [TODO] 2.3 Loading state while the recommender runs.
+  - [DONE] 2.2 Start and close: tap yourself to open / close; walking away
+    (radius + `ring.walkAway`) or respawning closes it.
+  - [DONE] 2.3 Loading state while the recommender runs (pads breathe, cards
+    show "…").
 
 ### Task 3: Walk on to wear, the next ring
 - **Status:** [TODO]
@@ -121,7 +123,9 @@ Branch: `feature/recommendations`.
 
 ## Open questions
 
-1. **How it starts (Task 2).** Options: tap yourself (but tapping yourself
+1. ~~**How it starts (Task 2).**~~ Decided (user, 2026-11-17): tapping your own
+   avatar opens and closes the ring; it no longer opens Wearing (Wearing has
+   its own HUD button). Options were: tap yourself (but tapping yourself
    already opens Wearing), a HUD button, an item near or above the player, or
    a button on the Wearing screen. Clean videos for social media matter: the
    ring must be easy to close, and whatever starts it should be easy to hide.
