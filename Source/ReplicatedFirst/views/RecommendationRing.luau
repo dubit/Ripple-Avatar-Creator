@@ -8,7 +8,10 @@
 	stood when it opened (fixed in the world; it doesn't follow them). Each
 	pad carries a card above it, facing the camera, with the item's thumbnail
 	and name. The pads appear empty (loading) at once, then fill in when the
-	Recommender answers. Only this player sees it: the parts are made by this
+	Recommender answers. Then each item's 3D model (catalogue/ItemModel,
+	built on this client) pops in above its pad, turning slowly and bobbing,
+	and the card shrinks to a name tag over it; an item with no 3D view, or
+	whose model fails, keeps its card. Only this player sees it: the parts are made by this
 	client, so they never replicate.
 
 	  · pads sit on whatever is below them (raycast down); one that would be
@@ -38,6 +41,7 @@ local Tokens = require(views:WaitForChild("Tokens"))
 local Sounds = require(views:WaitForChild("Sounds"))
 local CatalogueClient = require(views:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
 local Recommender = require(views:WaitForChild("catalogue"):WaitForChild("Recommender"))
+local ItemModel = require(views:WaitForChild("catalogue"):WaitForChild("ItemModel"))
 
 type Item = CatalogueClient.Item
 
@@ -60,13 +64,27 @@ type Pad = {
 	thumb: ImageLabel,
 	label: TextLabel,
 	pulse: Tween?,
+	model: Model?, -- the item's 3D model, once built
+	fit: number, -- the model's scale that fits it in ring.modelSize
+	bornAt: number, -- when the model appeared (os.clock)
+	phase: number, -- spin / bob offset, so the pads don't move in step
 }
 
 type Ring = {
 	folder: Folder,
 	centre: Vector3,
 	pads: { Pad },
+	closingAt: number?,
 }
+
+local MODEL_POP = 0.4 -- seconds for a model to grow in / out
+
+-- Back easing (overshoots a little), 0..1 -> 0..1.
+local function backOut(t: number): number
+	local s = 1.70158
+	t -= 1
+	return t * t * ((s + 1) * t + s) + 1
+end
 
 local function groundBelow(position: Vector3, ignore: { Instance }): Vector3?
 	local params = RaycastParams.new()
@@ -168,7 +186,84 @@ local function makePad(position: Vector3, folder: Folder): Pad
 	label.Text = "…"
 	label.Parent = back
 
-	return { part = part, card = card, thumb = thumb, label = label }
+	return { part = part, card = card, thumb = thumb, label = label, fit = 1, bornAt = 0, phase = math.random() * math.pi * 2 }
+end
+
+-- Where a pad's model sits this frame: above the pad, bobbing, turning.
+local function modelPivot(pad: Pad, now: number): CFrame
+	local top = pad.part.Position + Vector3.new(0, PAD_THICKNESS / 2, 0)
+	local bob = math.sin(now * RING.bobSpeed + pad.phase) * RING.bobHeight
+	return CFrame.new(top + Vector3.new(0, RING.modelHeight + bob, 0)) * CFrame.Angles(0, now * RING.spinSpeed + pad.phase, 0)
+end
+
+-- The item's model above the pad; the card becomes a name tag over it.
+local function showModel(pad: Pad, item: Item)
+	if not ItemModel.supports(item) then
+		return
+	end
+	local template = ItemModel.build(item) -- yields; cached per item
+	if not template or not pad.part.Parent then
+		return
+	end
+	local model = template:Clone()
+	model.Name = "Item"
+	local box, size = model:GetBoundingBox()
+	local extent = math.max(size.X, size.Y, size.Z)
+	if extent <= 0 then
+		model:Destroy()
+		return
+	end
+	model.WorldPivot = box
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanQuery = false
+			part.CanTouch = false
+		elseif part:IsA("Humanoid") then
+			part.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		end
+	end
+	pad.fit = model:GetScale() * RING.modelSize / extent -- the scale it ends up at
+	model:ScaleTo(pad.fit * 0.05)
+	pad.bornAt = os.clock()
+	model:PivotTo(modelPivot(pad, pad.bornAt))
+	model.Parent = pad.part.Parent
+	pad.model = model
+
+	-- Card -> name tag above the model.
+	pad.thumb.Visible = false
+	local back = pad.thumb.Parent :: Frame
+	back.BackgroundTransparency = 1
+	pad.label.Position = UDim2.fromScale(0.5, 1)
+	pad.label.Size = UDim2.fromScale(1, 1)
+	pad.label.TextColor3 = Tokens.color.white
+	pad.label.TextStrokeTransparency = 0.4
+	pad.card.StudsOffsetWorldSpace = Vector3.new(0, RING.modelHeight + RING.modelSize / 2 + 0.9, 0)
+	pad.card.Size = UDim2.fromScale(0, 0)
+	TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize * 1.4, 0.8) }):Play()
+end
+
+-- Spins and bobs the models; grows them in, and shrinks them as the ring
+-- closes.
+local function animate(ring: Ring)
+	local now = os.clock()
+	for _, pad in ring.pads do
+		local model = pad.model
+		if not model then
+			continue
+		end
+		local grow = math.clamp((now - pad.bornAt) / MODEL_POP, 0, 1)
+		local amount = backOut(grow)
+		if ring.closingAt then
+			amount *= 1 - math.clamp((now - ring.closingAt) / SHRINK.Time, 0, 1)
+		end
+		local scale = math.max(pad.fit * amount, pad.fit * 0.01)
+		if grow < 1 or ring.closingAt then
+			model:ScaleTo(scale)
+		end
+		model:PivotTo(modelPivot(pad, now))
+	end
 end
 
 local function growPad(pad: Pad, delay: number)
@@ -200,10 +295,12 @@ local function fillPad(pad: Pad, item: Item, delay: number)
 		-- A little pop as it fills.
 		pad.card.Size = UDim2.fromScale(RING.cardSize * 0.85, RING.cardSize * 1.2 * 0.85)
 		TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize * 1.2) }):Play()
+		showModel(pad, item)
 	end)
 end
 
 local function closeRing(ring: Ring)
+	ring.closingAt = os.clock()
 	for _, pad in ring.pads do
 		if pad.pulse then
 			pad.pulse:Cancel()
@@ -276,6 +373,14 @@ local function RecommendationRing(props: Props)
 					pad.label.Text = "—"
 				end
 			end
+		end)
+
+		-- The models move every frame, through the closing shrink too.
+		local motion = RunService.RenderStepped:Connect(function()
+			animate(ring)
+		end)
+		folder.Destroying:Connect(function()
+			motion:Disconnect()
 		end)
 
 		-- Walking well away, or respawning, closes it.

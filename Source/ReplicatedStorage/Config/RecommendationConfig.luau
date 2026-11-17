@@ -67,6 +67,11 @@ local config: RecommendationConfig = {
 		walkAway = 14,
 		maxStep = 4,
 		groundSearch = 30,
+		modelSize = 3,
+		modelHeight = 2.6,
+		spinSpeed = 0.8,
+		bobHeight = 0.25,
+		bobSpeed = 1.8,
 	},
 }
 

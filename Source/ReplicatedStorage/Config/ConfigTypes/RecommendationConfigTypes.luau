@@ -26,6 +26,11 @@ export type RecommendationRingConfig = {
     walkAway: number, -- this far beyond the radius closes the ring
     maxStep: number, -- a pad's ground may be this far above / below the centre's
     groundSearch: number, -- how far down to look for ground under a pad
+    modelSize: number, -- an item's 3D model is scaled to this longest side
+    modelHeight: number, -- the model's centre above the pad
+    spinSpeed: number, -- radians per second
+    bobHeight: number, -- studs up and down
+    bobSpeed: number, -- radians per second of the bob's sine
 }
 
 export type RecommendationConfig = {

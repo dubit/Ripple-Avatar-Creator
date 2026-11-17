@@ -59,6 +59,10 @@ Branch: `feature/recommendations`.
     (radius + `ring.walkAway`) or respawning closes it.
   - [DONE] 2.3 Loading state while the recommender runs (pads breathe, cards
     show "…").
+  - [DONE] 2.4 3D models (user, 2026-11-17): each item's model
+    (`ItemModel`, built on the client) turns slowly and bobs above its pad so
+    it reads as collectable; the card shrinks to a name tag over it. Items with
+    no 3D view (or a failed build) keep the thumbnail card.
 
 ### Task 3: Walk on to wear, the next ring
 - **Status:** [TODO]
