@@ -70,8 +70,10 @@ Branch: `feature/recommendations`.
     identity, not information. The ring fills with light while you stand on
     it. Dwell cut to 0.25 s. Images drawn by `tools/build_rings.py`.
   - [DONE] 2.6 No item labels (user, 2026-11-17): just the model (or, with no
-    3D view, a square thumbnail card). The back pad reads by its white ring and
-    ghosted model.
+    3D view, a square thumbnail card).
+  - [DONE] 2.7 Back pad gets a plain "← Back" label over its ghost (not final;
+    without it the back pad didn't read). Loading is a small pulsing glow ball
+    where the item will appear, not a card (user, 2026-11-17).
 - **Outcome:** Confirmed by the user (2026-11-17). Decisions: tapping yourself
   opens / closes the ring (not Wearing); items are turning, bobbing 3D models
   with no podia (the pad is an invisible marker). Lessons: a BillboardGui on a

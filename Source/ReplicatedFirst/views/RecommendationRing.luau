@@ -8,9 +8,10 @@
 	it opened (fixed in the world; it doesn't follow them). Each item sits
 	over an invisible pad that marks its spot: its 3D model
 	(catalogue/ItemModel, built on this client) turning slowly and bobbing,
-	no label (user, 2026-11-17). Until the model is ready (and for items with
-	no 3D view) a card shows the thumbnail; it breathes while the
-	Recommender is still choosing. Only this player sees any of it: the parts
+	no label (user, 2026-11-17). While the Recommender chooses and the model
+	builds, a small glowing ball pulses where it will be; an item with no 3D
+	view gets a square thumbnail card instead. The back pad's ghosted model
+	carries a plain "← Back" label. Only this player sees any of it: the parts
 	are made by this client, so they never replicate.
 
 	The trail:
@@ -109,7 +110,8 @@ type Pad = {
 	card: BillboardGui,
 	thumb: ImageLabel,
 	label: TextLabel,
-	pulse: Tween?,
+	pulse: Tween?, -- the loading ball's pulse
+	ball: Part?, -- the loading ball, until the item shows
 	item: Item?, -- nil while loading
 	reason: string?, -- why the recommender chose it
 	slot: number?, -- its place among the ring's new items (1..)
@@ -322,13 +324,14 @@ local function modelPivot(pad: Pad, now: number): CFrame
 end
 
 -- The item's model above the pad, in place of its card.
-local function showModel(pad: Pad, item: Item)
+-- Yields while it builds; false if the item has no model to show.
+local function showModel(pad: Pad, item: Item): boolean
 	if not ItemModel.supports(item) then
-		return
+		return false
 	end
 	local template = ItemModel.build(item) -- yields; cached per item
 	if not template or not pad.part.Parent then
-		return
+		return false
 	end
 	local model = template:Clone()
 	model.Name = "Item"
@@ -336,7 +339,7 @@ local function showModel(pad: Pad, item: Item)
 	local extent = math.max(size.X, size.Y, size.Z)
 	if extent <= 0 then
 		model:Destroy()
-		return
+		return false
 	end
 	model.WorldPivot = box
 	for _, part in model:GetDescendants() do
@@ -359,9 +362,7 @@ local function showModel(pad: Pad, item: Item)
 	model:PivotTo(modelPivot(pad, pad.bornAt))
 	model.Parent = pad.part.Parent
 	pad.model = model
-
-	-- The card goes; the model stands on its own.
-	TweenService:Create(pad.card, SHRINK, { Size = UDim2.fromScale(0, 0) }):Play()
+	return true
 end
 
 -- Which GLOW colour a pad shows now.
@@ -402,6 +403,9 @@ local function animate(ring: Ring)
 		if not ring.closingAt then
 			updateGlow(pad)
 		end
+		if pad.ball then
+			pad.ball.CFrame = modelPivot(pad, now)
+		end
 		local model = pad.model
 		if not model then
 			continue
@@ -424,13 +428,33 @@ local function growPad(pad: Pad, delay: number)
 		if not pad.part.Parent then
 			return
 		end
-		TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize * 1.2) }):Play()
 		TweenService:Create(pad.ringImage, GROW, { Size = UDim2.fromScale(1, 1) }):Play()
-		if not pad.item then
-			-- Loading: the card breathes until its item arrives.
-			local pulse = TweenService:Create(pad.thumb.Parent :: Frame, PULSE, { BackgroundTransparency = 0.6 })
-			pad.pulse = pulse
-			pulse:Play()
+		if not pad.item and not pad.ball then
+			-- Loading: a small glowing ball pulses where the item will be.
+			local ball = Instance.new("Part")
+			ball.Name = "Loading"
+			ball.Shape = Enum.PartType.Ball
+			ball.Anchored = true
+			ball.CanCollide = false
+			ball.CanQuery = false
+			ball.CanTouch = false
+			ball.CastShadow = false
+			ball.Material = Enum.Material.Neon
+			ball.Color = Tokens.color.white
+			ball.Transparency = 0.2
+			ball.Size = Vector3.new(0.05, 0.05, 0.05)
+			ball.CFrame = modelPivot(pad, os.clock())
+			ball.Parent = pad.part.Parent
+			pad.ball = ball
+			local grow = TweenService:Create(ball, GROW, { Size = Vector3.new(0.8, 0.8, 0.8) })
+			grow.Completed:Connect(function()
+				if pad.ball == ball then
+					local pulse = TweenService:Create(ball, PULSE, { Size = Vector3.new(1.15, 1.15, 1.15), Transparency = 0.45 })
+					pad.pulse = pulse
+					pulse:Play()
+				end
+			end)
+			grow:Play()
 		end
 	end)
 end
@@ -443,20 +467,46 @@ local function fillPad(pad: Pad, item: Item, delay: number)
 		if not pad.part.Parent then
 			return
 		end
-		if pad.pulse then
-			pad.pulse:Cancel()
-			pad.pulse = nil
+		local hasModel = showModel(pad, item) -- yields while it builds
+		-- The loading ball goes as the item appears.
+		local ball = pad.ball
+		if ball then
+			pad.ball = nil
+			if pad.pulse then
+				pad.pulse:Cancel()
+				pad.pulse = nil
+			end
+			TweenService:Create(ball, SHRINK, { Size = Vector3.new(0.05, 0.05, 0.05) }):Play()
+			task.delay(SHRINK.Time, function()
+				ball:Destroy()
+			end)
 		end
-		(pad.thumb.Parent :: Frame).BackgroundTransparency = 0.1
-		pad.thumb.Image = item.thumbnail
-		-- No name: the thumbnail fills a square card.
-		pad.label.Visible = false
-		pad.thumb.Position = UDim2.fromScale(0.5, 0.04)
-		pad.thumb.Size = UDim2.fromScale(0.92, 0.92)
-		-- A little pop as it fills.
-		pad.card.Size = UDim2.fromScale(RING.cardSize * 0.85, RING.cardSize * 0.85)
-		TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize) }):Play()
-		showModel(pad, item)
+		if not pad.part.Parent then
+			return
+		end
+		local backing = pad.thumb.Parent :: Frame
+		if pad.back then
+			-- A plain label over the ghost (not final, user 2026-11-17).
+			backing.BackgroundTransparency = 1
+			pad.thumb.Visible = false
+			pad.label.Visible = true
+			pad.label.Text = "← Back" -- not ↩, which Roblox draws as a blue emoji
+			pad.label.Position = UDim2.fromScale(0.5, 1)
+			pad.label.Size = UDim2.fromScale(1, 1)
+			pad.label.TextColor3 = Tokens.color.white
+			pad.label.TextStrokeTransparency = 0.4
+			pad.card.StudsOffsetWorldSpace = Vector3.new(0, RING.modelHeight + RING.modelSize / 2 + 0.8, 0)
+			pad.card.Size = UDim2.fromScale(0, 0)
+			TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, 0.9) }):Play()
+		elseif not hasModel then
+			-- No 3D view: a square thumbnail card, no name.
+			backing.BackgroundTransparency = 0.1
+			pad.thumb.Image = item.thumbnail
+			pad.label.Visible = false
+			pad.thumb.Size = UDim2.fromScale(0.92, 0.92)
+			pad.card.Size = UDim2.fromScale(RING.cardSize * 0.85, RING.cardSize * 0.85)
+			TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize) }):Play()
+		end
 	end)
 end
 
@@ -475,6 +525,9 @@ local function closeRing(ring: Ring)
 	for _, pad in ring.pads do
 		if pad.pulse then
 			pad.pulse:Cancel()
+		end
+		if pad.ball then
+			TweenService:Create(pad.ball, SHRINK, { Size = Vector3.new(0.05, 0.05, 0.05) }):Play()
 		end
 		TweenService:Create(pad.card, SHRINK, { Size = UDim2.fromScale(0, 0) }):Play()
 		TweenService:Create(pad.ringImage, SHRINK, { Size = UDim2.fromScale(0, 0) }):Play()
