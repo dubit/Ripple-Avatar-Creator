@@ -3,8 +3,12 @@
 Worked task by task with `/next-task`. Spec: `features/recommendations/SPEC.md`.
 Branch: `feature/recommendations`.
 
+**Parked (2026-11-18):** merged into `development` as it stands, while we work
+on analytics. Picks up at Task 5 (confirm the events arrive) and Task 6
+(playtest).
+
 ### Task 1: Interim recommender
-- **Status:** [IN PROGRESS]
+- **Status:** [DONE]
 - **Why here:** Everything else shows its output. Built first and on its own so
   the rings can be judged on what they recommend, and so the real service can
   replace it behind the same interface.
@@ -36,6 +40,10 @@ Branch: `feature/recommendations`.
     0.5 s. The HUD's catalogue home rows search at startup on the same
     client budget, so a ring opened right after joining can wait out a 429
     backoff (30 s).
+- **Outcome:** Judged through the rings in Tasks 2–4 (user, 2026-11-18).
+  The Roblox recommendation endpoint ignores a context item, so the
+  recommender builds rings from catalogue searches (creator / complete /
+  style / wildcard slots).
 
 ### Task 2: The ring in the world
 - **Status:** [DONE]
