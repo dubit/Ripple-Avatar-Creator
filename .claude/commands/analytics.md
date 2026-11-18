@@ -74,7 +74,7 @@ Use the query templates below. Replace `PROJECT.DATASET` with the values from `.
 
 ## Event Catalogue (Ripple Avatar Creator)
 
-Every custom event the game sends, with its params (all snake_case). Besides these, every controller action is logged as `controller_action` (`controller_name`, `action_name`) unless listed in `AnalyticsConfig.excludedActions` (currently `View`, since navigation logs its own events), and every event carries the global dimensions above when they're enabled.
+Every custom event the game sends, with its params (all snake_case). Besides these, every controller action is logged as `controller_action` (`controller_name`, `action_name`) unless listed in `AnalyticsConfig.excludedActions` (currently `View` and `Track`, since navigation and recommendations log their own events), and every event carries the global dimensions above when they're enabled.
 
 | Area | Event | Params | Sent from |
 |------|-------|--------|-----------|
@@ -102,6 +102,11 @@ Every custom event the game sends, with its params (all snake_case). Besides the
 | Stores | `store_create`, `store_publish`, `store_unpublish`, `store_delete`, `store_report` | `code` | StoresController |
 | | `store_open`, `store_share` | `code`, `own` | StoresController |
 | | `store_favourite` | `code`, `on` | StoresController |
+| Recommendations | `rec_open` | `outfit_size` (items worn) | RecommendationsController |
+| | `rec_ring` | `trail_id`, `depth` (1 = first ring), `basis_id` (0 = the whole outfit), `back_id` (0 = no back pad), `revisit` (shown again by going back), `item_1`..`item_7`, `reason_1`..`reason_7` (`creator`, `complete`, `style`, `wildcard`, `fill`). Item ids: asset id, or bundle id negated | RecommendationsController |
+| | `rec_pick` | `trail_id`, `depth`, `item_id`, `reason`, `slot` (also logged as `try_on`) | RecommendationsController |
+| | `rec_back` | `trail_id`, `depth`, `undone` (false: the outfit had changed since, so only the ring went back) | RecommendationsController |
+| | `rec_close` | `trail_id`, `depth`, `rings` (shown), `picks`, `reason` (`tap`, `walk_away`, `respawn`) | RecommendationsController |
 | World | `heatmap_summary`, `heatmap_cell`, `heatmap_presence` | see Heatmap Query | HeatmapService |
 
 When adding an event, add its row here in the same change.

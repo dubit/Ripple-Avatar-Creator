@@ -59,6 +59,9 @@ export type Item = {
 export type Query = {
 	category: string,
 	chip: string?, -- nil = "All"
+	-- Search these type names instead of the category/chip's (e.g. every
+	-- wearable at once); category/chip are then just labels.
+	types: { assetTypes: { string }?, bundleTypes: { string }? }?,
 	keyword: string?,
 	minPrice: number?, -- Robux; nil = no bound
 	maxPrice: number?,
@@ -132,9 +135,14 @@ end
 
 local function paramsFor(query: Query): CatalogSearchParams
 	local assetTypes, bundleTypes = {}, {}
-	for _, chip in chipsFor(query) do
-		enumItems(Enum.AvatarAssetType, chip.assetTypes or {}, assetTypes)
-		enumItems(Enum.BundleType, chip.bundleTypes or {}, bundleTypes)
+	if query.types then
+		enumItems(Enum.AvatarAssetType, query.types.assetTypes or {}, assetTypes)
+		enumItems(Enum.BundleType, query.types.bundleTypes or {}, bundleTypes)
+	else
+		for _, chip in chipsFor(query) do
+			enumItems(Enum.AvatarAssetType, chip.assetTypes or {}, assetTypes)
+			enumItems(Enum.BundleType, chip.bundleTypes or {}, bundleTypes)
+		end
 	end
 	local params = CatalogSearchParams.new()
 	params.AssetTypes = assetTypes :: any
@@ -159,6 +167,7 @@ local function keyFor(query: Query): string
 	return table.concat({
 		query.category,
 		query.chip or "All",
+		if query.types then table.concat(query.types.assetTypes or {}, ",") .. "/" .. table.concat(query.types.bundleTypes or {}, ",") else "",
 		string.lower(query.keyword or ""),
 		tostring(query.minPrice),
 		tostring(query.maxPrice),

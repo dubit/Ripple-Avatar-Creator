@@ -10,7 +10,9 @@
 	Requests closer together than AvatarConfig.tryOnCooldown are dropped.
 
 	Actions:
-		TryOn(item)        wear it (replacing its slot / stacking per config)
+		TryOn(item, opts?) wear it (replacing its slot / stacking per config);
+		                   opts.replaceSameType: an accessory also replaces worn
+		                   ones of its type (the recommendation ring)
 		TakeOff(item)      take it off
 		TakeOffMany(items) take several off as one change (up to maxWearMany)
 		WearMany(items, extras?)   wear several (an outfit, the basket), up
@@ -103,10 +105,10 @@ local function resolve(raw: any): AvatarModel.WornItem?
 	return nil
 end
 
-local function tryOn(player: Player, model: any, raw: any)
+local function tryOn(player: Player, model: any, raw: any, opts: any)
 	local item = resolve(raw)
 	if item then
-		model:wear(item)
+		model:wear(item, type(opts) == "table" and opts.replaceSameType == true)
 		AvatarService.apply(player)
 		track(player, "try_on", itemParams(item))
 	end
