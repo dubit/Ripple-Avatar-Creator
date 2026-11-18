@@ -9,8 +9,11 @@
 	over an invisible pad that marks its spot: its 3D model
 	(catalogue/ItemModel, built on this client) turning slowly and bobbing,
 	no label (user, 2026-11-17). While the Recommender chooses and the model
-	builds, a small glowing ball pulses where it will be; an item with no 3D
-	view gets a square thumbnail card instead. The back pad's ghosted model
+	builds, a loading orb spins where it will be (a white core with three
+	comets in the brand colours orbiting it, which collapse into the core as
+	the item pops in); an item with no 3D view gets a square thumbnail card
+	instead. A pad's floor ring only appears once its item has loaded, and it
+	can't be picked before then. The back pad's ghosted model
 	carries a plain "← Back" label. Only this player sees any of it: the parts
 	are made by this client, so they never replicate.
 
@@ -79,7 +82,18 @@ local RING = RecommendationConfig.ring
 local PAD_THICKNESS = 0.4
 local GROW = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local SHRINK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-local PULSE = TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+-- The loading orb: a white core and three comets orbiting it on tilted
+-- planes, in the brand colours (Tokens: the accent orange, and the purple
+-- and green floor swatches).
+local ORB_COLOURS = { Tokens.color.accent, Tokens.floorSwatches[5], Tokens.floorSwatches[4] }
+local ORB_CORE = 0.5 -- core diameter (studs)
+local ORB_COMET = 0.26 -- comet diameter
+local ORB_RADIUS = 0.85 -- orbit radius
+local ORB_TILT = math.rad(55) -- each orbit's tilt from flat
+local ORB_SPEED = 4.2 -- radians per second round the orbit
+local ORB_PRECESS = 0.7 -- the orbits themselves turn this fast
+local ORB_APPEAR = 0.4 -- seconds to grow in
+local ORB_END = 0.35 -- seconds for the comets to fall in and the core to go
 local MODEL_POP = 0.4 -- seconds for a model to grow in / out
 local GLOW_SPREAD = 1.3 -- the glow image is this much wider than the pad (its ring sits at 78%)
 local GLOW_BRIGHTNESS = 2.5
@@ -110,8 +124,8 @@ type Pad = {
 	card: BillboardGui,
 	thumb: ImageLabel,
 	label: TextLabel,
-	pulse: Tween?, -- the loading ball's pulse
-	ball: Part?, -- the loading ball, until the item shows
+	orb: Orb?, -- the loading orb, until the item shows
+	shown: boolean, -- its item (or card) is showing, with its floor ring
 	item: Item?, -- nil while loading
 	reason: string?, -- why the recommender chose it
 	slot: number?, -- its place among the ring's new items (1..)
@@ -121,6 +135,15 @@ type Pad = {
 	fit: number, -- the model's scale that fits it in ring.modelSize
 	bornAt: number, -- when the model appeared (os.clock)
 	phase: number, -- spin / bob offset, so the pads don't move in step
+}
+
+type Orb = {
+	folder: Folder,
+	core: Part,
+	light: PointLight,
+	comets: { Part },
+	bornAt: number,
+	endAt: number?, -- when it started to collapse
 }
 
 type Ring = {
@@ -309,6 +332,7 @@ local function makePad(position: Vector3, folder: Folder, back: boolean): Pad
 		thumb = thumb,
 		label = label,
 		back = back,
+		shown = false,
 		dwell = 0,
 		fit = 1,
 		bornAt = 0,
@@ -394,6 +418,95 @@ local function updateGlow(pad: Pad)
 	end
 end
 
+local function orbPart(name: string, colour: Color3, parent: Instance): Part
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Shape = Enum.PartType.Ball
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = Enum.Material.Neon
+	part.Color = colour
+	part.Size = Vector3.new(0.01, 0.01, 0.01)
+	part.Parent = parent
+	return part
+end
+
+local function makeOrb(pad: Pad): Orb
+	local folder = Instance.new("Folder")
+	folder.Name = "Loading"
+	local core = orbPart("Core", Tokens.color.white, folder)
+	core.Transparency = 0.1
+	local light = Instance.new("PointLight")
+	light.Range = 5
+	light.Brightness = 1.2
+	light.Shadows = false
+	light.Color = ORB_COLOURS[1]
+	light.Parent = core
+	local comets = {}
+	for index, colour in ORB_COLOURS do
+		local comet = orbPart("Comet", colour, folder)
+		-- A short glowing tail (a Trail follows the part as it's moved).
+		local a0 = Instance.new("Attachment")
+		a0.Position = Vector3.new(0, 0.1, 0)
+		a0.Parent = comet
+		local a1 = Instance.new("Attachment")
+		a1.Position = Vector3.new(0, -0.1, 0)
+		a1.Parent = comet
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = a0
+		trail.Attachment1 = a1
+		trail.Color = ColorSequence.new(colour)
+		trail.LightEmission = 1
+		trail.FaceCamera = true
+		trail.Lifetime = 0.28
+		trail.Transparency = NumberSequence.new(0.15, 1)
+		trail.WidthScale = NumberSequence.new(1, 0)
+		trail.Parent = comet
+		comets[index] = comet
+	end
+	folder.Parent = pad.part.Parent
+	return { folder = folder, core = core, light = light, comets = comets, bornAt = os.clock() }
+end
+
+-- Moves the orb for this frame. False once it has finished collapsing.
+local function updateOrb(pad: Pad, orb: Orb, now: number): boolean
+	local age = now - orb.bornAt
+	local appear = backOut(math.clamp(age / ORB_APPEAR, 0, 1))
+	local gone = if orb.endAt then math.clamp((now - orb.endAt) / ORB_END, 0, 1) else 0
+	if gone >= 1 then
+		return false
+	end
+	local centre = modelPivot(pad, now).Position
+
+	-- The core breathes; it swells as the comets fall in, then goes.
+	local swell = if gone < 0.5 then 1 + gone * 1.2 else 3.2 * (1 - gone)
+	local core = ORB_CORE * appear * swell * (1 + 0.1 * math.sin(age * 6))
+	orb.core.Size = Vector3.new(core, core, core)
+	orb.core.CFrame = CFrame.new(centre)
+	-- Its light drifts through the comets' colours.
+	local hue = (age * 0.6) % #ORB_COLOURS
+	local from = math.floor(hue)
+	orb.light.Color = ORB_COLOURS[from + 1]:Lerp(ORB_COLOURS[(from + 1) % #ORB_COLOURS + 1], hue - from)
+
+	-- The comets: three orbits 120 degrees apart, each tilted, all slowly
+	-- turning; they spiral in as the orb collapses.
+	local fall = 1 - gone * gone * (3 - 2 * gone)
+	for index, comet in orb.comets do
+		local offset = (index - 1) * 2 * math.pi / #orb.comets
+		local plane = CFrame.Angles(0, age * ORB_PRECESS + offset, 0) * CFrame.Angles(ORB_TILT, 0, 0)
+		local angle = age * ORB_SPEED * (1 + 0.15 * (index - 2)) + offset
+		local radius = ORB_RADIUS * appear * fall * (1 + 0.12 * math.sin(age * 2.3 + offset))
+		local at = centre + plane:VectorToWorldSpace(Vector3.new(math.cos(angle), 0, math.sin(angle)) * radius)
+		local size = ORB_COMET * appear * math.max(fall, 0.3)
+		comet.Size = Vector3.new(size, size, size)
+		comet.CFrame = CFrame.lookAt(at, centre)
+	end
+	return true
+end
+
 -- Spins and bobs the models, grows them in and shrinks them as the ring
 -- closes; keeps each glow in its item's colour (worked out in the
 -- background, so it can arrive late).
@@ -403,8 +516,10 @@ local function animate(ring: Ring)
 		if not ring.closingAt then
 			updateGlow(pad)
 		end
-		if pad.ball then
-			pad.ball.CFrame = modelPivot(pad, now)
+		local orb = pad.orb
+		if orb and not updateOrb(pad, orb, now) then
+			orb.folder:Destroy()
+			pad.orb = nil
 		end
 		local model = pad.model
 		if not model then
@@ -428,33 +543,10 @@ local function growPad(pad: Pad, delay: number)
 		if not pad.part.Parent then
 			return
 		end
-		TweenService:Create(pad.ringImage, GROW, { Size = UDim2.fromScale(1, 1) }):Play()
-		if not pad.item and not pad.ball then
-			-- Loading: a small glowing ball pulses where the item will be.
-			local ball = Instance.new("Part")
-			ball.Name = "Loading"
-			ball.Shape = Enum.PartType.Ball
-			ball.Anchored = true
-			ball.CanCollide = false
-			ball.CanQuery = false
-			ball.CanTouch = false
-			ball.CastShadow = false
-			ball.Material = Enum.Material.Neon
-			ball.Color = Tokens.color.white
-			ball.Transparency = 0.2
-			ball.Size = Vector3.new(0.05, 0.05, 0.05)
-			ball.CFrame = modelPivot(pad, os.clock())
-			ball.Parent = pad.part.Parent
-			pad.ball = ball
-			local grow = TweenService:Create(ball, GROW, { Size = Vector3.new(0.8, 0.8, 0.8) })
-			grow.Completed:Connect(function()
-				if pad.ball == ball then
-					local pulse = TweenService:Create(ball, PULSE, { Size = Vector3.new(1.15, 1.15, 1.15), Transparency = 0.45 })
-					pad.pulse = pulse
-					pulse:Play()
-				end
-			end)
-			grow:Play()
+		-- Loading: the orb spins where the item will be. (The floor ring
+		-- waits for the item: fillPad.)
+		if not pad.shown and not pad.orb then
+			pad.orb = makeOrb(pad)
 		end
 	end)
 end
@@ -468,22 +560,15 @@ local function fillPad(pad: Pad, item: Item, delay: number)
 			return
 		end
 		local hasModel = showModel(pad, item) -- yields while it builds
-		-- The loading ball goes as the item appears.
-		local ball = pad.ball
-		if ball then
-			pad.ball = nil
-			if pad.pulse then
-				pad.pulse:Cancel()
-				pad.pulse = nil
-			end
-			TweenService:Create(ball, SHRINK, { Size = Vector3.new(0.05, 0.05, 0.05) }):Play()
-			task.delay(SHRINK.Time, function()
-				ball:Destroy()
-			end)
-		end
 		if not pad.part.Parent then
 			return
 		end
+		-- The orb collapses as the item appears, and its floor ring grows in.
+		if pad.orb and not pad.orb.endAt then
+			pad.orb.endAt = os.clock()
+		end
+		pad.shown = true
+		TweenService:Create(pad.ringImage, GROW, { Size = UDim2.fromScale(1, 1) }):Play()
 		local backing = pad.thumb.Parent :: Frame
 		if pad.back then
 			-- A plain label over the ghost (not final, user 2026-11-17).
@@ -523,11 +608,8 @@ end
 local function closeRing(ring: Ring)
 	ring.closingAt = os.clock()
 	for _, pad in ring.pads do
-		if pad.pulse then
-			pad.pulse:Cancel()
-		end
-		if pad.ball then
-			TweenService:Create(pad.ball, SHRINK, { Size = Vector3.new(0.05, 0.05, 0.05) }):Play()
+		if pad.orb and not pad.orb.endAt then
+			pad.orb.endAt = os.clock()
 		end
 		TweenService:Create(pad.card, SHRINK, { Size = UDim2.fromScale(0, 0) }):Play()
 		TweenService:Create(pad.ringImage, SHRINK, { Size = UDim2.fromScale(0, 0) }):Play()
@@ -776,7 +858,7 @@ local function RecommendationRing(props: Props)
 				return
 			end
 			for _, pad in active.pads do
-				local on = pad.item ~= nil and (feet - flat(pad.part.Position)).Magnitude <= RING.padSize / 2
+				local on = pad.shown and (feet - flat(pad.part.Position)).Magnitude <= RING.padSize / 2
 				pad.dwell = if on then pad.dwell + dt else math.max(0, pad.dwell - dt * 2)
 				setDisc(pad, pad.dwell / RING.dwell)
 				if pad.dwell >= RING.dwell then

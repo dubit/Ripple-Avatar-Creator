@@ -74,6 +74,11 @@ Branch: `feature/recommendations`.
   - [DONE] 2.7 Back pad gets a plain "← Back" label over its ghost (not final;
     without it the back pad didn't read). Loading is a small pulsing glow ball
     where the item will appear, not a card (user, 2026-11-17).
+  - [DONE] 2.8 The loading ball becomes an orb: a white core with three comets
+    in brand colours (accent orange, floor-swatch purple and green) orbiting on
+    tilted planes with short trails; they fall into the core as the item pops
+    in. A pad's floor ring appears only once its item has loaded, and it can't
+    be picked before then (user, 2026-11-18).
 - **Outcome:** Confirmed by the user (2026-11-17). Decisions: tapping yourself
   opens / closes the ring (not Wearing); items are turning, bobbing 3D models
   with no podia (the pad is an invisible marker). Lessons: a BillboardGui on a
