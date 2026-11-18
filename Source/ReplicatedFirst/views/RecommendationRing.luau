@@ -87,10 +87,13 @@ local SHRINK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.I
 -- and green floor swatches).
 local ORB_COLOURS = { Tokens.color.accent, Tokens.floorSwatches[5], Tokens.floorSwatches[4] }
 local ORB_CORE = 0.5 -- core diameter (studs)
-local ORB_COMET = 0.26 -- comet diameter
-local ORB_RADIUS = 0.85 -- orbit radius
+local ORB_COMET = 0.34 -- comet diameter
+-- Orbit radius: the comets skim the core's surface (core radius at its
+-- breath's peak + comet radius ~ 0.445; ORB_WOBBLE keeps them just clear).
+local ORB_RADIUS = 0.47
+local ORB_WOBBLE = 0.04 -- the orbit radius breathes by this fraction
 local ORB_TILT = math.rad(55) -- each orbit's tilt from flat
-local ORB_SPEED = 4.2 -- radians per second round the orbit
+local ORB_SPEED = 6 -- radians per second round the orbit
 local ORB_PRECESS = 0.7 -- the orbits themselves turn this fast
 local ORB_APPEAR = 0.4 -- seconds to grow in
 local ORB_END = 0.35 -- seconds for the comets to fall in and the core to go
@@ -498,7 +501,7 @@ local function updateOrb(pad: Pad, orb: Orb, now: number): boolean
 		local offset = (index - 1) * 2 * math.pi / #orb.comets
 		local plane = CFrame.Angles(0, age * ORB_PRECESS + offset, 0) * CFrame.Angles(ORB_TILT, 0, 0)
 		local angle = age * ORB_SPEED * (1 + 0.15 * (index - 2)) + offset
-		local radius = ORB_RADIUS * appear * fall * (1 + 0.12 * math.sin(age * 2.3 + offset))
+		local radius = ORB_RADIUS * appear * fall * (1 + ORB_WOBBLE * math.sin(age * 2.3 + offset))
 		local at = centre + plane:VectorToWorldSpace(Vector3.new(math.cos(angle), 0, math.sin(angle)) * radius)
 		local size = ORB_COMET * appear * math.max(fall, 0.3)
 		comet.Size = Vector3.new(size, size, size)
