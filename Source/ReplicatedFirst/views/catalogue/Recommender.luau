@@ -463,7 +463,8 @@ end
 
 -- ===== The engine =====
 
-local ENGINE_ASK = 20 -- how many to ask for; the ring takes the first that fit
+local ENGINE_ASK = 50 -- how many to ask for; the ring takes the first that fit, and
+-- Ripple items further down can be promoted into it
 local engineRemote = Bolt.RemoteFunction("Recommend")
 
 local function refOf(item: Item): { kind: string, id: number }
@@ -496,6 +497,9 @@ local function fromEngine(context: Context): ({ Recommendation }?, boolean)
 	local exclude = {}
 	for id in context.exclude or {} do
 		table.insert(exclude, { kind = if id < 0 then "Bundle" else "Asset", id = math.abs(id) })
+	end
+	if #basis == 0 then
+		return nil, false -- all skipped types (classic clothing, say): nothing to ask about
 	end
 
 	local ok, answer = pcall(function()

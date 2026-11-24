@@ -96,7 +96,7 @@ local recent: { [Player]: { number } } = {}
 local ENGINE_BUDGET = 12
 local ENGINE_WINDOW = 10
 local MAX_REFS = { basis = 60, worn = 60, exclude = 400 }
-local MAX_COUNT_ASKED = 30
+local MAX_COUNT_ASKED = 50
 
 local engineRecent: { [Player]: { number } } = {}
 
