@@ -47,6 +47,7 @@ export type Item = {
 	price: number, -- Robux to buy now; for a sold-out Limited, its lowest resale
 	limited: boolean, -- Limited / collectible
 	resale: boolean, -- `price` is the lowest resale price
+	offSale: boolean, -- can't be bought now (PriceStatus "Off Sale", and no resale)
 	creator: string,
 	description: string,
 	favourites: number,
@@ -226,6 +227,7 @@ local function toItem(raw: any): Item
 		price = price,
 		limited = limited,
 		resale = resale,
+		offSale = raw.PriceStatus == "Off Sale" and not resale,
 		creator = raw.CreatorName or "",
 		description = raw.Description or "",
 		favourites = raw.FavoriteCount or 0,
@@ -403,6 +405,7 @@ function CatalogueClient.remember(worn: { targetId: number, kind: "Asset" | "Bun
 		price = 0,
 		limited = false,
 		resale = false,
+		offSale = false,
 		creator = "",
 		description = "",
 		favourites = 0,

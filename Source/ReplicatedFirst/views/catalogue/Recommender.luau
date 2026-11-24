@@ -11,7 +11,7 @@
 	Ask for ENGINE_ASK items (more than a ring holds; the server drops ones
 	the player owns), look them up in one batch, then take the first ones
 	that fit, in the engine's order: not worn, not already shown on this
-	trail, not a skipped type (RecommendationConfig.skipTypes: classic
+	trail, not off sale, not a skipped type (RecommendationConfig.skipTypes: classic
 	clothing, gear, backgrounds, emotes, which aren't sent as basis or worn
 	either), and not crowding one body area (a type already in the ring, or
 	the basis's own type, is saved for a second pass). Then Ripple items
@@ -158,7 +158,7 @@ local function fitRing(context: Context, candidates: { Recommendation }): { Reco
 				break
 			end
 			local item = entry.item
-			if excluded[item.id] or taken[item.id] or skipTypes[item.typeName] or item.owned then
+			if excluded[item.id] or taken[item.id] or skipTypes[item.typeName] or item.owned or item.offSale then
 				continue
 			end
 			if pass == 1 and crowded[item.typeName] then
@@ -178,7 +178,7 @@ local function fitRing(context: Context, candidates: { Recommendation }): { Reco
 	for _, entry in candidates do
 		local item = entry.item
 		if entry.ripple and entry.score and not taken[item.id] and not excluded[item.id]
-			and not skipTypes[item.typeName] and not item.owned then
+			and not skipTypes[item.typeName] and not item.owned and not item.offSale then
 			table.insert(waiting, entry)
 		end
 	end
