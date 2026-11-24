@@ -21,12 +21,12 @@
 	ring replaces the ring's weakest non-Ripple item if its score is at
 	least rippleWithin x that item's, best Ripple item first, as long as it
 	fits the same rules. Each recommendation's reason is the engine's
-	first reason (bought_with, worn_with…); boosted = a Ripple item the
-	engine pushed up; fallback = the engine padded its list with popular
-	items, having too few recommendations for the basis.
+	first reason (bought_with, worn_with…); fallback = the engine padded
+	its list with popular items, having too few recommendations for the
+	basis.
 
 	  recommend(context)  up to context.count recommendations (yields), each
-	                      { item, reason, boosted? }, and whether the engine
+	                      { item, reason, score?, ripple?, promoted? }, and whether the engine
 	                      fell back (nil when the heuristic made the ring)
 	  describe(list)      one line per recommendation, for debugging
 
@@ -74,7 +74,6 @@ type Area = typeof(RecommendationConfig.areas[1])
 export type Recommendation = {
 	item: Item,
 	reason: string, -- the engine's first reason, or the heuristic's slot
-	boosted: boolean?, -- the engine pushed it up (a Ripple item)
 	score: number?, -- the engine's score (nil from the heuristic)
 	ripple: boolean?, -- a Ripple (Tomorrow's Players) item
 	promoted: boolean?, -- moved into the ring over a non-Ripple item
@@ -523,7 +522,6 @@ local function fromEngine(context: Context): ({ Recommendation }?, boolean)
 			table.insert(list, {
 				item = item,
 				reason = raw.reasons[1] or "engine",
-				boosted = raw.boosted,
 				score = raw.score,
 				ripple = raw.groupId == RecommendationConfig.rippleGroupId,
 			})
@@ -653,7 +651,7 @@ function Recommender.describe(list: { Recommendation }): string
 	local lines = {}
 	for index, entry in list do
 		local item = entry.item
-		local marks = (if entry.ripple then " R" else "") .. (if entry.promoted then "↑" else "") .. (if entry.boosted then " ★" else "")
+		local marks = (if entry.ripple then " R" else "") .. (if entry.promoted then "↑" else "")
 		local score = if entry.score then string.format(" %.4f", entry.score) else ""
 		table.insert(lines, `{index}. [{entry.reason}]{marks}{score} {item.name} ({item.typeName}, by {item.creator}, {item.id})`)
 	end

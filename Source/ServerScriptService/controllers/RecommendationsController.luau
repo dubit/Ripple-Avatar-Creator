@@ -15,7 +15,7 @@
 	     "Recommend"({ basis, worn, exclude, count })
 	         -> { ok = true, fallback, items } or { ok = false, error }
 	     basis / worn / exclude: lists of { kind = "Asset" | "Bundle", id }
-	     items: { kind, id, assetTypeId?, groupId?, score?, reasons, boosted }
+	     items: { kind, id, assetTypeId?, groupId?, score?, reasons }
 	     fallback: the engine padded the list with popular items (it had
 	     too few recommendations for the basis)
 	     Items the player owns are dropped here (OwnershipService).
@@ -286,7 +286,6 @@ local function itemOf(raw: any): any?
 		groupId = if type(raw.groupId) == "number" then raw.groupId else nil,
 		score = if type(raw.score) == "number" then raw.score else nil,
 		reasons = reasons,
-		boosted = raw.boosted == true,
 	}
 end
 
