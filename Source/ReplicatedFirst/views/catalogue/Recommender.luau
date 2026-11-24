@@ -1,11 +1,27 @@
 --!strict
 
 --[[
-	Recommender (client, Pattern A — no server component)
+	Recommender (client)
 
-	The interim recommender for the recommendation ring: a heuristic over the
-	catalogue search, until the external recommendation service has
-	endpoints. It sits behind the interface that service will fill:
+	What goes in the recommendation ring. First choice is Ripple's
+	recommendation engine, asked through the server ("Recommend",
+	RecommendationsController); if that's off or fails, a heuristic over
+	the catalogue search (below) makes the ring instead, and it also tops up
+	a ring the engine left short.
+
+	The engine: ask for ENGINE_ASK items (more than a ring holds), look them
+	up in one batch, then take the first ones that fit, in the engine's
+	order: not worn, not already shown on this trail, and not crowding one
+	body area (a type already in the ring, or the basis's own type, is
+	saved for a second pass). Each recommendation's reason is the engine's
+	first reason (bought_with, worn_with…); boosted = a Ripple item the
+	engine pushed up; fallback = the engine padded its list with popular
+	items, having too few recommendations for the basis.
+
+	  recommend(context)  up to context.count recommendations (yields), each
+	                      { item, reason, boosted? }, and whether the engine
+	                      fell back (nil when the heuristic made the ring)
+	  describe(list)      one line per recommendation, for debugging
 
 	  recommend(context)  up to context.count recommendations (yields), each
 	                      { item, reason }
@@ -19,7 +35,8 @@
 		count   how many (6 with a back pad, 7 for the first ring)
 	}
 
-	Each slot of a ring has a reason (RecommendationConfig.recipe, in order):
+	The heuristic: each slot of a ring has a reason
+	(RecommendationConfig.recipe, in order):
 	  creator   the basis's creator, bestselling
 	  complete  a part of the outfit nothing covers yet (a hat, shoes…),
 	            searched with the basis's style words
@@ -37,6 +54,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local CatalogueClient = require(script.Parent:WaitForChild("CatalogueClient"))
+local Bolt = require(ReplicatedStorage:WaitForChild("Bolt"))
 
 local Config = ReplicatedStorage:WaitForChild("Config")
 local CatalogueConfig = require(Config:WaitForChild("CatalogueConfig"))
@@ -48,7 +66,8 @@ type Area = typeof(RecommendationConfig.areas[1])
 
 export type Recommendation = {
 	item: Item,
-	reason: string, -- "creator" | "complete" | "style" | "wildcard" | "fill"
+	reason: string, -- the engine's first reason, or the heuristic's slot
+	boosted: boolean?, -- the engine pushed it up (a Ripple item)
 }
 
 export type Context = {
@@ -241,7 +260,7 @@ type Slot = {
 	item: Item?,
 }
 
-function Recommender.recommend(context: Context): { Recommendation }
+local function heuristic(context: Context): { Recommendation }
 	local count = math.max(0, context.count)
 	local recipe = RecommendationConfig.recipe
 
@@ -433,11 +452,126 @@ function Recommender.recommend(context: Context): { Recommendation }
 	return list
 end
 
+-- ===== The engine =====
+
+local ENGINE_ASK = 20 -- how many to ask for; the ring takes the first that fit
+local engineRemote = Bolt.RemoteFunction("Recommend")
+
+local function refOf(item: Item): { kind: string, id: number }
+	return { kind = item.kind, id = item.targetId }
+end
+
+-- The engine's list for this context, as items in its order, or nil if
+-- the engine is off or failed.
+local function fromEngine(context: Context): ({ Recommendation }?, boolean)
+	local basisIds: { [number]: boolean } = {}
+	local basis = {}
+	for _, item in context.basis do
+		basisIds[item.id] = true
+		table.insert(basis, refOf(item))
+	end
+	-- First ring: the basis is the whole outfit, so nothing else is worn.
+	local worn = {}
+	for _, item in context.worn do
+		if not basisIds[item.id] then
+			table.insert(worn, refOf(item))
+		end
+	end
+	local exclude = {}
+	for id in context.exclude or {} do
+		table.insert(exclude, { kind = if id < 0 then "Bundle" else "Asset", id = math.abs(id) })
+	end
+
+	local ok, answer = pcall(function()
+		return engineRemote:InvokeServer({ basis = basis, worn = worn, exclude = exclude, count = ENGINE_ASK })
+	end)
+	if not ok or type(answer) ~= "table" or not answer.ok then
+		if ok and type(answer) == "table" and answer.error ~= "disabled" then
+			warn("[Recommender] engine unavailable (" .. tostring(answer.error) .. "): using the heuristic")
+		elseif not ok then
+			warn("[Recommender] engine call failed:", answer)
+		end
+		return nil, false
+	end
+
+	local refs = {}
+	for _, raw in answer.items do
+		table.insert(refs, { kind = raw.kind, targetId = raw.id })
+	end
+	local items = CatalogueClient.lookupMany(refs)
+	local list: { Recommendation } = {}
+	for _, raw in answer.items do
+		local item = items[if raw.kind == "Bundle" then -raw.id else raw.id]
+		if item then
+			table.insert(list, { item = item, reason = raw.reasons[1] or "engine", boosted = raw.boosted })
+		end
+	end
+	return list, answer.fallback == true
+end
+
+-- The first `count` of the engine's list that fit (see the header).
+local function fitRing(context: Context, candidates: { Recommendation }): { Recommendation }
+	local excluded: { [number]: boolean } = {}
+	for id in context.exclude or {} do
+		excluded[id] = true
+	end
+	for _, item in context.worn do
+		excluded[item.id] = true
+	end
+	local crowded: { [string]: boolean } = {}
+	for _, item in context.basis do
+		excluded[item.id] = true
+		crowded[item.typeName] = true
+	end
+	local chosen: { Recommendation } = {}
+	local taken: { [number]: boolean } = {}
+	for pass = 1, 2 do
+		for _, entry in candidates do
+			if #chosen >= context.count then
+				break
+			end
+			local item = entry.item
+			if excluded[item.id] or taken[item.id] then
+				continue
+			end
+			if pass == 1 and crowded[item.typeName] then
+				continue
+			end
+			taken[item.id] = true
+			crowded[item.typeName] = true
+			table.insert(chosen, entry)
+		end
+	end
+	return chosen
+end
+
+function Recommender.recommend(context: Context): ({ Recommendation }, boolean?)
+	local candidates, fallback = fromEngine(context)
+	if not candidates then
+		return heuristic(context), nil
+	end
+	local list = fitRing(context, candidates)
+	local short = context.count - #list
+	if short > 0 then
+		-- Too few that fit: the heuristic tops it up.
+		local exclude = table.clone(context.exclude or {})
+		for _, entry in list do
+			exclude[entry.item.id] = true
+		end
+		for _, entry in heuristic({ basis = context.basis, worn = context.worn, exclude = exclude, count = short }) do
+			table.insert(list, entry)
+		end
+	end
+	print(`[Recommender] engine ring ({#candidates} found{if fallback then ", fallback" else ""}):\n{Recommender.describe(list)}`)
+	return list, fallback
+end
+
 function Recommender.describe(list: { Recommendation }): string
 	local lines = {}
 	for index, entry in list do
 		local item = entry.item
-		table.insert(lines, `{index}. [{entry.reason}] {item.name} ({item.typeName}, by {item.creator}, {item.id})`)
+		local boosted = if entry.boosted then " ★" else ""
+		table.insert(lines, `{index}. [{entry.reason}]{boosted} {item.name} ({item.typeName}, by {item.creator}, {item.id})`)
 	end
 	return table.concat(lines, "\n")
 end

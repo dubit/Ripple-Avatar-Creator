@@ -432,6 +432,46 @@ function CatalogueClient.remember(worn: { targetId: number, kind: "Asset" | "Bun
 	return item
 end
 
+-- Several items by their real ids, in two batch calls at most (assets,
+-- bundles). Yields; returns the ones found, keyed by catalogue id (a
+-- bundle's negated). Ones already seen in a search come from the cache.
+function CatalogueClient.lookupMany(refs: { { kind: "Asset" | "Bundle", targetId: number } }): { [number]: Item }
+	local found: { [number]: Item } = {}
+	local wanted: { [string]: { number } } = { Asset = {}, Bundle = {} }
+	for _, ref in refs do
+		local id = if ref.kind == "Bundle" then -ref.targetId else ref.targetId
+		local known = seen[id]
+		if known and known.main ~= "" then
+			found[id] = known
+		else
+			table.insert(wanted[ref.kind], ref.targetId)
+		end
+	end
+	for kind, ids in wanted do
+		if #ids == 0 then
+			continue
+		end
+		local itemType = if kind == "Bundle" then Enum.AvatarItemType.Bundle else Enum.AvatarItemType.Asset
+		local ok, raw = call(function()
+			return AvatarEditorService:GetBatchItemDetails(ids, itemType)
+		end)
+		if not ok or type(raw) ~= "table" then
+			warn("[CatalogueClient] batch lookup failed:", raw)
+			continue
+		end
+		for _, details in raw :: { any } do
+			if type(details) == "table" and details.Id then
+				details.ItemType = kind
+				local item = toItem(details)
+				if item.main ~= "" then
+					found[item.id] = item
+				end
+			end
+		end
+	end
+	return found
+end
+
 function CatalogueClient.item(id: number): Item?
 	return seen[id]
 end

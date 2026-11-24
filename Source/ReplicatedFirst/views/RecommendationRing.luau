@@ -160,6 +160,7 @@ type Ring = {
 type Entry = {
 	items: { Item }?, -- its new items, once recommended
 	reasons: { string }?, -- why each was chosen
+	fallback: boolean?, -- the engine padded it (nil: the heuristic made it)
 	backItem: Item?, -- the item walked through to get here (the back pad)
 	wornAfter: string?, -- the outfit just after that item went on (to guard Undo)
 }
@@ -711,7 +712,7 @@ local function RecommendationRing(props: Props)
 			-- New items: the ones this entry already has (coming back to it),
 			-- else from the recommender (yields; abandoned if the ring went).
 			local depth = #trail
-			local function fill(items: { Item }, reasons: { string }, revisit: boolean)
+			local function fill(items: { Item }, reasons: { string }, revisit: boolean, fallback: boolean?)
 				ringsShown += 1
 				local back = entry.backItem
 				local params: { [string]: any } = {
@@ -720,6 +721,7 @@ local function RecommendationRing(props: Props)
 					basis_id = if back then back.id else 0,
 					back_id = if back then back.id else 0,
 					revisit = revisit,
+					fallback = fallback,
 				}
 				for index, item in items do
 					params["item_" .. index] = item.id
@@ -738,7 +740,7 @@ local function RecommendationRing(props: Props)
 				end
 			end
 			if entry.items then
-				fill(entry.items, entry.reasons or {}, true)
+				fill(entry.items, entry.reasons or {}, true, entry.fallback)
 			else
 				task.spawn(function()
 					local worn = itemsFor(latest.current.wornIds)
@@ -749,7 +751,7 @@ local function RecommendationRing(props: Props)
 							table.insert(worn, entry.backItem :: Item) -- the pick may not have landed yet
 						end
 					end
-					local list = Recommender.recommend({
+					local list, fallback = Recommender.recommend({
 						basis = basis,
 						worn = worn,
 						exclude = shown,
@@ -766,7 +768,8 @@ local function RecommendationRing(props: Props)
 					end
 					entry.items = items
 					entry.reasons = reasons
-					fill(items, reasons, false)
+					entry.fallback = fallback
+					fill(items, reasons, false, fallback)
 				end)
 			end
 
