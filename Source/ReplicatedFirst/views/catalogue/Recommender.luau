@@ -16,7 +16,11 @@
 	classic clothing, gear, backgrounds, emotes, which aren't sent as basis
 	or worn either), and not crowding one
 	body area (a type already in the ring, or the basis's own type, is
-	saved for a second pass). Each recommendation's reason is the engine's
+	saved for a second pass). Then Ripple items (Tomorrow's Players, group
+	RecommendationConfig.rippleGroupId) are promoted: one left out of the
+	ring replaces the ring's weakest non-Ripple item if its score is at
+	least rippleWithin x that item's, best Ripple item first, as long as it
+	fits the same rules. Each recommendation's reason is the engine's
 	first reason (bought_with, worn_with…); boosted = a Ripple item the
 	engine pushed up; fallback = the engine padded its list with popular
 	items, having too few recommendations for the basis.
@@ -71,6 +75,9 @@ export type Recommendation = {
 	item: Item,
 	reason: string, -- the engine's first reason, or the heuristic's slot
 	boosted: boolean?, -- the engine pushed it up (a Ripple item)
+	score: number?, -- the engine's score (nil from the heuristic)
+	ripple: boolean?, -- a Ripple (Tomorrow's Players) item
+	promoted: boolean?, -- moved into the ring over a non-Ripple item
 }
 
 export type Context = {
@@ -513,7 +520,13 @@ local function fromEngine(context: Context): ({ Recommendation }?, boolean)
 	for _, raw in answer.items do
 		local item = items[if raw.kind == "Bundle" then -raw.id else raw.id]
 		if item then
-			table.insert(list, { item = item, reason = raw.reasons[1] or "engine", boosted = raw.boosted })
+			table.insert(list, {
+				item = item,
+				reason = raw.reasons[1] or "engine",
+				boosted = raw.boosted,
+				score = raw.score,
+				ripple = raw.groupId == RecommendationConfig.rippleGroupId,
+			})
 		end
 	end
 	return list, answer.fallback == true
@@ -550,6 +563,55 @@ local function fitRing(context: Context, candidates: { Recommendation }): { Reco
 			taken[item.id] = true
 			crowded[item.typeName] = true
 			table.insert(chosen, entry)
+		end
+	end
+
+	-- Promote Ripple items: each left-out one, best score first, may take
+	-- the place of the ring's weakest non-Ripple item if it scores at least
+	-- rippleWithin x that item and doesn't crowd a body area (other than the
+	-- one it frees).
+	local waiting: { Recommendation } = {}
+	for _, entry in candidates do
+		local item = entry.item
+		if entry.ripple and entry.score and not taken[item.id] and not excluded[item.id]
+			and not skipTypes[item.typeName] and not item.owned then
+			table.insert(waiting, entry)
+		end
+	end
+	table.sort(waiting, function(a, b)
+		return (a.score :: number) > (b.score :: number)
+	end)
+	for _, entry in waiting do
+		local weakest: number? = nil
+		for index, other in chosen do
+			if not other.ripple and other.score
+				and (not weakest or (other.score :: number) < (chosen[weakest].score :: number)) then
+				weakest = index
+			end
+		end
+		if not weakest then
+			break -- the ring is all Ripple (or all unscored)
+		end
+		local victim = chosen[weakest]
+		if (entry.score :: number) < RecommendationConfig.rippleWithin * (victim.score :: number) then
+			break -- best first, against the easiest to beat: none further on can
+		end
+		local typeName = entry.item.typeName
+		local clash = false
+		for _, item in context.basis do
+			if item.typeName == typeName then
+				clash = true
+			end
+		end
+		for index, other in chosen do
+			if index ~= weakest and other.item.typeName == typeName then
+				clash = true
+			end
+		end
+		if not clash then
+			taken[entry.item.id] = true
+			chosen[weakest] = table.clone(entry)
+			chosen[weakest].promoted = true
 		end
 	end
 	return chosen
@@ -591,8 +653,9 @@ function Recommender.describe(list: { Recommendation }): string
 	local lines = {}
 	for index, entry in list do
 		local item = entry.item
-		local boosted = if entry.boosted then " ★" else ""
-		table.insert(lines, `{index}. [{entry.reason}]{boosted} {item.name} ({item.typeName}, by {item.creator}, {item.id})`)
+		local marks = (if entry.ripple then " R" else "") .. (if entry.promoted then "↑" else "") .. (if entry.boosted then " ★" else "")
+		local score = if entry.score then string.format(" %.4f", entry.score) else ""
+		table.insert(lines, `{index}. [{entry.reason}]{marks}{score} {item.name} ({item.typeName}, by {item.creator}, {item.id})`)
 	end
 	return table.concat(lines, "\n")
 end

@@ -54,6 +54,11 @@ local config: RecommendationConfig = {
 	-- Types that neither go to the engine (basis / worn) nor come back in a
 	-- ring: classic clothing, gear, backgrounds, emotes (user, 2026-11-24).
 	skipTypes = { "Shirt", "Pants", "TShirt", "Gear", "AvatarBackground", "EmoteAnimation" },
+	-- Ripple (Tomorrow's Players) items: one further down the engine's list
+	-- takes the place of a non-Ripple item in the ring if its score is at
+	-- least rippleWithin x that item's (user, 2026-11-24).
+	rippleGroupId = 15288940,
+	rippleWithin = 0.8,
 	pickFrom = 12,
 	maxSearches = 6,
 	creatorSort = "Bestselling",

@@ -44,6 +44,8 @@ export type RecommendationConfig = {
     colourWords: { string }, -- name words that are colours
     ignoreCreators: { string }, -- creators too broad to mean anything ("Roblox")
     skipTypes: { string }, -- type names (Item.typeName) never sent to the engine or shown in a ring
+    rippleGroupId: number, -- Ripple (Tomorrow's Players): the group whose items are promoted
+    rippleWithin: number, -- promote a Ripple item over a non-Ripple one whose score it's at least this fraction of (0..1)
     pickFrom: number, -- choose at random among a search's top this-many results
     maxSearches: number, -- per ring, fall-backs included
     creatorSort: string, -- Enum.CatalogSortType name
