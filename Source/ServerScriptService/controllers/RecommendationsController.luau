@@ -20,8 +20,9 @@
 	     too few recommendations for the basis)
 	     Items the player owns are dropped here (OwnershipService).
 
-	   ok = false ("disabled", "busy", "failed", "bad request") means the
-	   client uses its own heuristic (Recommender) instead.
+	   ok = false ("disabled", "busy", "failed", "bad request"), with a
+	   short detail for "failed": the ring shows it (there's no other
+	   source of recommendations).
 
 	2. Analytics. The client reports what each ring offered and what the
 	   player did with it, and this records it: the implicit feedback the
@@ -34,8 +35,7 @@
 	Events (names and every param checked here, so a client can't invent
 	them). Item ids are CatalogueClient ids: an asset's id, or a bundle's id
 	negated. A reason is the engine's first reason (bought_with,
-	worn_with…) or the heuristic's slot (creator, complete, style,
-	wildcard, fill).
+	worn_with…).
 		rec_open    { outfit_size }      the ring opened (tapping yourself)
 		rec_ring    { trail_id, depth, basis_id, back_id, revisit, fallback?,
 		              item_1..item_7, reason_1..reason_7 }
@@ -44,8 +44,8 @@
 		                                 basis_id 0 = the whole outfit;
 		                                 back_id 0 = no back pad; revisit =
 		                                 shown again by going back; fallback
-		                                 = the engine padded it (absent when
-		                                 the heuristic made the ring)
+		                                 = the engine padded it. A ring the
+		                                 engine failed is not reported
 		rec_pick    { trail_id, depth, item_id, reason, slot }
 		                                 an item was walked onto (also
 		                                 logged as try_on)
@@ -78,8 +78,8 @@ export type RecommendationsController = typeof(setmetatable({}, RecommendationsC
 local MAX_ITEMS = 7
 local MAX_DEPTH = 500
 local MAX_COUNT = 10000
--- A reason: the heuristic's slot names, or whatever the engine says
--- (bought_with, worn_with…): a short snake_case word either way.
+-- A reason: whatever the engine says (bought_with, worn_with…), a short
+-- snake_case word.
 local function isReason(value: any): boolean
 	return type(value) == "string" and #value <= 24 and string.match(value, "^[a-z][a-z_]*$") ~= nil
 end
@@ -233,7 +233,7 @@ end
 -- ===== The engine =====
 
 -- The engine's config: Studio-authored, read once. Missing means disabled
--- (warned), so a place without it still plays on the heuristic.
+-- (warned): the ring shows "Engine failed: disabled".
 local engineConfig: any = nil
 local function engine(): any
 	if engineConfig == nil then
@@ -241,7 +241,7 @@ local function engine(): any
 		if module then
 			engineConfig = require(module :: ModuleScript)
 		else
-			warn("[RecommendationsController] No ServerScriptService.Config.RecommendationEngineConfig: the ring uses its heuristic")
+			warn("[RecommendationsController] No ServerScriptService.Config.RecommendationEngineConfig: the ring is disabled")
 			engineConfig = { enabled = false }
 		end
 	end
@@ -322,11 +322,11 @@ local function recommend(player: Player, raw: any): any
 	end)
 	if not ok then
 		warn("[RecommendationsController] engine request failed:", response)
-		return { ok = false, error = "failed" }
+		return { ok = false, error = "failed", detail = string.sub(tostring(response), 1, 120) }
 	end
 	if not response.Success then
 		warn("[RecommendationsController] engine answered", response.StatusCode, string.sub(response.Body or "", 1, 200))
-		return { ok = false, error = "failed" }
+		return { ok = false, error = "failed", detail = `HTTP {response.StatusCode} {string.sub(response.Body or "", 1, 100)}` }
 	end
 	local decoded, body = pcall(function()
 		return HttpService:JSONDecode(response.Body)
@@ -334,7 +334,7 @@ local function recommend(player: Player, raw: any): any
 	local result = decoded and type(body) == "table" and type(body.results) == "table" and body.results[1]
 	if type(result) ~= "table" or type(result.items) ~= "table" then
 		warn("[RecommendationsController] engine answer not understood:", string.sub(response.Body or "", 1, 200))
-		return { ok = false, error = "failed" }
+		return { ok = false, error = "failed", detail = "answer not understood" }
 	end
 	local items = {}
 	for _, rawItem in result.items do

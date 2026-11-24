@@ -15,7 +15,7 @@
 ]]
 
 export type RecommendationEngineConfig = {
-	enabled: boolean, -- false: the ring uses the in-game heuristic (Recommender)
+	enabled: boolean, -- false: the ring shows "Engine failed: disabled"
 	baseUrl: string, -- e.g. "https://something.trycloudflare.com" (no trailing slash)
 	secretName: string, -- the Roblox secret holding the API key, e.g. "ripple_recs"
 	count: number, -- how many to ask for; the client picks the ring from these

@@ -136,6 +136,7 @@ type Pad = {
 	label: TextLabel,
 	orb: Orb?, -- the loading orb, until the item shows
 	shown: boolean, -- its item (or card) is showing, with its floor ring
+	empty: boolean?, -- the ring has no item for it: no orb
 	item: Item?, -- nil while loading
 	reason: string?, -- why the recommender chose it
 	slot: number?, -- its place among the ring's new items (1..)
@@ -167,7 +168,7 @@ type Ring = {
 type Entry = {
 	items: { Item }?, -- its new items, once recommended
 	reasons: { string }?, -- why each was chosen
-	fallback: boolean?, -- the engine padded it (nil: the heuristic made it)
+	fallback: boolean?, -- the engine padded it with popular items
 	backItem: Item?, -- the item walked through to get here (the back pad)
 	wornAfter: string?, -- the outfit just after that item went on (to guard Undo)
 	basedOn: string?, -- the outfit its items were recommended for
@@ -558,7 +559,7 @@ local function growPad(pad: Pad, delay: number)
 		end
 		-- Loading: the orb spins where the item will be. (The floor ring
 		-- waits for the item: fillPad.)
-		if not pad.shown and not pad.orb then
+		if not pad.shown and not pad.orb and not pad.empty then
 			pad.orb = makeOrb(pad)
 		end
 	end)
@@ -606,6 +607,37 @@ local function fillPad(pad: Pad, item: Item, delay: number)
 			TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize) }):Play()
 		end
 	end)
+end
+
+-- A pad the ring has no item for: its orb goes, and it stays empty.
+local function emptyPad(pad: Pad)
+	pad.empty = true -- its orb may not have started yet (growPad)
+	if pad.orb and not pad.orb.endAt then
+		pad.orb.endAt = os.clock()
+	end
+end
+
+-- No items at all (the engine failed): the orbs go, and the first pad's
+-- card says why, in plain text (so a failure is seen, not hidden).
+local function failRing(pads: { Pad }, why: string)
+	for _, pad in pads do
+		emptyPad(pad)
+	end
+	local pad = pads[1]
+	if not pad then
+		return
+	end
+	local backing = pad.thumb.Parent :: Frame
+	backing.BackgroundColor3 = Color3.fromRGB(150, 30, 40)
+	backing.BackgroundTransparency = 0.1
+	pad.thumb.Visible = false
+	pad.label.Visible = true
+	pad.label.Text = why
+	pad.label.TextColor3 = Tokens.color.white
+	pad.label.Position = UDim2.fromScale(0.5, 0.94)
+	pad.label.Size = UDim2.fromScale(0.92, 0.88)
+	pad.card.Size = UDim2.fromScale(0, 0)
+	TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize * 2.4, RING.cardSize * 1.2) }):Play()
 end
 
 -- The dwell fill for a pad's progress (0..1): the ring fills with light
@@ -745,7 +777,7 @@ local function RecommendationRing(props: Props)
 						pad.slot = index
 						fillPad(pad, item, (index - 1) * 0.05)
 					else
-						pad.label.Text = "—"
+						emptyPad(pad)
 					end
 				end
 			end
@@ -762,13 +794,20 @@ local function RecommendationRing(props: Props)
 							table.insert(worn, entry.backItem :: Item) -- the pick may not have landed yet
 						end
 					end
-					local list, fallback = Recommender.recommend({
+					local list, fallback, why = Recommender.recommend({
 						basis = basis,
 						worn = worn,
 						exclude = shown,
 						count = #newPads,
 					})
 					if ring ~= current or closed then
+						return
+					end
+					if not list then
+						-- The engine failed: say so on the ring, and don't
+						-- remember it (coming back here asks again).
+						entry.basedOn = nil
+						failRing(newPads, why or "Engine failed")
 						return
 					end
 					local items, reasons = {}, {}
