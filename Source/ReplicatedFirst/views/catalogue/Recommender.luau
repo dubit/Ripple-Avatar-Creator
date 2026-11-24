@@ -9,9 +9,12 @@
 	the catalogue search (below) makes the ring instead, and it also tops up
 	a ring the engine left short.
 
-	The engine: ask for ENGINE_ASK items (more than a ring holds), look them
-	up in one batch, then take the first ones that fit, in the engine's
-	order: not worn, not already shown on this trail, and not crowding one
+	The engine: ask for ENGINE_ASK items (more than a ring holds; the
+	server drops ones the player owns), look them up in one batch, then take
+	the first ones that fit, in the engine's order: not worn, not already
+	shown on this trail, not a skipped type (RecommendationConfig.skipTypes:
+	classic clothing, gear, backgrounds, emotes, which aren't sent as basis
+	or worn either), and not crowding one
 	body area (a type already in the ring, or the basis's own type, is
 	saved for a second pass). Each recommendation's reason is the engine's
 	first reason (bought_with, worn_with…); boosted = a Ripple item the
@@ -461,6 +464,11 @@ local function refOf(item: Item): { kind: string, id: number }
 	return { kind = item.kind, id = item.targetId }
 end
 
+local skipTypes: { [string]: boolean } = {}
+for _, name in RecommendationConfig.skipTypes do
+	skipTypes[name] = true
+end
+
 -- The engine's list for this context, as items in its order, or nil if
 -- the engine is off or failed.
 local function fromEngine(context: Context): ({ Recommendation }?, boolean)
@@ -468,12 +476,14 @@ local function fromEngine(context: Context): ({ Recommendation }?, boolean)
 	local basis = {}
 	for _, item in context.basis do
 		basisIds[item.id] = true
-		table.insert(basis, refOf(item))
+		if not skipTypes[item.typeName] then
+			table.insert(basis, refOf(item))
+		end
 	end
 	-- First ring: the basis is the whole outfit, so nothing else is worn.
 	local worn = {}
 	for _, item in context.worn do
-		if not basisIds[item.id] then
+		if not basisIds[item.id] and not skipTypes[item.typeName] then
 			table.insert(worn, refOf(item))
 		end
 	end
@@ -531,7 +541,7 @@ local function fitRing(context: Context, candidates: { Recommendation }): { Reco
 				break
 			end
 			local item = entry.item
-			if excluded[item.id] or taken[item.id] then
+			if excluded[item.id] or taken[item.id] or skipTypes[item.typeName] or item.owned then
 				continue
 			end
 			if pass == 1 and crowded[item.typeName] then
@@ -545,10 +555,21 @@ local function fitRing(context: Context, candidates: { Recommendation }): { Reco
 	return chosen
 end
 
+-- Drops skipped types and owned items from the heuristic's picks.
+local function usable(list: { Recommendation }): { Recommendation }
+	local kept = {}
+	for _, entry in list do
+		if not skipTypes[entry.item.typeName] and not entry.item.owned then
+			table.insert(kept, entry)
+		end
+	end
+	return kept
+end
+
 function Recommender.recommend(context: Context): ({ Recommendation }, boolean?)
 	local candidates, fallback = fromEngine(context)
 	if not candidates then
-		return heuristic(context), nil
+		return usable(heuristic(context)), nil
 	end
 	local list = fitRing(context, candidates)
 	local short = context.count - #list
@@ -558,7 +579,7 @@ function Recommender.recommend(context: Context): ({ Recommendation }, boolean?)
 		for _, entry in list do
 			exclude[entry.item.id] = true
 		end
-		for _, entry in heuristic({ basis = context.basis, worn = context.worn, exclude = exclude, count = short }) do
+		for _, entry in usable(heuristic({ basis = context.basis, worn = context.worn, exclude = exclude, count = short })) do
 			table.insert(list, entry)
 		end
 	end

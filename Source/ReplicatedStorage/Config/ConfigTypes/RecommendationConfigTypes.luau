@@ -43,6 +43,7 @@ export type RecommendationConfig = {
     styleWords: { string }, -- name words that describe a style, tried before colours
     colourWords: { string }, -- name words that are colours
     ignoreCreators: { string }, -- creators too broad to mean anything ("Roblox")
+    skipTypes: { string }, -- type names (Item.typeName) never sent to the engine or shown in a ring
     pickFrom: number, -- choose at random among a search's top this-many results
     maxSearches: number, -- per ring, fall-backs included
     creatorSort: string, -- Enum.CatalogSortType name

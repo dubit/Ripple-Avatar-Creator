@@ -34,6 +34,11 @@
 	    ring (the same items) round the player. If the outfit has changed some
 	    other way since (the HUD), nothing is undone: it only goes back a ring
 	  · nothing is recommended twice on one trail
+	  · if the outfit changes some other way while a ring is up (taking
+	    something off in the HUD, say), that ring's items are recommended
+	    again for the new outfit once the menus are closed (`hold` false),
+	    so an item taken off stops shaping it (user, 2026-11-24). The new
+	    items are new: nothing already shown comes back
 
 	  · pads sit on whatever is below them (raycast down); one that would be
 	    inside a wall is pulled in towards the centre, and one with no ground
@@ -50,6 +55,7 @@
 	  open      whether the ring is showing
 	  wornIds   the item ids being worn (CatalogueClient ids), oldest first
 	  onClose   called when the ring closes itself (walking away, respawn)
+	  hold      a menu is open: don't refresh the ring for outfit changes yet
 ]]
 
 local Players = game:GetService("Players")
@@ -76,6 +82,7 @@ export type Props = {
 	open: boolean,
 	wornIds: { number },
 	onClose: () -> (),
+	hold: boolean?,
 }
 
 local RING = RecommendationConfig.ring
@@ -163,6 +170,8 @@ type Entry = {
 	fallback: boolean?, -- the engine padded it (nil: the heuristic made it)
 	backItem: Item?, -- the item walked through to get here (the back pad)
 	wornAfter: string?, -- the outfit just after that item went on (to guard Undo)
+	basedOn: string?, -- the outfit its items were recommended for
+	from: Vector3?, -- the direction its back pad was put in
 }
 
 local trails = 0 -- numbers each trail (rec_* trail_id)
@@ -669,6 +678,7 @@ local function RecommendationRing(props: Props)
 		-- Builds a ring for the trail's top entry round the player. `from`:
 		-- the direction (flat) the back pad goes in.
 		local function openRing(entry: Entry, from: Vector3?)
+			entry.from = from
 			local position = rootPosition()
 			if not position then
 				return
@@ -743,6 +753,7 @@ local function RecommendationRing(props: Props)
 				fill(entry.items, entry.reasons or {}, true, entry.fallback)
 			else
 				task.spawn(function()
+					entry.basedOn = signature(latest.current.wornIds)
 					local worn = itemsFor(latest.current.wornIds)
 					local basis = worn
 					if entry.backItem then
@@ -814,6 +825,8 @@ local function RecommendationRing(props: Props)
 			replaceRing(entry, flat(oldCentre - position))
 		end
 
+		local undoing: number? = nil -- when an Undo was sent, until it lands
+
 		local function goBack()
 			local depth = #trail
 			local entry = table.remove(trail) :: Entry
@@ -821,6 +834,7 @@ local function RecommendationRing(props: Props)
 			local undone = entry.wornAfter ~= nil and entry.wornAfter == signature(latest.current.wornIds)
 			if undone then
 				Network.Intent.Avatar:FireServer(Network.Actions.Avatar.Undo)
+				undoing = os.clock()
 			end
 			report("rec_back", { trail_id = trailId, depth = depth, undone = undone })
 			picked = nil
@@ -850,12 +864,33 @@ local function RecommendationRing(props: Props)
 				return
 			end
 			-- The latest pick's outfit, once the server has put it on.
+			local wornNow = signature(latest.current.wornIds)
 			if picked and table.find(latest.current.wornIds, picked.id) then
-				trail[#trail].wornAfter = signature(latest.current.wornIds)
+				local top = trail[#trail]
+				top.wornAfter = wornNow
+				-- Its ring was asked for with the pick already counted as worn.
+				if top.basedOn then
+					top.basedOn = wornNow
+				end
 				picked = nil
 			end
 			local active = ring
 			if not active then
+				return
+			end
+			-- An Undo from the back pad has landed (or is taking too long).
+			local top = trail[#trail]
+			if undoing and (wornNow == top.basedOn or os.clock() - undoing > 3) then
+				undoing = nil
+			end
+			-- The outfit changed some other way: recommend this ring again,
+			-- once the menus are closed.
+			if not latest.current.hold and not picked and not undoing
+				and top.items and top.basedOn and top.basedOn ~= wornNow then
+				top.items = nil
+				top.reasons = nil
+				top.fallback = nil
+				replaceRing(top, top.from)
 				return
 			end
 			local feet = flat(hrp.Position)

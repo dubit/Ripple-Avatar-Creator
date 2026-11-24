@@ -18,6 +18,7 @@
 	     items: { kind, id, assetTypeId?, groupId?, score?, reasons, boosted }
 	     fallback: the engine padded the list with popular items (it had
 	     too few recommendations for the basis)
+	     Items the player owns are dropped here (OwnershipService).
 
 	   ok = false ("disabled", "busy", "failed", "bad request") means the
 	   client uses its own heuristic (Recommender) instead.
@@ -63,6 +64,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local AbstractController = require(script.Parent.AbstractController)
+local OwnershipModel = require(script.Parent.Parent.models.userSession.OwnershipModel)
+local OwnershipService = require(script.Parent.Parent.services.game.OwnershipService)
 local Bolt = require(ReplicatedStorage.Bolt)
 local Network = require(ReplicatedStorage.Network)
 
@@ -341,10 +344,31 @@ local function recommend(player: Player, raw: any): any
 			table.insert(items, item)
 		end
 	end
+	-- Not things the player owns (user, 2026-11-24). The lookups run in
+	-- parallel and are remembered for the session (OwnershipModel), so the
+	-- client's items show as owned elsewhere too.
+	local ownership = OwnershipModel.get(tostring(player.UserId))
+	local dropped = 0
+	if ownership then
+		local refs = {}
+		for _, item in items do
+			table.insert(refs, { targetId = item.id, kind = item.kind })
+		end
+		OwnershipService.check(player, ownership, refs)
+		local kept = {}
+		for _, item in items do
+			if ownership:owns(OwnershipService.keyOf(item.id, item.kind)) then
+				dropped += 1
+			else
+				table.insert(kept, item)
+			end
+		end
+		items = kept
+	end
 	if config.debug then
 		print(string.format(
-			"[RecommendationsController] engine: %d items for %s (basis %d, worn %d, exclude %d) in %.2fs%s",
-			#items, player.Name, #basis, #worn, #exclude, os.clock() - started,
+			"[RecommendationsController] engine: %d items (%d owned dropped) for %s (basis %d, worn %d, exclude %d) in %.2fs%s",
+			#items, dropped, player.Name, #basis, #worn, #exclude, os.clock() - started,
 			if result.fallback then ", fallback" else ""
 		))
 	end

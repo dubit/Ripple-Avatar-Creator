@@ -693,7 +693,7 @@ local function Hud()
 		}, {
 			Blur = e(BlurDriver, { active = nav.isOpen }),
 			Renderer = e(WorldRenderer, { options = world.options, config = world.config }),
-			Ring = e(RecommendationRing, { open = ringOpen, wornIds = rawLook.worn, onClose = closeRing }),
+			Ring = e(RecommendationRing, { open = ringOpen, wornIds = rawLook.worn, onClose = closeRing, hold = nav.isOpen }),
 			World = e(React.Fragment, nil, worldHuds),
 			Panel = e(React.Fragment, nil, panels),
 			Share = e(ShareDialog, {

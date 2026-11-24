@@ -51,6 +51,9 @@ local config: RecommendationConfig = {
 		"gray", "gold", "golden", "silver", "teal", "cyan", "navy", "beige", "cream", "lavender", "lilac",
 	},
 	ignoreCreators = { "Roblox" },
+	-- Types that neither go to the engine (basis / worn) nor come back in a
+	-- ring: classic clothing, gear, backgrounds, emotes (user, 2026-11-24).
+	skipTypes = { "Shirt", "Pants", "TShirt", "Gear", "AvatarBackground", "EmoteAnimation" },
 	pickFrom = 12,
 	maxSearches = 6,
 	creatorSort = "Bestselling",
