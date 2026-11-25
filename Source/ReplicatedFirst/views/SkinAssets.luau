@@ -173,10 +173,10 @@ SkinAssets.skyStrips = {
 -- dwell fill.
 SkinAssets.ringGlow = 108768722798713
 SkinAssets.ringFill = 138336969382071
--- The onboarding pointer (OnboardingHint): a big hand cursor pointing down,
--- white with a dark outline. Built by tools/build_pointer.py
--- (assets/ui/pointer.png) from the icon font's pan_tool_alt.
-SkinAssets.pointer = 94440335453728
+-- The onboarding pointer (OnboardingHint): a white 3D hand, finger up,
+-- shaded in our oranges. Built by tools/build_pointer.py
+-- (assets/ui/pointer.png, 370x480) from Google's Noto Emoji 3D.
+SkinAssets.pointer = 119810592222571
 
 SkinAssets.clearSkybox = { side = 13805860897, top = 13500260075, down = 134814657408892 }
 

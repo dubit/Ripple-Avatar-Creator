@@ -1,49 +1,61 @@
-"""Build the onboarding pointer: a big pointing-hand cursor, finger down.
+"""Build the onboarding pointer: a white 3D hand, finger up, shaded in our oranges.
 
-Usage: python tools/build_pointer.py <msr.ttf> [out.png]
+Usage: python tools/build_pointer.py <emoji_u1f446.png> [out.png]
 
-<msr.ttf> is Material Symbols Rounded instanced as in build_icons.py. The
-glyph is pan_tool_alt (the "link" hand cursor), turned to point down, white
-with a dark outline so it reads on any floor or outfit. Writes 256px
-(default assets/ui/pointer.png); upload it with mcp upload_image and put the
-id in SkinAssets.pointer.
+The source is Google's Noto Emoji 3D "backhand index pointing up" (Apache
+2.0): github.com/googlefonts/noto-emoji, 3D/png/512/emoji_u1f446.png. Its
+shading is gradient-mapped onto our palette, dark to light: borderOrange,
+accent, accentSoft, then near-white, so the hand reads white with brand
+colour in the shadows. Writes assets/ui/pointer.png by default; upload it
+with mcp upload_image and put the id in SkinAssets.pointer.
 """
 
 import sys
 
-from fontTools.ttLib import TTFont
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image
 
-CELL = 256
-SUPERSAMPLE = 4
-OUTLINE = 0.06  # of the cell
-GLYPH = "pan_tool_alt"
+# (lightness 0..1, colour), dark to light.
+RAMP = [
+    (0.0, (106, 42, 0)),  # borderOrange
+    (0.18, (230, 110, 20)),  # accent, a little darker
+    (0.42, (255, 176, 107)),  # accentSoft
+    (0.68, (255, 228, 204)),
+    (0.9, (255, 250, 245)),
+    (1.0, (255, 255, 255)),
+]
+
+
+def ramp(t: float) -> tuple:
+    for (a, ca), (b, cb) in zip(RAMP, RAMP[1:]):
+        if t <= b:
+            k = (t - a) / (b - a)
+            return tuple(round(ca[i] + (cb[i] - ca[i]) * k) for i in range(3))
+    return RAMP[-1][1]
+
+
+def lightness(r: int, g: int, b: int) -> float:
+    return 0.299 * r + 0.587 * g + 0.114 * b
 
 
 def main() -> None:
     src = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else "assets/ui/pointer.png"
-    codepoints = {name: cp for cp, name in TTFont(src).getBestCmap().items()}
+    image = Image.open(src).convert("RGBA")
+    image = image.crop(image.getchannel("A").getbbox())
+    px = image.load()
+    w, h = image.size
 
-    big = CELL * SUPERSAMPLE
-    inner = int(big * (1 - 2 * OUTLINE))  # glyph size, leaving room for the outline
-    font = ImageFont.truetype(src, inner)
-    fill = Image.new("L", (big, big), 0)
-    pad = (big - inner) // 2
-    ImageDraw.Draw(fill).text((pad, pad + inner), chr(codepoints[GLYPH]), font=font, fill=255, anchor="ls")
-    fill = fill.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.MinFilter(5))
-    fill = fill.rotate(180)
-
-    outline = fill
-    for _ in range(4):  # grow by OUTLINE in four steps (big MaxFilters are slow)
-        outline = outline.filter(ImageFilter.MaxFilter(int(big * OUTLINE / 2) | 1))
-
-    image = Image.new("RGBA", (big, big), (26, 26, 26, 0))
-    image.putalpha(outline)
-    white = Image.new("RGBA", (big, big), (255, 255, 255, 255))
-    image.paste(white, (0, 0), fill)
-    image.resize((CELL, CELL), Image.LANCZOS).save(out)
-    print(f"Wrote {out}")
+    # Stretch the hand's own range (1st..99th percentile) over the ramp.
+    values = sorted(lightness(*px[x, y][:3]) for y in range(h) for x in range(w) if px[x, y][3] > 200)
+    lo, hi = values[len(values) // 100], values[len(values) * 99 // 100]
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a:
+                t = min(1.0, max(0.0, (lightness(r, g, b) - lo) / (hi - lo)))
+                px[x, y] = ramp(t) + (a,)
+    image.save(out)
+    print(f"Wrote {out} ({w}x{h})")
 
 
 if __name__ == "__main__":

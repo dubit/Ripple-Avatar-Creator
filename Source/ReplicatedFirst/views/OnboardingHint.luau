@@ -48,12 +48,13 @@ local DUB = 0.75 -- the second beat's strength, against the first
 
 -- The pointer: a big hand cursor hovering over the player, finger up and
 -- its tip on their chest, pressing (shrinking a little) on each beat, like
--- a click. The image points down (SkinAssets.pointer): turned 180°. It's
+-- a click (SkinAssets.pointer, a white 3D hand). It's
 -- screen UI placed over the chest each frame, not a BillboardGui: in the
 -- world the highlight's fill draws over it (and it casts a shadow).
-local POINTER_STUDS = 3.2 -- its size, as if it were in the world at the player
+local POINTER_STUDS = 3.2 -- its height, as if it were in the world at the player
+local POINTER_ASPECT = 370 / 480 -- the image's width / height
 local POINTER_PRESS = 0.12 -- how much it shrinks on a beat (0..1)
-local TIP = Vector2.new(0.35, 0.06) -- the fingertip in the turned image (0..1, from top left)
+local TIP = Vector2.new(0.39, 0) -- the fingertip in the image (0..1, from top left)
 local CHEST = 0.5 -- studs above the root part's centre for the fingertip
 
 local player = Players.LocalPlayer
@@ -96,9 +97,8 @@ local function build(character: Model): Parts
 	local pointer = Instance.new("ImageLabel")
 	pointer.Name = "Pointer"
 	pointer.BackgroundTransparency = 1
-	pointer.AnchorPoint = TIP -- turning about the centre keeps the tip here
+	pointer.AnchorPoint = TIP -- so the press shrinks it toward the fingertip
 	pointer.Image = `rbxassetid://{SkinAssets.pointer}`
-	pointer.Rotation = 180
 	pointer.ImageTransparency = 1
 	pointer.Parent = card
 
@@ -183,7 +183,7 @@ local function OnboardingHint(props: { active: boolean })
 			-- Pixels per stud at the player's distance.
 			local perStud = camera.ViewportSize.Y / (2 * at.Z * math.tan(math.rad(camera.FieldOfView) / 2))
 			local size = POINTER_STUDS * perStud * (1 - POINTER_PRESS * beat)
-			p.pointer.Size = UDim2.fromOffset(size, size)
+			p.pointer.Size = UDim2.fromOffset(size * POINTER_ASPECT, size)
 			p.pointer.Position = UDim2.fromOffset(at.X, at.Y)
 			p.pointer.ImageTransparency = 1 - visible
 		end)
