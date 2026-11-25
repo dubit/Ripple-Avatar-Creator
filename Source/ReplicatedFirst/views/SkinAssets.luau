@@ -173,6 +173,10 @@ SkinAssets.skyStrips = {
 -- dwell fill.
 SkinAssets.ringGlow = 108768722798713
 SkinAssets.ringFill = 138336969382071
+-- The onboarding pointer (OnboardingHint): a big hand cursor pointing down,
+-- white with a dark outline. Built by tools/build_pointer.py
+-- (assets/ui/pointer.png) from the icon font's pan_tool_alt.
+SkinAssets.pointer = 94440335453728
 
 SkinAssets.clearSkybox = { side = 13805860897, top = 13500260075, down = 134814657408892 }
 

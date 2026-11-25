@@ -4,8 +4,8 @@
 	OnboardingHint (client view, renders nothing in the React tree)
 
 	Teaches new players to tap themselves (it opens the recommendation ring):
-	their character flashes (a Roblox Highlight, mostly fill) and a call to
-	action floats over their head. It shows once they've stood still for
+	their character pulses like a heartbeat (a Roblox Highlight, mostly
+	fill) and a big hand cursor over their head points down at them. It shows once they've stood still for
 	IDLE_SECONDS with nothing open, fades while they move or a menu or the
 	ring is open, and stops for good the first time they open the ring
 	(OnboardingModel step "ring", marked by the server on rec_open; reset
@@ -21,13 +21,13 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
 local views = script.Parent
 local Tokens = require(views:WaitForChild("Tokens"))
+local SkinAssets = require(views:WaitForChild("SkinAssets"))
 local useBoltState = require(views:WaitForChild("hooks"):WaitForChild("useBoltState"))
 
 local STEP = "ring"
@@ -35,22 +35,42 @@ local IDLE_SECONDS = 5 -- standing still this long with nothing open
 local MOVING = 0.5 -- studs/second of root-part speed that counts as moving
 local FADE = 4 -- per second, in and out
 
--- The flash: the fill pulses from nothing to FILL_PEAK opacity and back,
--- once every FLASH_PERIOD seconds; the outline stays faint.
-local FILL_COLOUR = Tokens.color.white
-local FILL_PEAK = 0.55 -- opacity at the top of a flash (0..1)
+-- The flash: the fill beats like a heart, in twos (lub-dub, rest), once
+-- every BEAT_PERIOD seconds; the outline stays faint.
+local FILL_COLOUR = Tokens.swatch.Yellow
+local FILL_PEAK = 0.6 -- opacity at the top of the first beat (0..1)
 local OUTLINE_COLOUR = Tokens.color.accent
 local OUTLINE_PEAK = 0.35
-local FLASH_PERIOD = 1.4
+local BEAT_PERIOD = 1.1 -- seconds from one lub to the next
+local BEAT_GAP = 0.22 -- seconds from lub to dub
+local BEAT_RISE = 0.06 -- seconds for a beat to peak
+local DUB = 0.75 -- the second beat's strength, against the first
+
+-- The pointer: a big hand cursor over the head, pointing down at the
+-- player, poking down on each beat.
+local POINTER_STUDS = 3.2 -- its size
+local POINTER_POKE = 0.5 -- studs it dips on a beat
+local ABOVE_HEAD = 2.4 -- its centre above the head's centre (the tip just clears the head)
+local ABOVE_ROOT = 4.2 -- the same with no head yet
 
 local player = Players.LocalPlayer
 
-local function ctaText(): string
-	local touch = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
-	return (if touch then "Tap" else "Click") .. " yourself for outfit ideas"
+-- One heartbeat bump: 0 at x = 0, up to 1 at BEAT_RISE, then easing away.
+local function bump(x: number): number
+	if x <= 0 then
+		return 0
+	end
+	local t = x / BEAT_RISE
+	return t * math.exp(1 - t)
 end
 
-type Parts = { highlight: Highlight, card: BillboardGui, pill: Frame, label: TextLabel }
+-- 0..1: lub, dub, rest.
+local function heartbeat(clock: number): number
+	local t = clock % BEAT_PERIOD
+	return math.max(bump(t), DUB * bump(t - BEAT_GAP))
+end
+
+type Parts = { highlight: Highlight, card: BillboardGui, pointer: ImageLabel }
 
 local function build(character: Model): Parts
 	local highlight = Instance.new("Highlight")
@@ -64,37 +84,24 @@ local function build(character: Model): Parts
 	highlight.Parent = character
 
 	local card = Instance.new("BillboardGui")
-	card.Name = "OnboardingCta"
+	card.Name = "OnboardingPointer"
 	card.AlwaysOnTop = false -- it sits above the head; nothing else is in the way
 	card.LightInfluence = 0
-	card.Size = UDim2.fromOffset(380, 58)
-	card.StudsOffsetWorldSpace = Vector3.new(0, 2.6, 0)
+	card.Size = UDim2.fromScale(POINTER_STUDS, POINTER_STUDS)
+	card.StudsOffsetWorldSpace = Vector3.new(0, ABOVE_HEAD, 0)
 	card.Parent = player:WaitForChild("PlayerGui")
 
-	local pill = Instance.new("Frame")
-	pill.Name = "Pill"
-	pill.AnchorPoint = Vector2.new(0.5, 0.5)
-	pill.Position = UDim2.fromScale(0.5, 0.5)
-	pill.Size = UDim2.fromScale(1, 1)
-	pill.BackgroundColor3 = Tokens.color.black
-	pill.BackgroundTransparency = 1
-	pill.Parent = card
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = pill
+	local pointer = Instance.new("ImageLabel")
+	pointer.Name = "Pointer"
+	pointer.BackgroundTransparency = 1
+	pointer.AnchorPoint = Vector2.new(0.5, 0.5)
+	pointer.Position = UDim2.fromScale(0.5, 0.5)
+	pointer.Size = UDim2.fromScale(1, 1)
+	pointer.Image = `rbxassetid://{SkinAssets.pointer}`
+	pointer.ImageTransparency = 1
+	pointer.Parent = card
 
-	local label = Instance.new("TextLabel")
-	label.Name = "Text"
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.FontFace = Tokens.font(800)
-	label.TextSize = 26
-	label.TextColor3 = Tokens.color.white
-	label.TextTransparency = 1
-	label.Text = ctaText()
-	label.Parent = pill
-
-	return { highlight = highlight, card = card, pill = pill, label = label }
+	return { highlight = highlight, card = card, pointer = pointer }
 end
 
 local function OnboardingHint(props: { active: boolean })
@@ -163,22 +170,20 @@ local function OnboardingHint(props: { active: boolean })
 			local anchor = head or root
 			if p.card.Adornee ~= anchor then
 				p.card.Adornee = anchor
-				p.card.StudsOffsetWorldSpace = Vector3.new(0, if head then 2.6 else 4.2, 0)
 			end
 			if visible > 0 then
 				clock += dt
 			else
-				clock = 0 -- each showing starts at the top of a flash
+				clock = 0 -- each showing starts on a beat
 			end
-			-- 1 at the start of each period, easing down to 0 and back.
-			local flash = (math.cos(clock / FLASH_PERIOD * 2 * math.pi) + 1) / 2
-			p.highlight.FillTransparency = 1 - FILL_PEAK * flash * visible
+			local beat = heartbeat(clock)
+			p.highlight.FillTransparency = 1 - FILL_PEAK * beat * visible
 			p.highlight.OutlineTransparency = 1 - OUTLINE_PEAK * visible
 			p.highlight.Enabled = visible > 0
 			p.card.Enabled = visible > 0
-			p.pill.BackgroundTransparency = 1 - 0.7 * visible
-			p.label.TextTransparency = 1 - visible
-			p.pill.Size = UDim2.fromScale(0.9 + 0.1 * visible, 0.9 + 0.1 * visible)
+			p.card.StudsOffsetWorldSpace =
+				Vector3.new(0, (if head then ABOVE_HEAD else ABOVE_ROOT) - POINTER_POKE * beat, 0)
+			p.pointer.ImageTransparency = 1 - visible
 		end)
 
 		return function()
