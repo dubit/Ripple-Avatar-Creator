@@ -12,7 +12,7 @@ with mcp upload_image and put the id in SkinAssets.pointer.
 
 import sys
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 # (lightness 0..1, colour), dark to light.
 RAMP = [
@@ -44,16 +44,28 @@ def main() -> None:
     image = image.crop(image.getchannel("A").getbbox())
     px = image.load()
     w, h = image.size
+    # Shade from a slightly softened copy: the source's fine grain would
+    # otherwise speckle across the colour steps.
+    soft = image.filter(ImageFilter.GaussianBlur(1.5)).load()
 
-    # Stretch the hand's own range (1st..99th percentile) over the ramp.
-    values = sorted(lightness(*px[x, y][:3]) for y in range(h) for x in range(w) if px[x, y][3] > 200)
-    lo, hi = values[len(values) // 100], values[len(values) * 99 // 100]
+    # By area, not raw lightness: t is the share of the hand darker than this
+    # pixel, so each step of RAMP covers that share of the hand (its shading
+    # is mostly light; raw lightness would leave the colours a thin rim).
+    values = sorted(round(lightness(*soft[x, y][:3])) for y in range(h) for x in range(w) if px[x, y][3] > 200)
+    below = {}
+    for index, value in enumerate(values):
+        below.setdefault(value, index)
+    share = [0.0] * 256
+    last = 0.0
+    for value in range(256):
+        if value in below:
+            last = below[value] / len(values)
+        share[value] = last
     for y in range(h):
         for x in range(w):
             r, g, b, a = px[x, y]
             if a:
-                t = min(1.0, max(0.0, (lightness(r, g, b) - lo) / (hi - lo)))
-                px[x, y] = ramp(t) + (a,)
+                px[x, y] = ramp(share[round(lightness(*soft[x, y][:3]))]) + (a,)
     image.save(out)
     print(f"Wrote {out} ({w}x{h})")
 

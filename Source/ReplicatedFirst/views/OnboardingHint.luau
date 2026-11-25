@@ -157,7 +157,8 @@ local function OnboardingHint(props: { active: boolean })
 				idle = 0
 			end
 			local target = if idle >= IDLE_SECONDS then 1 else 0
-			visible = if target > visible then math.min(1, visible + FADE * dt) else math.max(0, visible - FADE * dt)
+			-- Toward the target, stopping there (not overshooting back and forth).
+			visible = if target == 1 then math.min(1, visible + FADE * dt) else math.max(0, visible - FADE * dt)
 			if target == 1 and not reported then
 				reported = true
 				Network.Intent.Recommendations:FireServer(
