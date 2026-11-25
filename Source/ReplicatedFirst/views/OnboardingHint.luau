@@ -5,7 +5,7 @@
 
 	Teaches new players to tap themselves (it opens the recommendation ring):
 	their character pulses like a heartbeat (a Roblox Highlight, mostly
-	fill) and a big hand cursor over their head points down at them. It shows once they've stood still for
+	fill) and a big hand cursor hovers over them, drawn on top. It shows once they've stood still for
 	IDLE_SECONDS with nothing open, fades while they move or a menu or the
 	ring is open, and stops for good the first time they open the ring
 	(OnboardingModel step "ring", marked by the server on rec_open; reset
@@ -46,12 +46,15 @@ local BEAT_GAP = 0.22 -- seconds from lub to dub
 local BEAT_RISE = 0.06 -- seconds for a beat to peak
 local DUB = 0.75 -- the second beat's strength, against the first
 
--- The pointer: a big hand cursor over the head, pointing down at the
--- player, poking down on each beat.
-local POINTER_STUDS = 3.2 -- its size
-local POINTER_POKE = 0.5 -- studs it dips on a beat
-local ABOVE_HEAD = 2.4 -- its centre above the head's centre (the tip just clears the head)
-local ABOVE_ROOT = 4.2 -- the same with no head yet
+-- The pointer: a big hand cursor hovering over the player, finger up and
+-- its tip on their chest, pressing (shrinking a little) on each beat, like
+-- a click. The image points down (SkinAssets.pointer): turned 180°. It's
+-- screen UI placed over the chest each frame, not a BillboardGui: in the
+-- world the highlight's fill draws over it (and it casts a shadow).
+local POINTER_STUDS = 3.2 -- its size, as if it were in the world at the player
+local POINTER_PRESS = 0.12 -- how much it shrinks on a beat (0..1)
+local TIP = Vector2.new(0.35, 0.06) -- the fingertip in the turned image (0..1, from top left)
+local CHEST = 0.5 -- studs above the root part's centre for the fingertip
 
 local player = Players.LocalPlayer
 
@@ -70,7 +73,7 @@ local function heartbeat(clock: number): number
 	return math.max(bump(t), DUB * bump(t - BEAT_GAP))
 end
 
-type Parts = { highlight: Highlight, card: BillboardGui, pointer: ImageLabel }
+type Parts = { highlight: Highlight, card: ScreenGui, pointer: ImageLabel }
 
 local function build(character: Model): Parts
 	local highlight = Instance.new("Highlight")
@@ -83,21 +86,19 @@ local function build(character: Model): Parts
 	highlight.OutlineTransparency = 1
 	highlight.Parent = character
 
-	local card = Instance.new("BillboardGui")
+	local card = Instance.new("ScreenGui")
 	card.Name = "OnboardingPointer"
-	card.AlwaysOnTop = false -- it sits above the head; nothing else is in the way
-	card.LightInfluence = 0
-	card.Size = UDim2.fromScale(POINTER_STUDS, POINTER_STUDS)
-	card.StudsOffsetWorldSpace = Vector3.new(0, ABOVE_HEAD, 0)
+	card.IgnoreGuiInset = true -- viewport coordinates
+	card.ResetOnSpawn = false
+	card.DisplayOrder = -1 -- under the HUD
 	card.Parent = player:WaitForChild("PlayerGui")
 
 	local pointer = Instance.new("ImageLabel")
 	pointer.Name = "Pointer"
 	pointer.BackgroundTransparency = 1
-	pointer.AnchorPoint = Vector2.new(0.5, 0.5)
-	pointer.Position = UDim2.fromScale(0.5, 0.5)
-	pointer.Size = UDim2.fromScale(1, 1)
+	pointer.AnchorPoint = TIP -- turning about the centre keeps the tip here
 	pointer.Image = `rbxassetid://{SkinAssets.pointer}`
+	pointer.Rotation = 180
 	pointer.ImageTransparency = 1
 	pointer.Parent = card
 
@@ -133,7 +134,8 @@ local function OnboardingHint(props: { active: boolean })
 			shownFor = nil
 		end
 
-		local connection = RunService.Heartbeat:Connect(function(dt: number)
+		-- RenderStepped: the pointer follows the camera without a frame's lag.
+		local connection = RunService.RenderStepped:Connect(function(dt: number)
 			local character = player.Character
 			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 			if not character or not root then
@@ -165,12 +167,6 @@ local function OnboardingHint(props: { active: boolean })
 			end
 
 			local p = parts :: Parts
-			-- The avatar loader swaps the head as the look is applied: follow it.
-			local head = character:FindFirstChild("Head") :: BasePart?
-			local anchor = head or root
-			if p.card.Adornee ~= anchor then
-				p.card.Adornee = anchor
-			end
 			if visible > 0 then
 				clock += dt
 			else
@@ -180,9 +176,15 @@ local function OnboardingHint(props: { active: boolean })
 			p.highlight.FillTransparency = 1 - FILL_PEAK * beat * visible
 			p.highlight.OutlineTransparency = 1 - OUTLINE_PEAK * visible
 			p.highlight.Enabled = visible > 0
-			p.card.Enabled = visible > 0
-			p.card.StudsOffsetWorldSpace =
-				Vector3.new(0, (if head then ABOVE_HEAD else ABOVE_ROOT) - POINTER_POKE * beat, 0)
+			local camera = workspace.CurrentCamera
+			local chest = (root.CFrame * CFrame.new(0, CHEST, 0)).Position
+			local at, onScreen = camera:WorldToViewportPoint(chest)
+			p.card.Enabled = visible > 0 and onScreen
+			-- Pixels per stud at the player's distance.
+			local perStud = camera.ViewportSize.Y / (2 * at.Z * math.tan(math.rad(camera.FieldOfView) / 2))
+			local size = POINTER_STUDS * perStud * (1 - POINTER_PRESS * beat)
+			p.pointer.Size = UDim2.fromOffset(size, size)
+			p.pointer.Position = UDim2.fromOffset(at.X, at.Y)
 			p.pointer.ImageTransparency = 1 - visible
 		end)
 
