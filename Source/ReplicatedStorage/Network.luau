@@ -93,6 +93,12 @@ local NetworkConfig = {
 			communityFavourites = {},
 			communityRecent = {},
 		},
+		-- Onboarding steps the player has done (persisted; OnboardingModel):
+		-- step names ("ring"), in the order done.
+		Onboarding = {
+			ownerId = "",
+			done = {},
+		},
 		-- What the player owns, as far as we've checked, and their latest
 		-- purchase (session only; OwnershipModel). `owned` holds "Asset:123" /
 		-- "Bundle:45" keys; `purchase.id` echoes the client's request id.
@@ -205,6 +211,11 @@ export type OutfitsState = {
 	published: { string }, -- codes shared, so on Community (Mine), newest first
 	communityFavourites: { string }, -- Community codes starred, newest first
 	communityRecent: { string }, -- Community codes opened lately, newest first
+}
+
+export type OnboardingState = {
+	ownerId: string,
+	done: { string }, -- steps done ("ring": opened the recommendation ring)
 }
 
 export type PurchaseResult = {

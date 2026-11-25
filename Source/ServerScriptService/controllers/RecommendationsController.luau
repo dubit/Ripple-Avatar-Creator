@@ -53,6 +53,10 @@
 		                                 an item was walked onto (also
 		                                 logged as try_on)
 		rec_back    { trail_id, depth, undone }   the back pad was used
+		onboarding_hint { step }          the onboarding hint showed (first
+		                                 time a session; step "ring": tap
+		                                 yourself). Not a ring event, but
+		                                 its funnel ends at rec_open
 		rec_close   { trail_id, depth, rings, picks, reason }
 		                                 the ring closed: reason tap /
 		                                 walk_away / respawn
@@ -68,6 +72,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local AbstractController = require(script.Parent.AbstractController)
 local OwnershipModel = require(script.Parent.Parent.models.userSession.OwnershipModel)
+local OnboardingModel = require(script.Parent.Parent.models.user.OnboardingModel)
 local OwnershipService = require(script.Parent.Parent.services.game.OwnershipService)
 local RobloxAvatarLookupService = require(script.Parent.Parent.services.game.RobloxAvatarLookupService)
 local Bolt = require(ReplicatedStorage.Bolt)
@@ -160,6 +165,17 @@ local HANDLERS: { [string]: (Player, any) -> () } = {
 	rec_open = function(player, raw)
 		if isInt(raw.outfit_size, 0, 200) then
 			track(player, "rec_open", { outfit_size = raw.outfit_size })
+		end
+		-- They've found the ring: the onboarding hint stops (OnboardingHint).
+		local onboarding = OnboardingModel.get(tostring(player.UserId))
+		if onboarding then
+			onboarding:complete("ring")
+		end
+	end,
+	-- The onboarding hint showed (first time this session).
+	onboarding_hint = function(player, raw)
+		if raw.step == "ring" then
+			track(player, "onboarding_hint", { step = raw.step })
 		end
 	end,
 	rec_ring = function(player, raw)
