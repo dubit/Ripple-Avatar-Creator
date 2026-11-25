@@ -697,7 +697,7 @@ local function Hud()
 			Renderer = e(WorldRenderer, { options = world.options, config = world.config }),
 			Ring = e(RecommendationRing, { open = ringOpen, wornIds = rawLook.worn, onClose = closeRing, hold = nav.isOpen }),
 			Onboarding = e(OnboardingHint, { active = not nav.isOpen and not ringOpen }),
-			OthersRings = e(OthersRings),
+			OthersRings = e(OthersRings, { enabled = not nav.isOpen }),
 			World = e(React.Fragment, nil, worldHuds),
 			Panel = e(React.Fragment, nil, panels),
 			Share = e(ShareDialog, {

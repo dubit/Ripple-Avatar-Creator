@@ -6,9 +6,18 @@
 	Other players' recommendation rings, so you can see what they're
 	looking at: each item floats, turns and bobs over its spot like in
 	your own ring (RecommendationRing), but there's nothing else: no glow
-	on the floor, no loading orbs, no labels, and nothing to stand on or
-	pick. The back pad's item is a ghost. An item with no 3D view gets its
-	thumbnail on a card.
+	on the floor, no loading orbs, no labels, and nothing to stand on. The
+	back pad's item is a ghost. An item with no 3D view gets its thumbnail
+	on a card.
+
+	Tapping or clicking one of their items wears it (TryOn, replacing the
+	same type, like a pick in your own ring): it pops, and that's reported
+	as rec_others_pick (trying it out, user 2026-11-25). The hit test is a
+	sphere round each item (the items aren't raycast targets, so they
+	can't get in the way of your own ring's pad placement).
+
+	Props:
+	  enabled   false while a menu is open (taps go to the menu)
 
 	What each ring holds comes from RingsModel (Network.State.Rings), which
 	each player's own ring fills in (ShareRing). Your own entry is skipped:
@@ -31,7 +40,9 @@ local RecommendationConfig = require(ReplicatedStorage:WaitForChild("Config"):Wa
 
 local views = script.Parent
 local Tokens = require(views:WaitForChild("Tokens"))
+local Sounds = require(views:WaitForChild("Sounds"))
 local useBoltState = require(views:WaitForChild("hooks"):WaitForChild("useBoltState"))
+local useWorldTap = require(views:WaitForChild("hooks"):WaitForChild("useWorldTap"))
 local CatalogueClient = require(views:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
 local ItemModel = require(views:WaitForChild("catalogue"):WaitForChild("ItemModel"))
 
@@ -43,8 +54,14 @@ local POP = 0.4 -- seconds for an item to grow in / out
 local SELF_LIFT = 5 -- RingsShowMine: how far above the real ring yours is drawn
 local CARD_GROW = TweenInfo.new(POP, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local CARD_SHRINK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local TAP_POP = 0.3 -- seconds a tapped item swells for
+local TAP_SWELL = 0.3 -- how much bigger it gets (0..1)
+local TAP_REACH = 300 -- studs
 
 type Shown = {
+	item: Item,
+	back: boolean, -- the back pad's ghost
+	tappedAt: number?, -- when it was last tapped (it pops)
 	spot: Vector3, -- the pad's spot on the ground
 	model: Model?,
 	card: BillboardGui?,
@@ -84,6 +101,8 @@ end
 -- The item's model over its spot (yields while it builds), else its card.
 local function showItem(display: Display, item: Item, pad: RingPad)
 	local shown: Shown = {
+		item = item,
+		back = pad.back,
 		spot = Vector3.new(pad.x, pad.y, pad.z),
 		fit = 1,
 		bornAt = os.clock(),
@@ -219,16 +238,77 @@ local function animate(display: Display, now: number)
 		if display.closingAt then
 			amount *= 1 - math.clamp((now - display.closingAt) / CARD_SHRINK.Time, 0, 1)
 		end
-		if grow < 1 or display.closingAt then
-			model:ScaleTo(math.max(shown.fit * amount, shown.fit * 0.01))
+		local tapped = shown.tappedAt
+		local swell = if tapped then math.max(0, 1 - (now - tapped) / TAP_POP) else 0
+		if tapped and swell == 0 then
+			shown.tappedAt = nil
+		end
+		if grow < 1 or display.closingAt or tapped then
+			model:ScaleTo(math.max(shown.fit * amount * (1 + TAP_SWELL * math.sin(swell * math.pi)), shown.fit * 0.01))
 		end
 		model:PivotTo(pivotOf(shown, now))
 	end
 end
 
-local function OthersRings()
+-- The item (model or card) a tap at `position` lands on, nearest first.
+local function tappedItem(displays: { [string]: Display }, position: Vector3): Shown?
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return nil
+	end
+	local ray = camera:ScreenPointToRay(position.X, position.Y)
+	local best: Shown?, bestAlong = nil, TAP_REACH
+	for _, display in displays do
+		if display.closingAt then
+			continue
+		end
+		for _, shown in display.shown do
+			local centre, radius
+			if shown.model then
+				centre = shown.model:GetPivot().Position
+				radius = RING.modelSize / 2
+			elseif shown.card then
+				centre = shown.spot + Vector3.new(0, RING.cardHeight, 0)
+				radius = RING.cardSize / 2
+			else
+				continue
+			end
+			-- Ray against a sphere round it: the nearest point on the ray.
+			local along = (centre - ray.Origin):Dot(ray.Direction)
+			if along > 0 and along < bestAlong then
+				local closest = ray.Origin + ray.Direction * along
+				if (closest - centre).Magnitude <= radius then
+					best, bestAlong = shown, along
+				end
+			end
+		end
+	end
+	return best
+end
+
+local function OthersRings(props: { enabled: boolean })
 	local state = useBoltState(Network.State.Rings, { ownerId = "", rings = {} } :: any)
 	local displays = React.useRef({} :: { [string]: Display })
+
+	-- Tapping one of their items wears it.
+	useWorldTap(function(position: Vector3)
+		local shown = tappedItem(displays.current :: { [string]: Display }, position)
+		if not shown then
+			return
+		end
+		local item = shown.item
+		shown.tappedAt = os.clock()
+		Sounds.play("tryOn")
+		Network.Intent.Avatar:FireServer(
+			Network.Actions.Avatar.TryOn,
+			{ targetId = item.targetId, kind = item.kind },
+			{ replaceSameType = true }
+		)
+		Network.Intent.Recommendations:FireServer(
+			Network.Actions.Recommendations.Track,
+			{ event = "rec_others_pick", item_id = item.id, back = shown.back }
+		)
+	end, props.enabled)
 
 	-- Open, change and close displays to match the shared rings.
 	React.useEffect(function()

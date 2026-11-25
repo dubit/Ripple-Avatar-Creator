@@ -62,6 +62,9 @@
 		                                 an item was walked onto (also
 		                                 logged as try_on)
 		rec_back    { trail_id, depth, undone }   the back pad was used
+		rec_others_pick { item_id, back }  an item in another player's ring
+		                                 was tapped and put on (back: it
+		                                 was their back pad's ghost)
 		onboarding_hint { step }          the onboarding hint showed (first
 		                                 time a session; step "ring": tap
 		                                 yourself). Not a ring event, but
@@ -241,6 +244,11 @@ local HANDLERS: { [string]: (Player, any) -> () } = {
 				reason = raw.reason,
 				slot = raw.slot,
 			})
+		end
+	end,
+	rec_others_pick = function(player, raw)
+		if isId(raw.item_id) and type(raw.back) == "boolean" then
+			track(player, "rec_others_pick", { item_id = raw.item_id, back = raw.back })
 		end
 	end,
 	rec_back = function(player, raw)

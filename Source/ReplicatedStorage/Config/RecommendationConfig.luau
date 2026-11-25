@@ -84,7 +84,7 @@ local config: RecommendationConfig = {
 		spinSpeed = 0.8,
 		bobHeight = 0.25,
 		bobSpeed = 1.8,
-		dwell = 0.25,
+		dwell = 0.3125, -- seconds on a pad to pick it (0.25 + 25%, user 2026-11-25)
 	},
 }
 
