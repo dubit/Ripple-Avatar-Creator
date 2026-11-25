@@ -13,7 +13,10 @@
 	   see ConfigTypes/RecommendationEngineConfigTypes).
 
 	     "Recommend"({ basis, worn, exclude, count })
-	         -> { ok = true, fallback, items } or { ok = false, error }
+	         -> { ok = true, fallback, items, fromRoblox } or { ok = false, error }
+	     An empty basis (wearing nothing the engine can use) means: go on
+	     the player's real Roblox avatar instead (fromRoblox = true), less
+	     body parts and RecommendationConfig.unsentTypes.
 	     basis / worn / exclude: lists of { kind = "Asset" | "Bundle", id }
 	     items: { kind, id, assetTypeId?, groupId?, score?, reasons }
 	     fallback: the engine padded the list with popular items (it had
@@ -66,6 +69,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local AbstractController = require(script.Parent.AbstractController)
 local OwnershipModel = require(script.Parent.Parent.models.userSession.OwnershipModel)
 local OwnershipService = require(script.Parent.Parent.services.game.OwnershipService)
+local RobloxAvatarLookupService = require(script.Parent.Parent.services.game.RobloxAvatarLookupService)
 local Bolt = require(ReplicatedStorage.Bolt)
 local Network = require(ReplicatedStorage.Network)
 
@@ -99,6 +103,28 @@ local MAX_REFS = { basis = 60, worn = 60, exclude = 400 }
 local MAX_COUNT_ASKED = 50
 
 local engineRecent: { [Player]: { number } } = {}
+
+-- Types never sent to the engine (the client's list) and body parts: what
+-- a real Roblox avatar's items are filtered by when they stand in for an
+-- empty outfit.
+local notBasis: { [string]: boolean } = {
+	Head = true, DynamicHead = true, Torso = true, LeftArm = true, RightArm = true,
+	LeftLeg = true, RightLeg = true,
+}
+for _, name in require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("RecommendationConfig")).unsentTypes do
+	notBasis[name] = true
+end
+
+-- The player's real Roblox avatar, as engine refs.
+local function robloxBasis(player: Player): { { kind: string, id: number } }
+	local refs = {}
+	for _, item in RobloxAvatarLookupService.robloxItems(player.UserId) do
+		if not notBasis[item.typeName] and #refs < MAX_REFS.basis then
+			table.insert(refs, { kind = item.kind, id = item.targetId })
+		end
+	end
+	return refs
+end
 
 -- Lazy, like AbstractController (avoids a load-order dependency).
 local analytics: any = nil
@@ -300,11 +326,20 @@ local function recommend(player: Player, raw: any): any
 	local basis = refsOf(raw.basis, MAX_REFS.basis)
 	local worn = refsOf(raw.worn, MAX_REFS.worn)
 	local exclude = refsOf(raw.exclude, MAX_REFS.exclude)
-	if not basis or #basis == 0 or not worn or not exclude then
+	if not basis or not worn or not exclude then
 		return { ok = false, error = "bad request" }
 	end
 	if not spend(engineRecent, player, ENGINE_BUDGET, ENGINE_WINDOW) then
 		return { ok = false, error = "busy" }
+	end
+	-- Wearing nothing the engine can use: go on their real Roblox avatar.
+	local fromRoblox = false
+	if #basis == 0 then
+		basis = robloxBasis(player)
+		fromRoblox = true
+		if #basis == 0 then
+			return { ok = false, error = "empty", detail = "Nothing to go on: put something on" }
+		end
 	end
 	local count = if isInt(raw.count, 1, MAX_COUNT_ASKED) then raw.count else config.count or 20
 
@@ -366,12 +401,12 @@ local function recommend(player: Player, raw: any): any
 	end
 	if config.debug then
 		print(string.format(
-			"[RecommendationsController] engine: %d items (%d owned dropped) for %s (basis %d, worn %d, exclude %d) in %.2fs%s",
-			#items, dropped, player.Name, #basis, #worn, #exclude, os.clock() - started,
+			"[RecommendationsController] engine: %d items (%d owned dropped) for %s (basis %d%s, worn %d, exclude %d) in %.2fs%s",
+			#items, dropped, player.Name, #basis, if fromRoblox then " from their Roblox avatar" else "", #worn, #exclude, os.clock() - started,
 			if result.fallback then ", fallback" else ""
 		))
 	end
-	return { ok = true, fallback = result.fallback == true, items = items }
+	return { ok = true, fallback = result.fallback == true, items = items, fromRoblox = fromRoblox }
 end
 
 function RecommendationsController:executeAction(player: Player, action: Network.RecommendationsAction, raw: any)

@@ -27,6 +27,9 @@
 		user(userId) -> User?                       name lookup (cached)
 		look(userId) -> Look?                       cached
 		description(userId) -> HumanoidDescription? for the outfit page preview
+		robloxItems(userId) -> { WornItem }        their real Roblox avatar's items
+		                                           (even when they're in this
+		                                           server; cached; {} on failure)
 ]]
 
 local Players = game:GetService("Players")
@@ -132,6 +135,11 @@ end
 
 function RobloxAvatarLookupService.user(userId: number): User?
 	return userInfo(userId)
+end
+
+function RobloxAvatarLookupService.robloxItems(userId: number): { any }
+	local entry = roblox(userId)
+	return if entry then entry.items else {}
 end
 
 function RobloxAvatarLookupService.look(userId: number): Look?

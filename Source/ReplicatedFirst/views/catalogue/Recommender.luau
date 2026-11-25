@@ -11,9 +11,9 @@
 	Ask for ENGINE_ASK items (more than a ring holds; the server drops ones
 	the player owns), look them up in one batch, then take the first ones
 	that fit, in the engine's order: not worn, not already shown on this
-	trail, not off sale, not a skipped type (RecommendationConfig.skipTypes: classic
-	clothing, gear, backgrounds, emotes, which aren't sent as basis or worn
-	either), and not crowding one body area (a type already in the ring, or
+	trail, not off sale, not a skipped type (RecommendationConfig.skipTypes:
+	classic clothing, gear, backgrounds, emotes; of those, only classic
+	clothing is sent as basis or worn: unsentTypes), and not crowding one body area (a type already in the ring, or
 	the basis's own type, is saved for a second pass). Then Ripple items
 	(Tomorrow's Players, group RecommendationConfig.rippleGroupId) are
 	promoted: one left out of the ring replaces the ring's weakest
@@ -77,22 +77,27 @@ local skipTypes: { [string]: boolean } = {}
 for _, name in RecommendationConfig.skipTypes do
 	skipTypes[name] = true
 end
+local unsentTypes: { [string]: boolean } = {}
+for _, name in RecommendationConfig.unsentTypes do
+	unsentTypes[name] = true
+end
 
--- The engine's list for this context, as items in its order, and whether
--- it fell back; or nil and why not.
-local function fromEngine(context: Context): ({ Recommendation }?, boolean, string?)
+-- The engine's list for this context, as items in its order, whether it
+-- fell back, and whether it went on the real Roblox avatar (nothing worn
+-- to go on); or nil and why not.
+local function fromEngine(context: Context): ({ Recommendation }?, boolean, string?, boolean)
 	local basisIds: { [number]: boolean } = {}
 	local basis = {}
 	for _, item in context.basis do
 		basisIds[item.id] = true
-		if not skipTypes[item.typeName] then
+		if not unsentTypes[item.typeName] then
 			table.insert(basis, refOf(item))
 		end
 	end
 	-- First ring: the basis is the whole outfit, so nothing else is worn.
 	local worn = {}
 	for _, item in context.worn do
-		if not basisIds[item.id] and not skipTypes[item.typeName] then
+		if not basisIds[item.id] and not unsentTypes[item.typeName] then
 			table.insert(worn, refOf(item))
 		end
 	end
@@ -100,9 +105,7 @@ local function fromEngine(context: Context): ({ Recommendation }?, boolean, stri
 	for id in context.exclude or {} do
 		table.insert(exclude, { kind = if id < 0 then "Bundle" else "Asset", id = math.abs(id) })
 	end
-	if #basis == 0 then
-		return nil, false, "Nothing to go on: only classic clothing, gear or emotes"
-	end
+	-- An empty basis is fine: the server goes on their real Roblox avatar.
 
 	local ok, answer = pcall(function()
 		return engineRemote:InvokeServer({ basis = basis, worn = worn, exclude = exclude, count = ENGINE_ASK })
@@ -112,8 +115,11 @@ local function fromEngine(context: Context): ({ Recommendation }?, boolean, stri
 			then "couldn't reach the server"
 			elseif type(answer) ~= "table" then "no answer"
 			else tostring(answer.detail or answer.error)
+		if ok and type(answer) == "table" and answer.error == "empty" then
+			return nil, false, why, false -- not a failure: nothing to go on at all
+		end
 		warn("[Recommender] engine failed:", why, if not ok then answer else "")
-		return nil, false, "Engine failed: " .. why
+		return nil, false, "Engine failed: " .. why, false
 	end
 
 	local refs = {}
@@ -133,7 +139,7 @@ local function fromEngine(context: Context): ({ Recommendation }?, boolean, stri
 			})
 		end
 	end
-	return list, answer.fallback == true
+	return list, answer.fallback == true, nil, answer.fromRoblox == true
 end
 
 -- The first `count` of the engine's list that fit (see the header).
@@ -222,7 +228,7 @@ local function fitRing(context: Context, candidates: { Recommendation }): { Reco
 end
 
 function Recommender.recommend(context: Context): ({ Recommendation }?, boolean, string?)
-	local candidates, fallback, why = fromEngine(context)
+	local candidates, fallback, why, fromRoblox = fromEngine(context)
 	if not candidates then
 		return nil, false, why
 	end
@@ -230,7 +236,7 @@ function Recommender.recommend(context: Context): ({ Recommendation }?, boolean,
 	if #list == 0 then
 		return nil, fallback, `The engine found nothing new ({#candidates} suggested, all worn, owned or shown)`
 	end
-	print(`[Recommender] engine ring ({#candidates} found{if fallback then ", fallback" else ""}):\n{Recommender.describe(list)}`)
+	print(`[Recommender] engine ring{if fromRoblox then " from the Roblox avatar" else ""} ({#candidates} found{if fallback then ", fallback" else ""}):\n{Recommender.describe(list)}`)
 	return list, fallback
 end
 
