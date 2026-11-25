@@ -14,6 +14,8 @@
 
 	     "Recommend"({ basis, worn, exclude, count })
 	         -> { ok = true, fallback, items, fromRoblox } or { ok = false, error }
+	     The engine leaves out RecommendationConfig.skipTypes (excludeTypes;
+	     they still count as basis and worn).
 	     An empty basis (wearing nothing the engine can use) means: go on
 	     the player's real Roblox avatar instead (fromRoblox = true), less
 	     body parts and RecommendationConfig.unsentTypes.
@@ -116,8 +118,22 @@ local notBasis: { [string]: boolean } = {
 	Head = true, DynamicHead = true, Torso = true, LeftArm = true, RightArm = true,
 	LeftLeg = true, RightLeg = true,
 }
-for _, name in require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("RecommendationConfig")).unsentTypes do
+local RecommendationConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("RecommendationConfig"))
+for _, name in RecommendationConfig.unsentTypes do
 	notBasis[name] = true
+end
+
+-- Types the ring never shows (RecommendationConfig.skipTypes), as asset
+-- type ids for the engine's excludeTypes, so it fills the list with ones
+-- we can use. Names that aren't asset types are left to the client's filter.
+local excludeTypes: { number } = {}
+for _, name in RecommendationConfig.skipTypes do
+	local ok, assetType = pcall(function()
+		return (Enum.AssetType :: any)[name]
+	end)
+	if ok and assetType then
+		table.insert(excludeTypes, assetType.Value)
+	end
 end
 
 -- The player's real Roblox avatar, as engine refs.
@@ -367,7 +383,9 @@ local function recommend(player: Player, raw: any): any
 			Method = "POST",
 			Headers = { ["Content-Type"] = "application/json", Authorization = auth },
 			Body = HttpService:JSONEncode({
-				queries = { { basis = basis, worn = worn, exclude = exclude, count = count } },
+				queries = {
+					{ basis = basis, worn = worn, exclude = exclude, excludeTypes = excludeTypes, count = count },
+				},
 			}),
 		})
 	end)
