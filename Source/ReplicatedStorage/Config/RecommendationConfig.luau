@@ -51,6 +51,18 @@ local config: RecommendationConfig = {
 		"gray", "gold", "golden", "silver", "teal", "cyan", "navy", "beige", "cream", "lavender", "lilac",
 	},
 	ignoreCreators = { "Roblox" },
+	-- Types never shown in a ring: classic clothing, gear, backgrounds,
+	-- emotes (user, 2026-11-24).
+	skipTypes = { "Shirt", "Pants", "TShirt", "Gear", "AvatarBackground", "EmoteAnimation" },
+	-- Types never sent to the engine (basis / worn). Classic clothing is
+	-- sent: it says something about the outfit, it just isn't recommended
+	-- (user, 2026-11-25).
+	unsentTypes = { "Gear", "AvatarBackground", "EmoteAnimation" },
+	-- Ripple (Tomorrow's Players) items: one further down the engine's list
+	-- takes the place of a non-Ripple item in the ring if its score is at
+	-- least rippleWithin x that item's (user, 2026-11-24).
+	rippleGroupId = 15288940,
+	rippleWithin = 0.7,
 	pickFrom = 12,
 	maxSearches = 6,
 	creatorSort = "Bestselling",

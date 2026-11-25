@@ -86,6 +86,7 @@ for index, raw in RAW_ITEMS do
 		price = raw[4] :: number,
 		limited = false,
 		resale = false,
+		offSale = false,
 		creator = CREATORS[(index - 1) % #CREATORS + 1],
 		description = "",
 		favourites = 0,

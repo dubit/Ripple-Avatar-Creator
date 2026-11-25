@@ -3,45 +3,79 @@
 --[[
 	RecommendationsController
 
-	Analytics for the recommendation ring (RecommendationRing, client-only):
-	the client reports what each ring offered and what the player did with
-	it, and this records it. That's the implicit feedback the external
-	recommendation engine will learn from (a set shown, one chosen). Nothing
-	is stored; a bad or over-budget report is dropped, never answered.
+	Two jobs for the recommendation ring (RecommendationRing, client-only).
+
+	1. The engine. Asks Ripple's recommendation engine for a ring, over the
+	   "Recommend" remote function (Bolt). It's called from here, not the
+	   client: HttpService only works on the server, and the API key is a
+	   Roblox secret the client never sees. Where the engine is comes from
+	   ServerScriptService.Config.RecommendationEngineConfig (Studio-authored;
+	   see ConfigTypes/RecommendationEngineConfigTypes).
+
+	     "Recommend"({ basis, worn, exclude, count })
+	         -> { ok = true, fallback, items, fromRoblox } or { ok = false, error }
+	     An empty basis (wearing nothing the engine can use) means: go on
+	     the player's real Roblox avatar instead (fromRoblox = true), less
+	     body parts and RecommendationConfig.unsentTypes.
+	     basis / worn / exclude: lists of { kind = "Asset" | "Bundle", id }
+	     items: { kind, id, assetTypeId?, groupId?, score?, reasons }
+	     fallback: the engine padded the list with popular items (it had
+	     too few recommendations for the basis)
+	     Items the player owns are dropped here (OwnershipService).
+
+	   ok = false ("disabled", "busy", "failed", "bad request"), with a
+	   short detail for "failed": the ring shows it (there's no other
+	   source of recommendations).
+
+	2. Analytics. The client reports what each ring offered and what the
+	   player did with it, and this records it: the implicit feedback the
+	   engine learns from (a set shown, one chosen). Nothing is stored; a bad
+	   or over-budget report is dropped, never answered.
 
 	Actions:
 		Track({ event, ... })   one of the events below, with its params
 
 	Events (names and every param checked here, so a client can't invent
 	them). Item ids are CatalogueClient ids: an asset's id, or a bundle's id
-	negated.
-		rec_open    { outfit_size }                 the ring opened (tapping
-		                                            yourself)
-		rec_ring    { trail_id, depth, basis_id, back_id, revisit,
+	negated. A reason is the engine's first reason (bought_with,
+	worn_with…).
+		rec_open    { outfit_size }      the ring opened (tapping yourself)
+		rec_ring    { trail_id, depth, basis_id, back_id, revisit, fallback?,
 		              item_1..item_7, reason_1..reason_7 }
-		                                            a ring was shown: its new
-		                                            items in order and why each
-		                                            was chosen (creator,
-		                                            complete, style, wildcard,
-		                                            fill); basis_id 0 = the
-		                                            whole outfit; back_id 0 =
-		                                            no back pad; revisit =
-		                                            shown again by going back
+		                                 a ring was shown: its new items in
+		                                 order and why each was chosen;
+		                                 basis_id 0 = the whole outfit;
+		                                 back_id 0 = no back pad; revisit =
+		                                 shown again by going back; fallback
+		                                 = the engine padded it. A ring the
+		                                 engine failed is not reported
 		rec_pick    { trail_id, depth, item_id, reason, slot }
-		                                            an item was walked onto
-		                                            (also logged as try_on)
-		rec_back    { trail_id, depth, undone }      the back pad was used
+		                                 an item was walked onto (also
+		                                 logged as try_on)
+		rec_back    { trail_id, depth, undone }   the back pad was used
+		onboarding_hint { step }          the onboarding hint showed (first
+		                                 time a session; step "ring": tap
+		                                 yourself). Not a ring event, but
+		                                 its funnel ends at rec_open
 		rec_close   { trail_id, depth, rings, picks, reason }
-		                                            the ring closed: reason
-		                                            tap / walk_away / respawn
+		                                 the ring closed: reason tap /
+		                                 walk_away / respawn
 
 	"Track" is in AnalyticsConfig.excludedActions, so these aren't also
 	logged as controller_action.
 ]]
 
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local AbstractController = require(script.Parent.AbstractController)
+local OwnershipModel = require(script.Parent.Parent.models.userSession.OwnershipModel)
+local OnboardingModel = require(script.Parent.Parent.models.user.OnboardingModel)
+local OwnershipService = require(script.Parent.Parent.services.game.OwnershipService)
+local RobloxAvatarLookupService = require(script.Parent.Parent.services.game.RobloxAvatarLookupService)
+local Bolt = require(ReplicatedStorage.Bolt)
 local Network = require(ReplicatedStorage.Network)
 
 local RecommendationsController = {}
@@ -53,7 +87,11 @@ export type RecommendationsController = typeof(setmetatable({}, RecommendationsC
 local MAX_ITEMS = 7
 local MAX_DEPTH = 500
 local MAX_COUNT = 10000
-local REASONS = { creator = true, complete = true, style = true, wildcard = true, fill = true }
+-- A reason: whatever the engine says (bought_with, worn_with…), a short
+-- snake_case word.
+local function isReason(value: any): boolean
+	return type(value) == "string" and #value <= 24 and string.match(value, "^[a-z][a-z_]*$") ~= nil
+end
 local CLOSE_REASONS = { tap = true, walk_away = true, respawn = true }
 
 -- At most BUDGET reports per WINDOW seconds per player.
@@ -61,6 +99,37 @@ local BUDGET = 30
 local WINDOW = 10
 
 local recent: { [Player]: { number } } = {}
+
+-- Engine requests: at most ENGINE_BUDGET per ENGINE_WINDOW seconds per player
+-- (a ring is one request; walking a trail quickly makes a few).
+local ENGINE_BUDGET = 12
+local ENGINE_WINDOW = 10
+local MAX_REFS = { basis = 60, worn = 60, exclude = 400 }
+local MAX_COUNT_ASKED = 50
+
+local engineRecent: { [Player]: { number } } = {}
+
+-- Types never sent to the engine (the client's list) and body parts: what
+-- a real Roblox avatar's items are filtered by when they stand in for an
+-- empty outfit.
+local notBasis: { [string]: boolean } = {
+	Head = true, DynamicHead = true, Torso = true, LeftArm = true, RightArm = true,
+	LeftLeg = true, RightLeg = true,
+}
+for _, name in require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("RecommendationConfig")).unsentTypes do
+	notBasis[name] = true
+end
+
+-- The player's real Roblox avatar, as engine refs.
+local function robloxBasis(player: Player): { { kind: string, id: number } }
+	local refs = {}
+	for _, item in RobloxAvatarLookupService.robloxItems(player.UserId) do
+		if not notBasis[item.typeName] and #refs < MAX_REFS.basis then
+			table.insert(refs, { kind = item.kind, id = item.targetId })
+		end
+	end
+	return refs
+end
 
 -- Lazy, like AbstractController (avoids a load-order dependency).
 local analytics: any = nil
@@ -97,6 +166,17 @@ local HANDLERS: { [string]: (Player, any) -> () } = {
 		if isInt(raw.outfit_size, 0, 200) then
 			track(player, "rec_open", { outfit_size = raw.outfit_size })
 		end
+		-- They've found the ring: the onboarding hint stops (OnboardingHint).
+		local onboarding = OnboardingModel.get(tostring(player.UserId))
+		if onboarding then
+			onboarding:complete("ring")
+		end
+	end,
+	-- The onboarding hint showed (first time this session).
+	onboarding_hint = function(player, raw)
+		if raw.step == "ring" then
+			track(player, "onboarding_hint", { step = raw.step })
+		end
 	end,
 	rec_ring = function(player, raw)
 		if not trailOk(raw) or not isIdOrNone(raw.basis_id) or not isIdOrNone(raw.back_id) or type(raw.revisit) ~= "boolean" then
@@ -109,12 +189,18 @@ local HANDLERS: { [string]: (Player, any) -> () } = {
 			back_id = raw.back_id,
 			revisit = raw.revisit,
 		}
+		if raw.fallback ~= nil then
+			if type(raw.fallback) ~= "boolean" then
+				return
+			end
+			params.fallback = raw.fallback
+		end
 		for index = 1, MAX_ITEMS do
 			local id, reason = raw["item_" .. index], raw["reason_" .. index]
 			if id == nil and reason == nil then
 				continue
 			end
-			if not isId(id) or type(reason) ~= "string" or not REASONS[reason] then
+			if not isId(id) or not isReason(reason) then
 				return
 			end
 			params["item_" .. index] = id
@@ -123,7 +209,7 @@ local HANDLERS: { [string]: (Player, any) -> () } = {
 		track(player, "rec_ring", params)
 	end,
 	rec_pick = function(player, raw)
-		if trailOk(raw) and isId(raw.item_id) and type(raw.reason) == "string" and REASONS[raw.reason] and isInt(raw.slot, 1, MAX_ITEMS) then
+		if trailOk(raw) and isId(raw.item_id) and isReason(raw.reason) and isInt(raw.slot, 1, MAX_ITEMS) then
 			track(player, "rec_pick", {
 				trail_id = raw.trail_id,
 				depth = raw.depth,
@@ -166,19 +252,177 @@ local ACTIONS = {
 	[Network.Actions.Recommendations.Track] = trackReport,
 }
 
--- True if the player still has budget for a report right now.
-local function allowed(player: Player): boolean
+-- True if the player still has `budget` in the last `window` seconds of
+-- `log` (and spends one).
+local function spend(log: { [Player]: { number } }, player: Player, budget: number, window: number): boolean
 	local now = os.clock()
-	local times = recent[player] or {}
-	recent[player] = times
-	while times[1] and now - times[1] > WINDOW do
+	local times = log[player] or {}
+	log[player] = times
+	while times[1] and now - times[1] > window do
 		table.remove(times, 1)
 	end
-	if #times >= BUDGET then
+	if #times >= budget then
 		return false
 	end
 	table.insert(times, now)
 	return true
+end
+
+local function allowed(player: Player): boolean
+	return spend(recent, player, BUDGET, WINDOW)
+end
+
+-- ===== The engine =====
+
+-- The engine's config: Studio-authored, read once. Missing means disabled
+-- (warned): the ring shows "Engine failed: disabled".
+local engineConfig: any = nil
+local function engine(): any
+	if engineConfig == nil then
+		local module = ServerScriptService:WaitForChild("Config"):WaitForChild("RecommendationEngineConfig", 10)
+		if module then
+			engineConfig = require(module :: ModuleScript)
+		else
+			warn("[RecommendationsController] No ServerScriptService.Config.RecommendationEngineConfig: the ring is disabled")
+			engineConfig = { enabled = false }
+		end
+	end
+	return engineConfig
+end
+
+-- A list of { kind, id } from the client, or nil if it's malformed.
+local function refsOf(raw: any, max: number): { { kind: string, id: number } }?
+	if raw == nil then
+		return {}
+	end
+	if type(raw) ~= "table" or #raw > max then
+		return nil
+	end
+	local list = {}
+	for _, ref in raw do
+		if type(ref) ~= "table" or (ref.kind ~= "Asset" and ref.kind ~= "Bundle") or not isInt(ref.id, 1, 2 ^ 53) then
+			return nil
+		end
+		table.insert(list, { kind = ref.kind, id = ref.id })
+	end
+	return list
+end
+
+-- One item from the engine, checked and trimmed to what the client needs.
+local function itemOf(raw: any): any?
+	if type(raw) ~= "table" or (raw.kind ~= "Asset" and raw.kind ~= "Bundle") or not isInt(raw.id, 1, 2 ^ 53) then
+		return nil
+	end
+	local reasons = {}
+	if type(raw.reasons) == "table" then
+		for _, reason in raw.reasons do
+			if isReason(reason) and #reasons < 4 then
+				table.insert(reasons, reason)
+			end
+		end
+	end
+	return {
+		kind = raw.kind,
+		id = raw.id,
+		assetTypeId = if type(raw.assetTypeId) == "number" then raw.assetTypeId else nil,
+		groupId = if type(raw.groupId) == "number" then raw.groupId else nil,
+		score = if type(raw.score) == "number" then raw.score else nil,
+		reasons = reasons,
+	}
+end
+
+local function recommend(player: Player, raw: any): any
+	local config = engine()
+	if not config.enabled or type(config.baseUrl) ~= "string" or config.baseUrl == "" then
+		return { ok = false, error = "disabled" }
+	end
+	if type(raw) ~= "table" then
+		return { ok = false, error = "bad request" }
+	end
+	local basis = refsOf(raw.basis, MAX_REFS.basis)
+	local worn = refsOf(raw.worn, MAX_REFS.worn)
+	local exclude = refsOf(raw.exclude, MAX_REFS.exclude)
+	if not basis or not worn or not exclude then
+		return { ok = false, error = "bad request" }
+	end
+	if not spend(engineRecent, player, ENGINE_BUDGET, ENGINE_WINDOW) then
+		return { ok = false, error = "busy" }
+	end
+	-- Wearing nothing the engine can use: go on their real Roblox avatar.
+	local fromRoblox = false
+	if #basis == 0 then
+		basis = robloxBasis(player)
+		fromRoblox = true
+		if #basis == 0 then
+			return { ok = false, error = "empty", detail = "Nothing to go on: put something on" }
+		end
+	end
+	local count = if isInt(raw.count, 1, MAX_COUNT_ASKED) then raw.count else config.count or 20
+
+	local started = os.clock()
+	local ok, response = pcall(function()
+		local auth = HttpService:GetSecret(config.secretName):AddPrefix("Bearer ")
+		return HttpService:RequestAsync({
+			Url = config.baseUrl .. "/v1/recommend",
+			Method = "POST",
+			Headers = { ["Content-Type"] = "application/json", Authorization = auth },
+			Body = HttpService:JSONEncode({
+				queries = { { basis = basis, worn = worn, exclude = exclude, count = count } },
+			}),
+		})
+	end)
+	if not ok then
+		warn("[RecommendationsController] engine request failed:", response)
+		return { ok = false, error = "failed", detail = string.sub(tostring(response), 1, 120) }
+	end
+	if not response.Success then
+		warn("[RecommendationsController] engine answered", response.StatusCode, string.sub(response.Body or "", 1, 200))
+		return { ok = false, error = "failed", detail = `HTTP {response.StatusCode} {string.sub(response.Body or "", 1, 100)}` }
+	end
+	local decoded, body = pcall(function()
+		return HttpService:JSONDecode(response.Body)
+	end)
+	local result = decoded and type(body) == "table" and type(body.results) == "table" and body.results[1]
+	if type(result) ~= "table" or type(result.items) ~= "table" then
+		warn("[RecommendationsController] engine answer not understood:", string.sub(response.Body or "", 1, 200))
+		return { ok = false, error = "failed", detail = "answer not understood" }
+	end
+	local items = {}
+	for _, rawItem in result.items do
+		local item = itemOf(rawItem)
+		if item then
+			table.insert(items, item)
+		end
+	end
+	-- Not things the player owns (user, 2026-11-24). The lookups run in
+	-- parallel and are remembered for the session (OwnershipModel), so the
+	-- client's items show as owned elsewhere too.
+	local ownership = OwnershipModel.get(tostring(player.UserId))
+	local dropped = 0
+	if ownership then
+		local refs = {}
+		for _, item in items do
+			table.insert(refs, { targetId = item.id, kind = item.kind })
+		end
+		OwnershipService.check(player, ownership, refs)
+		local kept = {}
+		for _, item in items do
+			if ownership:owns(OwnershipService.keyOf(item.id, item.kind)) then
+				dropped += 1
+			else
+				table.insert(kept, item)
+			end
+		end
+		items = kept
+	end
+	if config.debug then
+		print(string.format(
+			"[RecommendationsController] engine: %d items (%d owned dropped) for %s (basis %d%s, worn %d, exclude %d) in %.2fs%s",
+			#items, dropped, player.Name, #basis, if fromRoblox then " from their Roblox avatar" else "", #worn, #exclude, os.clock() - started,
+			if result.fallback then ", fallback" else ""
+		))
+	end
+	return { ok = true, fallback = result.fallback == true, items = items, fromRoblox = fromRoblox }
 end
 
 function RecommendationsController:executeAction(player: Player, action: Network.RecommendationsAction, raw: any)
@@ -196,8 +440,11 @@ function RecommendationsController.new(): RecommendationsController
 		self:executeAction(player, action, raw)
 	end)
 
-	game:GetService("Players").PlayerRemoving:Connect(function(player: Player)
+	Bolt.RemoteFunction("Recommend").OnServerInvoke = recommend
+
+	Players.PlayerRemoving:Connect(function(player: Player)
 		recent[player] = nil
+		engineRecent[player] = nil
 	end)
 
 	return self :: RecommendationsController

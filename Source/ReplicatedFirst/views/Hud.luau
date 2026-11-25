@@ -50,6 +50,7 @@ local WorldHud = require(views:WaitForChild("WorldHud"))
 local FullPanel = require(views:WaitForChild("panel"):WaitForChild("FullPanel"))
 local WorldRenderer = require(views:WaitForChild("WorldRenderer"))
 local RecommendationRing = require(views:WaitForChild("RecommendationRing"))
+local OnboardingHint = require(views:WaitForChild("OnboardingHint"))
 local ShareDialog = require(views:WaitForChild("screens"):WaitForChild("ShareDialog"))
 local StoreDialogs = require(views:WaitForChild("screens"):WaitForChild("StoreDialogs"))
 local StoresClient = require(views:WaitForChild("catalogue"):WaitForChild("StoresClient"))
@@ -693,7 +694,8 @@ local function Hud()
 		}, {
 			Blur = e(BlurDriver, { active = nav.isOpen }),
 			Renderer = e(WorldRenderer, { options = world.options, config = world.config }),
-			Ring = e(RecommendationRing, { open = ringOpen, wornIds = rawLook.worn, onClose = closeRing }),
+			Ring = e(RecommendationRing, { open = ringOpen, wornIds = rawLook.worn, onClose = closeRing, hold = nav.isOpen }),
+			Onboarding = e(OnboardingHint, { active = not nav.isOpen and not ringOpen }),
 			World = e(React.Fragment, nil, worldHuds),
 			Panel = e(React.Fragment, nil, panels),
 			Share = e(ShareDialog, {

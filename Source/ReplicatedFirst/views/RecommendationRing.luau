@@ -34,6 +34,11 @@
 	    ring (the same items) round the player. If the outfit has changed some
 	    other way since (the HUD), nothing is undone: it only goes back a ring
 	  · nothing is recommended twice on one trail
+	  · if the outfit changes some other way while a ring is up (taking
+	    something off in the HUD, say), that ring's items are recommended
+	    again for the new outfit once the menus are closed (`hold` false),
+	    so an item taken off stops shaping it (user, 2026-11-24). The new
+	    items are new: nothing already shown comes back
 
 	  · pads sit on whatever is below them (raycast down); one that would be
 	    inside a wall is pulled in towards the centre, and one with no ground
@@ -50,6 +55,7 @@
 	  open      whether the ring is showing
 	  wornIds   the item ids being worn (CatalogueClient ids), oldest first
 	  onClose   called when the ring closes itself (walking away, respawn)
+	  hold      a menu is open: don't refresh the ring for outfit changes yet
 ]]
 
 local Players = game:GetService("Players")
@@ -76,6 +82,7 @@ export type Props = {
 	open: boolean,
 	wornIds: { number },
 	onClose: () -> (),
+	hold: boolean?,
 }
 
 local RING = RecommendationConfig.ring
@@ -129,6 +136,7 @@ type Pad = {
 	label: TextLabel,
 	orb: Orb?, -- the loading orb, until the item shows
 	shown: boolean, -- its item (or card) is showing, with its floor ring
+	empty: boolean?, -- the ring has no item for it: no orb
 	item: Item?, -- nil while loading
 	reason: string?, -- why the recommender chose it
 	slot: number?, -- its place among the ring's new items (1..)
@@ -160,8 +168,11 @@ type Ring = {
 type Entry = {
 	items: { Item }?, -- its new items, once recommended
 	reasons: { string }?, -- why each was chosen
+	fallback: boolean?, -- the engine padded it with popular items
 	backItem: Item?, -- the item walked through to get here (the back pad)
 	wornAfter: string?, -- the outfit just after that item went on (to guard Undo)
+	basedOn: string?, -- the outfit its items were recommended for
+	from: Vector3?, -- the direction its back pad was put in
 }
 
 local trails = 0 -- numbers each trail (rec_* trail_id)
@@ -548,7 +559,7 @@ local function growPad(pad: Pad, delay: number)
 		end
 		-- Loading: the orb spins where the item will be. (The floor ring
 		-- waits for the item: fillPad.)
-		if not pad.shown and not pad.orb then
+		if not pad.shown and not pad.orb and not pad.empty then
 			pad.orb = makeOrb(pad)
 		end
 	end)
@@ -596,6 +607,37 @@ local function fillPad(pad: Pad, item: Item, delay: number)
 			TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize, RING.cardSize) }):Play()
 		end
 	end)
+end
+
+-- A pad the ring has no item for: its orb goes, and it stays empty.
+local function emptyPad(pad: Pad)
+	pad.empty = true -- its orb may not have started yet (growPad)
+	if pad.orb and not pad.orb.endAt then
+		pad.orb.endAt = os.clock()
+	end
+end
+
+-- No items at all (the engine failed): the orbs go, and the first pad's
+-- card says why, in plain text (so a failure is seen, not hidden).
+local function failRing(pads: { Pad }, why: string)
+	for _, pad in pads do
+		emptyPad(pad)
+	end
+	local pad = pads[1]
+	if not pad then
+		return
+	end
+	local backing = pad.thumb.Parent :: Frame
+	backing.BackgroundColor3 = Color3.fromRGB(150, 30, 40)
+	backing.BackgroundTransparency = 0.1
+	pad.thumb.Visible = false
+	pad.label.Visible = true
+	pad.label.Text = why
+	pad.label.TextColor3 = Tokens.color.white
+	pad.label.Position = UDim2.fromScale(0.5, 0.94)
+	pad.label.Size = UDim2.fromScale(0.92, 0.88)
+	pad.card.Size = UDim2.fromScale(0, 0)
+	TweenService:Create(pad.card, GROW, { Size = UDim2.fromScale(RING.cardSize * 2.4, RING.cardSize * 1.2) }):Play()
 end
 
 -- The dwell fill for a pad's progress (0..1): the ring fills with light
@@ -668,6 +710,7 @@ local function RecommendationRing(props: Props)
 		-- Builds a ring for the trail's top entry round the player. `from`:
 		-- the direction (flat) the back pad goes in.
 		local function openRing(entry: Entry, from: Vector3?)
+			entry.from = from
 			local position = rootPosition()
 			if not position then
 				return
@@ -711,7 +754,7 @@ local function RecommendationRing(props: Props)
 			-- New items: the ones this entry already has (coming back to it),
 			-- else from the recommender (yields; abandoned if the ring went).
 			local depth = #trail
-			local function fill(items: { Item }, reasons: { string }, revisit: boolean)
+			local function fill(items: { Item }, reasons: { string }, revisit: boolean, fallback: boolean?)
 				ringsShown += 1
 				local back = entry.backItem
 				local params: { [string]: any } = {
@@ -720,6 +763,7 @@ local function RecommendationRing(props: Props)
 					basis_id = if back then back.id else 0,
 					back_id = if back then back.id else 0,
 					revisit = revisit,
+					fallback = fallback,
 				}
 				for index, item in items do
 					params["item_" .. index] = item.id
@@ -733,14 +777,15 @@ local function RecommendationRing(props: Props)
 						pad.slot = index
 						fillPad(pad, item, (index - 1) * 0.05)
 					else
-						pad.label.Text = "—"
+						emptyPad(pad)
 					end
 				end
 			end
 			if entry.items then
-				fill(entry.items, entry.reasons or {}, true)
+				fill(entry.items, entry.reasons or {}, true, entry.fallback)
 			else
 				task.spawn(function()
+					entry.basedOn = signature(latest.current.wornIds)
 					local worn = itemsFor(latest.current.wornIds)
 					local basis = worn
 					if entry.backItem then
@@ -749,13 +794,20 @@ local function RecommendationRing(props: Props)
 							table.insert(worn, entry.backItem :: Item) -- the pick may not have landed yet
 						end
 					end
-					local list = Recommender.recommend({
+					local list, fallback, why = Recommender.recommend({
 						basis = basis,
 						worn = worn,
 						exclude = shown,
 						count = #newPads,
 					})
 					if ring ~= current or closed then
+						return
+					end
+					if not list then
+						-- The engine failed: say so on the ring, and don't
+						-- remember it (coming back here asks again).
+						entry.basedOn = nil
+						failRing(newPads, why or "Engine failed")
 						return
 					end
 					local items, reasons = {}, {}
@@ -766,7 +818,8 @@ local function RecommendationRing(props: Props)
 					end
 					entry.items = items
 					entry.reasons = reasons
-					fill(items, reasons, false)
+					entry.fallback = fallback
+					fill(items, reasons, false, fallback)
 				end)
 			end
 
@@ -811,6 +864,8 @@ local function RecommendationRing(props: Props)
 			replaceRing(entry, flat(oldCentre - position))
 		end
 
+		local undoing: number? = nil -- when an Undo was sent, until it lands
+
 		local function goBack()
 			local depth = #trail
 			local entry = table.remove(trail) :: Entry
@@ -818,6 +873,7 @@ local function RecommendationRing(props: Props)
 			local undone = entry.wornAfter ~= nil and entry.wornAfter == signature(latest.current.wornIds)
 			if undone then
 				Network.Intent.Avatar:FireServer(Network.Actions.Avatar.Undo)
+				undoing = os.clock()
 			end
 			report("rec_back", { trail_id = trailId, depth = depth, undone = undone })
 			picked = nil
@@ -847,12 +903,33 @@ local function RecommendationRing(props: Props)
 				return
 			end
 			-- The latest pick's outfit, once the server has put it on.
+			local wornNow = signature(latest.current.wornIds)
 			if picked and table.find(latest.current.wornIds, picked.id) then
-				trail[#trail].wornAfter = signature(latest.current.wornIds)
+				local top = trail[#trail]
+				top.wornAfter = wornNow
+				-- Its ring was asked for with the pick already counted as worn.
+				if top.basedOn then
+					top.basedOn = wornNow
+				end
 				picked = nil
 			end
 			local active = ring
 			if not active then
+				return
+			end
+			-- An Undo from the back pad has landed (or is taking too long).
+			local top = trail[#trail]
+			if undoing and (wornNow == top.basedOn or os.clock() - undoing > 3) then
+				undoing = nil
+			end
+			-- The outfit changed some other way: recommend this ring again,
+			-- once the menus are closed.
+			if not latest.current.hold and not picked and not undoing
+				and top.items and top.basedOn and top.basedOn ~= wornNow then
+				top.items = nil
+				top.reasons = nil
+				top.fallback = nil
+				replaceRing(top, top.from)
 				return
 			end
 			local feet = flat(hrp.Position)
