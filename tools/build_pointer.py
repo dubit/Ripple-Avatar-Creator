@@ -1,73 +1,82 @@
-"""Build the onboarding pointer: a white 3D hand, finger up, shaded in our oranges.
+"""Build the onboarding pointer: a white 3D hand, finger up, with soft coloured
+light drifting through its shadows, as a looping flipbook.
 
 Usage: python tools/build_pointer.py <emoji_u1f446.png> [out.png]
 
 The source is Google's Noto Emoji 3D "backhand index pointing up" (Apache
-2.0): github.com/googlefonts/noto-emoji, 3D/png/512/emoji_u1f446.png. Its
-shading is gradient-mapped onto our palette, dark to light: borderOrange,
-accent, accentSoft, then near-white, so the hand reads white with brand
-colour in the shadows. Writes assets/ui/pointer.png by default; upload it
-with mcp upload_image and put the id in SkinAssets.pointer.
+2.0): github.com/googlefonts/noto-emoji, 3D/png/512/emoji_u1f446.png.
+
+Roblox UI can't blend additively or mask one image by another, so the effect
+is rendered here: a few blurry coloured balls (our palette) drift on looping
+paths; each pixel's shadow takes the blend of the balls near it, and the
+hand's light areas stay white. FRAMES frames go in one sheet, COLUMNS
+across, in reading order; OnboardingHint cross-fades between them. Upload
+the sheet with mcp upload_image and put the id in SkinAssets.pointer (and
+the frame layout in OnboardingHint if it changes).
+
+Needs: pip install pillow numpy
 """
 
+import math
 import sys
 
+import numpy as np
 from PIL import Image, ImageFilter
 
-# (lightness 0..1, colour), dark to light.
-RAMP = [
-    (0.0, (106, 42, 0)),  # borderOrange
-    (0.18, (230, 110, 20)),  # accent, a little darker
-    (0.42, (255, 176, 107)),  # accentSoft
-    (0.68, (255, 228, 204)),
-    (0.9, (255, 250, 245)),
-    (1.0, (255, 255, 255)),
+FRAMES = 20
+COLUMNS = 5
+FRAME_HEIGHT = 256  # px; 5 x 4 frames of 197 x 256 fit in 1024
+
+# (colour, whole cycles per loop in x and y, phase in x and y, size in hand
+# heights). Whole cycles, so the loop is seamless.
+BALLS = [
+    ((122, 92, 255), (1, 2), (0.0, 0.3), 0.34),  # purple
+    ((255, 95, 168), (2, 1), (1.7, 0.9), 0.30),  # pink
+    ((255, 138, 26), (1, 1), (3.1, 2.2), 0.38),  # accent orange
+    ((242, 201, 76), (1, -2), (4.4, 1.3), 0.28),  # yellow
 ]
-
-
-def ramp(t: float) -> tuple:
-    for (a, ca), (b, cb) in zip(RAMP, RAMP[1:]):
-        if t <= b:
-            k = (t - a) / (b - a)
-            return tuple(round(ca[i] + (cb[i] - ca[i]) * k) for i in range(3))
-    return RAMP[-1][1]
-
-
-def lightness(r: int, g: int, b: int) -> float:
-    return 0.299 * r + 0.587 * g + 0.114 * b
+REACH = (0.32, 0.30)  # how far the balls wander from the hand's middle (x, y)
+DEPTH = 0.8  # shadow curve: lower = more colour into the mid-tones
 
 
 def main() -> None:
     src = sys.argv[1]
     out = sys.argv[2] if len(sys.argv) > 2 else "assets/ui/pointer.png"
+
     image = Image.open(src).convert("RGBA")
     image = image.crop(image.getchannel("A").getbbox())
-    px = image.load()
+    image = image.resize((image.width * FRAME_HEIGHT // image.height, FRAME_HEIGHT), Image.LANCZOS)
     w, h = image.size
-    # Shade from a slightly softened copy: the source's fine grain would
-    # otherwise speckle across the colour steps.
-    soft = image.filter(ImageFilter.GaussianBlur(1.5)).load()
+    alpha = np.asarray(image)[..., 3].astype(np.float32)
 
-    # By area, not raw lightness: t is the share of the hand darker than this
-    # pixel, so each step of RAMP covers that share of the hand (its shading
-    # is mostly light; raw lightness would leave the colours a thin rim).
-    values = sorted(round(lightness(*soft[x, y][:3])) for y in range(h) for x in range(w) if px[x, y][3] > 200)
-    below = {}
-    for index, value in enumerate(values):
-        below.setdefault(value, index)
-    share = [0.0] * 256
-    last = 0.0
-    for value in range(256):
-        if value in below:
-            last = below[value] / len(values)
-        share[value] = last
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = px[x, y]
-            if a:
-                px[x, y] = ramp(share[round(lightness(*soft[x, y][:3]))]) + (a,)
-    image.save(out)
-    print(f"Wrote {out} ({w}x{h})")
+    # How shadowed each pixel is, 0 (lightest) to 1 (darkest), from a softened
+    # copy so the source's grain doesn't speckle.
+    soft = np.asarray(image.filter(ImageFilter.GaussianBlur(1.2))).astype(np.float32) / 255
+    lightness = 0.299 * soft[..., 0] + 0.587 * soft[..., 1] + 0.114 * soft[..., 2]
+    solid = alpha > 200
+    lo, hi = np.percentile(lightness[solid], 2), np.percentile(lightness[solid], 99)
+    shade = (np.clip((hi - lightness) / (hi - lo), 0, 1) ** DEPTH)[..., None]
+
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32) / h  # hand heights
+    middle = (w / h / 2, 0.55)
+    rows = math.ceil(FRAMES / COLUMNS)
+    sheet = Image.new("RGBA", (w * COLUMNS, h * rows), (0, 0, 0, 0))
+    for frame in range(FRAMES):
+        t = frame / FRAMES * 2 * math.pi
+        colour = np.zeros((h, w, 3), np.float32)
+        weight = np.zeros((h, w), np.float32)
+        for rgb, (fx, fy), (px, py), size in BALLS:
+            bx = middle[0] + REACH[0] * math.sin(fx * t + px)
+            by = middle[1] + REACH[1] * math.sin(fy * t + py)
+            ball = np.exp(-((xs - bx) ** 2 + (ys - by) ** 2) / (2 * size**2))
+            colour += ball[..., None] * np.array(rgb, np.float32)
+            weight += ball
+        colour /= np.maximum(weight, 1e-4)[..., None]  # the near balls' blend
+        rgb = 255 * (1 - shade) + colour * shade  # white lights, coloured shadows
+        pixels = np.dstack([rgb, alpha]).clip(0, 255).astype(np.uint8)
+        sheet.paste(Image.fromarray(pixels, "RGBA"), ((frame % COLUMNS) * w, (frame // COLUMNS) * h))
+    sheet.save(out)
+    print(f"Wrote {out}: {FRAMES} frames of {w}x{h}, {COLUMNS} across ({sheet.width}x{sheet.height})")
 
 
 if __name__ == "__main__":

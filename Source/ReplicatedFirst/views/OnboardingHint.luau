@@ -52,7 +52,14 @@ local DUB = 0.75 -- the second beat's strength, against the first
 -- screen UI placed over the chest each frame, not a BillboardGui: in the
 -- world the highlight's fill draws over it (and it casts a shadow).
 local POINTER_STUDS = 3.2 -- its height, as if it were in the world at the player
-local POINTER_ASPECT = 370 / 480 -- the image's width / height
+-- The image is a flipbook (tools/build_pointer.py): coloured light drifts
+-- through the hand's shadows. Two layers cross-fade from frame to frame, so
+-- it flows smoothly at a few frames a second.
+local FRAME_SIZE = Vector2.new(197, 256) -- px
+local FRAMES = 20
+local COLUMNS = 5
+local LOOP_SECONDS = 4 -- once through every frame
+local POINTER_ASPECT = FRAME_SIZE.X / FRAME_SIZE.Y
 local POINTER_PRESS = 0.12 -- how much it shrinks on a beat (0..1)
 local TIP = Vector2.new(0.39, 0) -- the fingertip in the image (0..1, from top left)
 local CHEST = 0.5 -- studs above the root part's centre for the fingertip
@@ -74,7 +81,7 @@ local function heartbeat(clock: number): number
 	return math.max(bump(t), DUB * bump(t - BEAT_GAP))
 end
 
-type Parts = { highlight: Highlight, card: ScreenGui, pointer: ImageLabel }
+type Parts = { highlight: Highlight, card: ScreenGui, pointer: Frame, under: ImageLabel, over: ImageLabel }
 
 local function build(character: Model): Parts
 	local highlight = Instance.new("Highlight")
@@ -94,15 +101,31 @@ local function build(character: Model): Parts
 	card.DisplayOrder = -1 -- under the HUD
 	card.Parent = player:WaitForChild("PlayerGui")
 
-	local pointer = Instance.new("ImageLabel")
+	local pointer = Instance.new("Frame")
 	pointer.Name = "Pointer"
 	pointer.BackgroundTransparency = 1
 	pointer.AnchorPoint = TIP -- so the press shrinks it toward the fingertip
-	pointer.Image = `rbxassetid://{SkinAssets.pointer}`
-	pointer.ImageTransparency = 1
 	pointer.Parent = card
+	local function layer(name: string, z: number): ImageLabel
+		local label = Instance.new("ImageLabel")
+		label.Name = name
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromScale(1, 1)
+		label.Image = `rbxassetid://{SkinAssets.pointer}`
+		label.ImageRectSize = FRAME_SIZE
+		label.ImageTransparency = 1
+		label.ZIndex = z
+		label.Parent = pointer
+		return label
+	end
 
-	return { highlight = highlight, card = card, pointer = pointer }
+	return {
+		highlight = highlight,
+		card = card,
+		pointer = pointer,
+		under = layer("Frame", 1),
+		over = layer("Next", 2),
+	}
 end
 
 local function OnboardingHint(props: { active: boolean })
@@ -186,7 +209,15 @@ local function OnboardingHint(props: { active: boolean })
 			local size = POINTER_STUDS * perStud * (1 - POINTER_PRESS * beat)
 			p.pointer.Size = UDim2.fromOffset(size * POINTER_ASPECT, size)
 			p.pointer.Position = UDim2.fromOffset(at.X, at.Y)
-			p.pointer.ImageTransparency = 1 - visible
+			-- The flipbook: this frame under, the next fading in over it.
+			local place = (clock / LOOP_SECONDS % 1) * FRAMES
+			local index = math.floor(place)
+			local blend = place - index
+			p.under.ImageRectOffset = FRAME_SIZE * Vector2.new(index % COLUMNS, index // COLUMNS)
+			local next = (index + 1) % FRAMES
+			p.over.ImageRectOffset = FRAME_SIZE * Vector2.new(next % COLUMNS, next // COLUMNS)
+			p.under.ImageTransparency = 1 - visible
+			p.over.ImageTransparency = 1 - visible * blend
 		end)
 
 		return function()
