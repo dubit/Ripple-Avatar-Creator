@@ -14,8 +14,10 @@
 	the item pops in); an item with no 3D view gets a square thumbnail card
 	instead. A pad's floor ring only appears once its item has loaded, and it
 	can't be picked before then. The back pad's ghosted model
-	carries a plain "← Back" label. Only this player sees any of it: the parts
-	are made by this client, so they never replicate.
+	carries a plain "← Back" label. The parts are made by this client, so
+	they never replicate; instead, once a ring's items are known, it tells
+	the server what and where (ShareRing), and other players draw just the
+	floating items (OthersRings).
 
 	The trail:
 	  · the first ring (RecommendationConfig.ring.count items) is based on
@@ -180,6 +182,20 @@ local trails = 0 -- numbers each trail (rec_* trail_id)
 local function report(event: string, params: { [string]: any })
 	params.event = event
 	Network.Intent.Recommendations:FireServer(Network.Actions.Recommendations.Track, params)
+end
+
+-- Tells everyone else what this ring holds and where (OthersRings draws
+-- it round us; RecommendationsController ShareRing). nil: the ring closed.
+local function share(ring: Ring?)
+	local pads = {}
+	for _, pad in if ring then ring.pads else {} do
+		local item = pad.item
+		if item then
+			local spot = pad.part.Position - Vector3.new(0, PAD_THICKNESS / 2, 0)
+			table.insert(pads, { kind = item.kind, id = item.targetId, x = spot.X, y = spot.Y, z = spot.Z, back = pad.back })
+		end
+	end
+	Network.Intent.Recommendations:FireServer(Network.Actions.Recommendations.ShareRing, { pads = pads })
 end
 
 -- Back easing (overshoots a little), 0..1 -> 0..1.
@@ -652,6 +668,7 @@ end
 
 local function closeRing(ring: Ring)
 	ring.closingAt = os.clock()
+	share(nil)
 	for _, pad in ring.pads do
 		if pad.orb and not pad.orb.endAt then
 			pad.orb.endAt = os.clock()
@@ -780,6 +797,7 @@ local function RecommendationRing(props: Props)
 						emptyPad(pad)
 					end
 				end
+				share(current)
 			end
 			if entry.items then
 				fill(entry.items, entry.reasons or {}, true, entry.fallback)
@@ -808,6 +826,7 @@ local function RecommendationRing(props: Props)
 						-- remember it (coming back here asks again).
 						entry.basedOn = nil
 						failRing(newPads, why or "Engine failed")
+						share(current) -- the back pad, if any
 						return
 					end
 					local items, reasons = {}, {}

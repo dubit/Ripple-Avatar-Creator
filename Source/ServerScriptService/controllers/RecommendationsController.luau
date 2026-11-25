@@ -34,8 +34,15 @@
 	   engine learns from (a set shown, one chosen). Nothing is stored; a bad
 	   or over-budget report is dropped, never answered.
 
+	3. Sharing. The client says what its ring holds and where
+	   (ShareRing), and RingsModel shares that with everyone, so other
+	   players see the ring's items round them (OthersRings). Checked here:
+	   at most RING_PADS pads, real ids, spots near the player.
+
 	Actions:
 		Track({ event, ... })   one of the events below, with its params
+		ShareRing({ pads })     the player's ring now: { { kind, id, x, y,
+		                        z, back } }; no pads = the ring closed
 
 	Events (names and every param checked here, so a client can't invent
 	them). Item ids are CatalogueClient ids: an asset's id, or a bundle's id
@@ -75,6 +82,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local AbstractController = require(script.Parent.AbstractController)
 local OwnershipModel = require(script.Parent.Parent.models.userSession.OwnershipModel)
 local OnboardingModel = require(script.Parent.Parent.models.user.OnboardingModel)
+local RingsModel = require(script.Parent.Parent.models.server.RingsModel)
 local OwnershipService = require(script.Parent.Parent.services.game.OwnershipService)
 local RobloxAvatarLookupService = require(script.Parent.Parent.services.game.RobloxAvatarLookupService)
 local Bolt = require(ReplicatedStorage.Bolt)
@@ -264,8 +272,45 @@ local function trackReport(player: Player, raw: any)
 	end
 end
 
+-- A shared ring: at most RING_PADS pads, each a real item on a spot within
+-- RING_REACH studs of the player (the ring is left where it opened; the
+-- player closes it by walking well away, so a little further than its radius).
+local RING_PADS = 8
+local RING_REACH = 40
+
+local function shareRing(player: Player, raw: any)
+	local userId = tostring(player.UserId)
+	local rings = RingsModel.get()
+	if type(raw) ~= "table" or type(raw.pads) ~= "table" or #raw.pads == 0 then
+		rings:clear(userId)
+		return
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root or #raw.pads > RING_PADS then
+		return
+	end
+	local pads = {}
+	for _, pad in raw.pads do
+		if type(pad) ~= "table" or (pad.kind ~= "Asset" and pad.kind ~= "Bundle") or not isInt(pad.id, 1, 2 ^ 53) then
+			return
+		end
+		local x, y, z = pad.x, pad.y, pad.z
+		if type(x) ~= "number" or type(y) ~= "number" or type(z) ~= "number" or x ~= x or y ~= y or z ~= z then
+			return
+		end
+		local spot = Vector3.new(x, y, z)
+		if (spot - root.Position).Magnitude > RING_REACH then
+			return
+		end
+		table.insert(pads, { kind = pad.kind, id = pad.id, x = x, y = y, z = z, back = pad.back == true })
+	end
+	rings:set(userId, pads)
+end
+
 local ACTIONS = {
 	[Network.Actions.Recommendations.Track] = trackReport,
+	[Network.Actions.Recommendations.ShareRing] = shareRing,
 }
 
 -- True if the player still has `budget` in the last `window` seconds of
@@ -460,9 +505,19 @@ function RecommendationsController.new(): RecommendationsController
 
 	Bolt.RemoteFunction("Recommend").OnServerInvoke = recommend
 
+	-- A ring closes when its player respawns or leaves: so does the shared one.
+	local function forgetRing(player: Player)
+		RingsModel.get():clear(tostring(player.UserId))
+	end
+	Players.PlayerAdded:Connect(function(player: Player)
+		player.CharacterAdded:Connect(function()
+			forgetRing(player)
+		end)
+	end)
 	Players.PlayerRemoving:Connect(function(player: Player)
 		recent[player] = nil
 		engineRecent[player] = nil
+		forgetRing(player)
 	end)
 
 	return self :: RecommendationsController

@@ -49,7 +49,7 @@ local NetworkConfig = {
 		Navigation = { "View" },
 		Outfits = { "Save", "Overwrite", "Rename", "Delete", "WearAll", "WearSelected", "Follow", "Share", "ShareCreation", "WearShared" },
 		Purchase = { "Buy", "Finished", "Check" },
-		Recommendations = { "Track" },
+		Recommendations = { "Track", "ShareRing" },
 		Stores = { "Create", "Rename", "AddItem", "RemoveItem", "AddOutfit", "RemoveOutfit", "SetRowItems", "AddRow", "EditRow", "SetRowSearch", "RenameRow", "RemoveRow", "MoveRow", "Publish", "Unpublish", "Delete", "Favourite", "Report", "Open", "Share", "Moderate" },
 		SlashCommand = {},  -- No actions, just the intent
 		WorldOptions = { "Set", "Reset" },
@@ -98,6 +98,13 @@ local NetworkConfig = {
 		Onboarding = {
 			ownerId = "",
 			done = {},
+		},
+		-- Every player's recommendation ring, so others can see it (shared,
+		-- session only; RingsModel): rings[userId] = { pads = { { kind, id,
+		-- x, y, z, back } } }.
+		Rings = {
+			ownerId = "",
+			rings = {},
 		},
 		-- What the player owns, as far as we've checked, and their latest
 		-- purchase (session only; OwnershipModel). `owned` holds "Asset:123" /
@@ -157,7 +164,7 @@ export type CommunityAction = "Favourite" | "Report" | "Open" | "Moderate"
 export type FavouritesAction = "Toggle"
 export type NavigationAction = "View"
 export type PurchaseAction = "Buy" | "Finished" | "Check"
-export type RecommendationsAction = "Track"
+export type RecommendationsAction = "Track" | "ShareRing"
 export type OutfitsAction = "Save" | "Overwrite" | "Rename" | "Delete" | "WearAll" | "WearSelected" | "Follow" | "Share" | "ShareCreation" | "WearShared"
 export type StoresAction = "Create" | "Rename" | "AddItem" | "RemoveItem" | "AddOutfit" | "RemoveOutfit" | "SetRowItems" | "AddRow" | "EditRow" | "SetRowSearch" | "RenameRow" | "RemoveRow" | "MoveRow" | "Publish" | "Unpublish" | "Delete" | "Favourite" | "Report" | "Open" | "Share" | "Moderate"
 export type WorldOptionsAction = "Set" | "Reset"
@@ -216,6 +223,13 @@ export type OutfitsState = {
 export type OnboardingState = {
 	ownerId: string,
 	done: { string }, -- steps done ("ring": opened the recommendation ring)
+}
+
+export type RingPad = { kind: string, id: number, x: number, y: number, z: number, back: boolean }
+
+export type RingsState = {
+	ownerId: string,
+	rings: { [string]: { pads: { RingPad } } }, -- by owner UserId; none = no ring open
 }
 
 export type PurchaseResult = {
