@@ -29,6 +29,15 @@
 	   short detail for "failed": the ring shows it (there's no other
 	   source of recommendations).
 
+	     "RecommendRows"({ tab, rows = { { basis, worn, others? } } })
+	         -> { ok = true, rows = { per row: { ok, items, fallback,
+	              fromRoblox } or { ok = false, error, detail } } }
+	     The catalogue's recommendation rows (Clothing › All): up to
+	     MAX_ROWS lists in ONE engine request and one go of the budget, each
+	     limited to the tab's types (excludeTypes / excludeKinds from
+	     CatalogueConfig). others = true: the basis is what everyone else in
+	     the server is wearing (AvatarModel).
+
 	2. Analytics. The client reports what each ring offered and what the
 	   player did with it, and this records it: the implicit feedback the
 	   engine learns from (a set shown, one chosen). Nothing is stored; a bad
@@ -85,6 +94,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local AbstractController = require(script.Parent.AbstractController)
 local OwnershipModel = require(script.Parent.Parent.models.userSession.OwnershipModel)
 local OnboardingModel = require(script.Parent.Parent.models.user.OnboardingModel)
+local AvatarModel = require(script.Parent.Parent.models.user.AvatarModel)
 local RingsModel = require(script.Parent.Parent.models.server.RingsModel)
 local OwnershipService = require(script.Parent.Parent.services.game.OwnershipService)
 local RobloxAvatarLookupService = require(script.Parent.Parent.services.game.RobloxAvatarLookupService)
@@ -400,10 +410,101 @@ local function itemOf(raw: any): any?
 	}
 end
 
-local function recommend(player: Player, raw: any): any
+-- Sends `queries` to the engine in one request: its results in the same
+-- order (each { items, fallback }, items checked by itemOf), or nil and a
+-- short detail.
+local function askEngine(config: any, queries: { any }): ({ { items: { any }, fallback: boolean } }?, string?)
+	local ok, response = pcall(function()
+		local auth = HttpService:GetSecret(config.secretName):AddPrefix("Bearer ")
+		return HttpService:RequestAsync({
+			Url = config.baseUrl .. "/v1/recommend",
+			Method = "POST",
+			Headers = { ["Content-Type"] = "application/json", Authorization = auth },
+			Body = HttpService:JSONEncode({ queries = queries }),
+		})
+	end)
+	if not ok then
+		warn("[RecommendationsController] engine request failed:", response)
+		return nil, string.sub(tostring(response), 1, 120)
+	end
+	if not response.Success then
+		warn("[RecommendationsController] engine answered", response.StatusCode, string.sub(response.Body or "", 1, 200))
+		return nil, `HTTP {response.StatusCode} {string.sub(response.Body or "", 1, 100)}`
+	end
+	local decoded, body = pcall(function()
+		return HttpService:JSONDecode(response.Body)
+	end)
+	if not decoded or type(body) ~= "table" or type(body.results) ~= "table" then
+		warn("[RecommendationsController] engine answer not understood:", string.sub(response.Body or "", 1, 200))
+		return nil, "answer not understood"
+	end
+	local results = {}
+	for index = 1, #queries do
+		local result = body.results[index]
+		if type(result) ~= "table" or type(result.items) ~= "table" then
+			warn("[RecommendationsController] engine answer not understood:", string.sub(response.Body or "", 1, 200))
+			return nil, "answer not understood"
+		end
+		local items = {}
+		for _, rawItem in result.items do
+			local item = itemOf(rawItem)
+			if item then
+				table.insert(items, item)
+			end
+		end
+		results[index] = { items = items, fallback = result.fallback == true }
+	end
+	return results
+end
+
+-- Not things the player owns (user, 2026-11-24): drops them from each
+-- list, and says how many went. The lookups run in parallel (all the
+-- lists' items at once) and are remembered for the session
+-- (OwnershipModel), so the client's items show as owned elsewhere too.
+local function dropOwned(player: Player, lists: { { any } }): ({ { any } }, number)
+	local ownership = OwnershipModel.get(tostring(player.UserId))
+	if not ownership then
+		return lists, 0
+	end
+	local refs, seen = {}, {}
+	for _, items in lists do
+		for _, item in items do
+			local key = OwnershipService.keyOf(item.id, item.kind)
+			if not seen[key] then
+				seen[key] = true
+				table.insert(refs, { targetId = item.id, kind = item.kind })
+			end
+		end
+	end
+	OwnershipService.check(player, ownership, refs)
+	local dropped = 0
+	local out = {}
+	for index, items in lists do
+		local kept = {}
+		for _, item in items do
+			if ownership:owns(OwnershipService.keyOf(item.id, item.kind)) then
+				dropped += 1
+			else
+				table.insert(kept, item)
+			end
+		end
+		out[index] = kept
+	end
+	return out, dropped
+end
+
+local function engineReady(): (any?, any?)
 	local config = engine()
 	if not config.enabled or type(config.baseUrl) ~= "string" or config.baseUrl == "" then
-		return { ok = false, error = "disabled" }
+		return nil, { ok = false, error = "disabled" }
+	end
+	return config, nil
+end
+
+local function recommend(player: Player, raw: any): any
+	local config, refusal = engineReady()
+	if not config then
+		return refusal
 	end
 	if type(raw) ~= "table" then
 		return { ok = false, error = "bad request" }
@@ -429,63 +530,15 @@ local function recommend(player: Player, raw: any): any
 	local count = if isInt(raw.count, 1, MAX_COUNT_ASKED) then raw.count else config.count or 20
 
 	local started = os.clock()
-	local ok, response = pcall(function()
-		local auth = HttpService:GetSecret(config.secretName):AddPrefix("Bearer ")
-		return HttpService:RequestAsync({
-			Url = config.baseUrl .. "/v1/recommend",
-			Method = "POST",
-			Headers = { ["Content-Type"] = "application/json", Authorization = auth },
-			Body = HttpService:JSONEncode({
-				queries = {
-					{ basis = basis, worn = worn, exclude = exclude, excludeTypes = excludeTypes, count = count },
-				},
-			}),
-		})
-	end)
-	if not ok then
-		warn("[RecommendationsController] engine request failed:", response)
-		return { ok = false, error = "failed", detail = string.sub(tostring(response), 1, 120) }
+	local results, detail = askEngine(config, {
+		{ basis = basis, worn = worn, exclude = exclude, excludeTypes = excludeTypes, count = count },
+	})
+	if not results then
+		return { ok = false, error = "failed", detail = detail }
 	end
-	if not response.Success then
-		warn("[RecommendationsController] engine answered", response.StatusCode, string.sub(response.Body or "", 1, 200))
-		return { ok = false, error = "failed", detail = `HTTP {response.StatusCode} {string.sub(response.Body or "", 1, 100)}` }
-	end
-	local decoded, body = pcall(function()
-		return HttpService:JSONDecode(response.Body)
-	end)
-	local result = decoded and type(body) == "table" and type(body.results) == "table" and body.results[1]
-	if type(result) ~= "table" or type(result.items) ~= "table" then
-		warn("[RecommendationsController] engine answer not understood:", string.sub(response.Body or "", 1, 200))
-		return { ok = false, error = "failed", detail = "answer not understood" }
-	end
-	local items = {}
-	for _, rawItem in result.items do
-		local item = itemOf(rawItem)
-		if item then
-			table.insert(items, item)
-		end
-	end
-	-- Not things the player owns (user, 2026-11-24). The lookups run in
-	-- parallel and are remembered for the session (OwnershipModel), so the
-	-- client's items show as owned elsewhere too.
-	local ownership = OwnershipModel.get(tostring(player.UserId))
-	local dropped = 0
-	if ownership then
-		local refs = {}
-		for _, item in items do
-			table.insert(refs, { targetId = item.id, kind = item.kind })
-		end
-		OwnershipService.check(player, ownership, refs)
-		local kept = {}
-		for _, item in items do
-			if ownership:owns(OwnershipService.keyOf(item.id, item.kind)) then
-				dropped += 1
-			else
-				table.insert(kept, item)
-			end
-		end
-		items = kept
-	end
+	local result = results[1]
+	local lists, dropped = dropOwned(player, { result.items })
+	local items = lists[1]
 	if config.debug then
 		print(string.format(
 			"[RecommendationsController] engine: %d items (%d owned dropped) for %s (basis %d%s, worn %d, exclude %d) in %.2fs%s",
@@ -493,7 +546,162 @@ local function recommend(player: Player, raw: any): any
 			if result.fallback then ", fallback" else ""
 		))
 	end
-	return { ok = true, fallback = result.fallback == true, items = items, fromRoblox = fromRoblox }
+	return { ok = true, fallback = result.fallback, items = items, fromRoblox = fromRoblox }
+end
+
+-- ===== Catalogue rows =====
+
+-- A catalogue tab's limits for the engine: every asset type outside it
+-- (and the ring's skipTypes) as excludeTypes, and whether bundles can be in
+-- it (a tab with no bundle chips leaves them out: excludeKinds). nil: not
+-- a tab the rows can be on (no such tab, or a special one).
+local CatalogueConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("CatalogueConfig"))
+local tabLimits: { [string]: { excludeTypes: { number }, excludeKinds: { string }? } } = {}
+local function limitsOf(tab: any): { excludeTypes: { number }, excludeKinds: { string }? }?
+	if type(tab) ~= "string" then
+		return nil
+	end
+	if tabLimits[tab] then
+		return tabLimits[tab]
+	end
+	for _, entry in CatalogueConfig.categories do
+		if entry.name ~= tab or entry.special then
+			continue
+		end
+		local inside: { [string]: boolean } = {}
+		local bundles = false
+		for _, chip in entry.chips do
+			for _, name in chip.assetTypes or {} do
+				inside[name] = true
+			end
+			if chip.bundleTypes and #chip.bundleTypes > 0 then
+				bundles = true
+			end
+		end
+		local outside = table.clone(excludeTypes)
+		for _, assetType in Enum.AssetType:GetEnumItems() do
+			if not inside[assetType.Name] and not table.find(outside, assetType.Value) then
+				table.insert(outside, assetType.Value)
+			end
+		end
+		local limits = { excludeTypes = outside, excludeKinds = if bundles then nil else { "Bundle" } }
+		tabLimits[tab] = limits
+		return limits
+	end
+	return nil
+end
+
+-- What everyone else in the server is wearing, as engine refs (the "players
+-- here" row), less body parts and unsentTypes.
+local function othersBasis(player: Player): { { kind: string, id: number } }
+	local refs, seen = {}, {}
+	for _, other in Players:GetPlayers() do
+		if other == player then
+			continue
+		end
+		local avatar = AvatarModel.get(tostring(other.UserId))
+		for _, item in if avatar then avatar.worn else {} do
+			local key = item.kind .. item.targetId
+			if not notBasis[item.typeName] and not seen[key] and #refs < MAX_REFS.basis then
+				seen[key] = true
+				table.insert(refs, { kind = item.kind, id = item.targetId })
+			end
+		end
+	end
+	return refs
+end
+
+local MAX_ROWS = 5
+
+-- "RecommendRows"({ tab, rows = { { basis, worn, others?, ring? } } })
+--   -> { ok = true, rows = { { ok = true, items, fallback, fromRoblox }
+--        | { ok = false, error, detail? } } } or { ok = false, error, detail? }
+-- The catalogue's recommendation rows (CatalogueScreen): every row in one
+-- engine request and one go of the budget, limited to the tab's types.
+-- others = true: the basis is what everyone else here is wearing (sent
+-- basis ignored). ring = true: not limited to the tab, but like "Recommend"
+-- (the client's join-time prefetch of the ring's first ring, Recommender).
+-- An empty basis otherwise means their Roblox avatar.
+local function recommendRows(player: Player, raw: any): any
+	local config, refusal = engineReady()
+	if not config then
+		return refusal
+	end
+	if type(raw) ~= "table" or type(raw.rows) ~= "table" or #raw.rows == 0 or #raw.rows > MAX_ROWS then
+		return { ok = false, error = "bad request" }
+	end
+	local limits = limitsOf(raw.tab)
+	if not limits then
+		return { ok = false, error = "bad request" }
+	end
+	local asks = {}
+	for index, row in raw.rows do
+		if type(row) ~= "table" or (row.others ~= nil and type(row.others) ~= "boolean")
+			or (row.ring ~= nil and type(row.ring) ~= "boolean") then
+			return { ok = false, error = "bad request" }
+		end
+		local basis = refsOf(row.basis, MAX_REFS.basis)
+		local worn = refsOf(row.worn, MAX_REFS.worn)
+		if not basis or not worn then
+			return { ok = false, error = "bad request" }
+		end
+		asks[index] = { basis = basis, worn = worn, others = row.others == true, ring = row.ring == true }
+	end
+	if not spend(engineRecent, player, ENGINE_BUDGET, ENGINE_WINDOW) then
+		return { ok = false, error = "busy" }
+	end
+
+	local answers = {}
+	local queries, queried = {}, {}
+	for index, ask in asks do
+		local fromRoblox = false
+		if ask.others then
+			ask.basis = othersBasis(player)
+		elseif #ask.basis == 0 then
+			ask.basis = robloxBasis(player)
+			fromRoblox = true
+		end
+		if #ask.basis == 0 then
+			answers[index] = { ok = false, error = "empty", detail = if ask.others then "Nobody else here is wearing anything to go on" else "Nothing to go on: put something on" }
+			continue
+		end
+		answers[index] = { ok = true, fromRoblox = fromRoblox }
+		table.insert(queries, {
+			basis = ask.basis,
+			worn = ask.worn,
+			-- ring = true: the ring's first ring instead (every type but
+			-- skipTypes), asked alongside when the player joins.
+			excludeTypes = if ask.ring then excludeTypes else limits.excludeTypes,
+			excludeKinds = if ask.ring then nil else limits.excludeKinds,
+			count = MAX_COUNT_ASKED,
+		})
+		table.insert(queried, index)
+	end
+	if #queries == 0 then
+		return { ok = true, rows = answers }
+	end
+
+	local started = os.clock()
+	local results, detail = askEngine(config, queries)
+	if not results then
+		return { ok = false, error = "failed", detail = detail }
+	end
+	local lists = {}
+	for slot in queried do
+		lists[slot] = results[slot].items
+	end
+	local kept, dropped = dropOwned(player, lists)
+	for slot, index in queried do
+		answers[index].items = kept[slot]
+		answers[index].fallback = results[slot].fallback
+	end
+	if config.debug then
+		print(string.format(
+			"[RecommendationsController] engine rows: %d queries (%s) for %s, %d owned dropped, in %.2fs",
+			#queries, tostring(raw.tab), player.Name, dropped, os.clock() - started
+		))
+	end
+	return { ok = true, rows = answers }
 end
 
 function RecommendationsController:executeAction(player: Player, action: Network.RecommendationsAction, raw: any)
@@ -512,6 +720,7 @@ function RecommendationsController.new(): RecommendationsController
 	end)
 
 	Bolt.RemoteFunction("Recommend").OnServerInvoke = recommend
+	Bolt.RemoteFunction("RecommendRows").OnServerInvoke = recommendRows
 
 	-- A ring closes when its player respawns or leaves: so does the shared one.
 	local function forgetRing(player: Player)

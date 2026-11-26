@@ -8,8 +8,12 @@
 	CatalogueConfig; the search box is a catalogue keyword search within the
 	current tab and chip. With All chosen and no search, a tab is a home of
 	carousels, one per chip (its first ROW_CARDS items, with the same sort and
-	filters), each with See all; a chip (or See all) shows a 6-column grid,
-	and tapping the chosen chip again goes back to the rows. Store search
+	filters), each with See all. Clothing › All starts with recommendation
+	rows (useRecommendedRows: goes with your outfit / what you tried on last
+	/ your basket / your favourites / players here), leaving out what you're
+	wearing or own and any item an earlier row already has. Clothing is the
+	tab the catalogue opens on (user, 2026-11-26). A chip (or See all) shows
+	a 6-column grid, and tapping the chosen chip again goes back to the rows. Store search
 	setup always shows the grid (it's what the row will use).
 
 	Tapping a card opens its menu over the thumb (Try · basket · Buy · View;
@@ -44,6 +48,7 @@ local PillButton = require(components:WaitForChild("PillButton"))
 local GlassPanel = require(components:WaitForChild("GlassPanel"))
 local Parts = require(script.Parent:WaitForChild("Parts"))
 local useCatalogue = require(hooks:WaitForChild("useCatalogue"))
+local useRecommendedRows = require(hooks:WaitForChild("useRecommendedRows"))
 local useColourFilter = require(hooks:WaitForChild("useColourFilter"))
 local useBackInput = require(hooks:WaitForChild("useBackInput"))
 local useSessionState = require(hooks:WaitForChild("useSessionState"))
@@ -87,12 +92,45 @@ for _, entry in CatalogueConfig.categories do
 	ROW_SLOTS = math.max(ROW_SLOTS, n)
 end
 local PICK_HEIGHT = 52 -- design px: the pick-mode banner (filling a store row)
+local FIRST_TAB = "Clothing" -- the tab the catalogue opens on
+local RECS_TAB = "Clothing" -- the tab (its All) with recommendation rows on top
+
+-- A row's cell that says what went wrong (a recommendation row the engine
+-- failed), the size of an item card.
+local function MessageCard(props: { text: string, layoutOrder: number? })
+	local skin = useSkin()
+	return e("Frame", {
+		Name = "MessageCard",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		LayoutOrder = props.layoutOrder or 0,
+	}, {
+		Thumb = e(Parts.Thumb, {
+			colour = Tokens.color.white,
+			size = UDim2.fromScale(1, 1),
+		}, {
+			Aspect = e("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Width }),
+			Text = e("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.new(1, -skin.px(16), 1, -skin.px(16)),
+				BackgroundTransparency = 1,
+				Text = props.text,
+				TextColor3 = Tokens.color.accentText,
+				TextSize = skin.textPx(12),
+				FontFace = Tokens.font(700),
+				TextWrapped = true,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			}),
+		}),
+	})
+end
 
 local function CatalogueScreen(props: { nav: any, look: any })
 	local skin = useSkin()
 	-- Where you were browsing survives closing the panel (session memory), as
 	-- going into an item and back does; the grid keeps its scroll too.
-	local category, setCategory = useSessionState("catalogue.category", CatalogueConfig.categories[1].name)
+	local category, setCategory = useSessionState("catalogue.category", FIRST_TAB)
 	local sub, setSub = useSessionState("catalogue.sub", "All")
 	local query, setQuery = useSessionState("catalogue.query", "")
 	local pasteFocused, setPasteFocused = React.useState(false)
@@ -160,6 +198,8 @@ local function CatalogueScreen(props: { nav: any, look: any })
 		rowResults[slot] = useColourFilter(useCatalogue(q), filters.colour)
 	end
 	local menuId, setMenuId = React.useState(nil :: number?)
+	-- Recommendation rows: only asked for while they're on screen.
+	local recRows = useRecommendedRows(props.look, rowsMode and category == RECS_TAB and #props.nav.stack == 0)
 
 	local function setFilter(changes: { [string]: any })
 		setFilters(function(current)
@@ -342,6 +382,45 @@ local function CatalogueScreen(props: { nav: any, look: any })
 	-- Home: a carousel per chip that has items (or is still loading).
 	local rows: { Parts.HomeRow } = {}
 	local rowsLoading = false
+	if rowsMode and category == RECS_TAB then
+		-- What you're wearing or own isn't suggested, nor an item twice.
+		local used: { [number]: boolean } = {}
+		for _, id in props.look.worn do
+			used[id] = true
+		end
+		for _, row in recRows do
+			local cells: { [string]: any } = {}
+			local n = 0
+			if row.status == "loading" then
+				n = 1
+				cells.Loading = e(Parts.LoadingCard, { layoutOrder = 1 })
+			elseif row.status == "failed" then
+				n = 1
+				cells.Failed = e(MessageCard, { text = row.why or "Engine failed", layoutOrder = 1 })
+			else
+				for _, item in row.list do
+					if n >= ROW_CARDS then
+						break
+					end
+					if used[item.id] or item.owned then
+						continue
+					end
+					used[item.id] = true
+					n += 1
+					cells["Item" .. item.id] = itemCard(item, n)
+				end
+			end
+			if n > 0 then
+				table.insert(rows, {
+					key = "Rec" .. row.key,
+					title = row.title,
+					cardWidth = ROW_CARD,
+					count = n,
+					cells = cells,
+				})
+			end
+		end
+	end
 	if rowsMode then
 		for slot, chip in rowChips do
 			local found = rowResults[slot]
