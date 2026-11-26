@@ -190,6 +190,28 @@ local function useRecommendedRows(look: { worn: { number }, basket: { number } }
 			local entry = kept[spec.key]
 			return (not entry or entry.basedOn ~= spec.basedOn) and asked[spec.key] ~= spec.basedOn
 		end
+		-- The outfit row may already be here: asked for when they joined
+		-- (Recommender.prefetch, from Hud), if the outfit is unchanged.
+		for _, spec in specs do
+			if spec.key == "outfit" and stale(spec) then
+				local basis = {}
+				for _, id in spec.basisIds do
+					local item = CatalogueClient.item(id)
+					if item then
+						table.insert(basis, item)
+					end
+				end
+				local answer = Recommender.prefetchedRow(basis, TAB, ASK)
+				if answer and answer.list then
+					local items = {}
+					for _, recommendation in answer.list do
+						table.insert(items, recommendation.item)
+					end
+					kept[spec.key] = { basedOn = spec.basedOn, status = "ready", list = items }
+					task.defer(bump)
+				end
+			end
+		end
 		-- Rows never asked for show a spinner at once; changed ones keep
 		-- their old items until the new ones come.
 		local anyStale = false

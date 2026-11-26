@@ -55,6 +55,8 @@ local OthersRings = require(views:WaitForChild("OthersRings"))
 local ShareDialog = require(views:WaitForChild("screens"):WaitForChild("ShareDialog"))
 local StoreDialogs = require(views:WaitForChild("screens"):WaitForChild("StoreDialogs"))
 local StoresClient = require(views:WaitForChild("catalogue"):WaitForChild("StoresClient"))
+local CatalogueClient = require(views:WaitForChild("catalogue"):WaitForChild("CatalogueClient"))
+local Recommender = require(views:WaitForChild("catalogue"):WaitForChild("Recommender"))
 local CatalogueFilters = require(views:WaitForChild("screens"):WaitForChild("CatalogueFilters"))
 local Network = require(ReplicatedStorage:WaitForChild("Network"))
 
@@ -62,6 +64,12 @@ local e = React.createElement
 
 -- Seconds a Buy button may spin waiting for the purchase's outcome.
 local BUY_SPINNER_TIMEOUT = 60
+-- The join-time recommendation prefetch (see Hud): seconds to let the
+-- outfit settle once it's here, or to wait for one; and the catalogue tab
+-- of the recommendation rows (useRecommendedRows).
+local PREFETCH_SETTLE = 2
+local PREFETCH_WAIT = 10
+local PREFETCH_TAB = "Clothing"
 
 local TABS = {
 	{ id = "Catalogue", label = "Catalogue", icon = "apparel" },
@@ -231,6 +239,34 @@ local function Hud()
 	local look = withFeedback(rawLook)
 	local latestLook = React.useRef(rawLook)
 	latestLook.current = rawLook
+
+	-- Once, soon after joining: ask the engine for the ring's first ring and
+	-- the catalogue's "Goes with your outfit" row in one go, so both open
+	-- straight away (Recommender.prefetch). Waits for the outfit to arrive
+	-- and settle (PREFETCH_SETTLE s), or PREFETCH_WAIT s if nothing is worn.
+	local prefetched = React.useRef(false)
+	local hasWorn = #rawLook.worn > 0
+	React.useEffect(function()
+		if prefetched.current then
+			return nil
+		end
+		local thread = task.delay(if hasWorn then PREFETCH_SETTLE else PREFETCH_WAIT, function()
+			prefetched.current = true
+			local items = {}
+			for _, id in latestLook.current.worn do
+				local item = CatalogueClient.item(id)
+				if item then
+					table.insert(items, item)
+				end
+			end
+			Recommender.prefetch(items, PREFETCH_TAB)
+		end)
+		return function()
+			if not prefetched.current then
+				task.cancel(thread)
+			end
+		end
+	end, { hasWorn })
 
 	-- Roblox's prompt shows what happened; we just sound it.
 	local purchase = rawLook.purchase

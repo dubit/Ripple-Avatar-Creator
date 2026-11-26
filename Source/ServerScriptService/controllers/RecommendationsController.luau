@@ -613,13 +613,15 @@ end
 
 local MAX_ROWS = 5
 
--- "RecommendRows"({ tab, rows = { { basis, worn, others? } } })
+-- "RecommendRows"({ tab, rows = { { basis, worn, others?, ring? } } })
 --   -> { ok = true, rows = { { ok = true, items, fallback, fromRoblox }
 --        | { ok = false, error, detail? } } } or { ok = false, error, detail? }
 -- The catalogue's recommendation rows (CatalogueScreen): every row in one
 -- engine request and one go of the budget, limited to the tab's types.
 -- others = true: the basis is what everyone else here is wearing (sent
--- basis ignored). An empty basis otherwise means their Roblox avatar.
+-- basis ignored). ring = true: not limited to the tab, but like "Recommend"
+-- (the client's join-time prefetch of the ring's first ring, Recommender).
+-- An empty basis otherwise means their Roblox avatar.
 local function recommendRows(player: Player, raw: any): any
 	local config, refusal = engineReady()
 	if not config then
@@ -634,7 +636,8 @@ local function recommendRows(player: Player, raw: any): any
 	end
 	local asks = {}
 	for index, row in raw.rows do
-		if type(row) ~= "table" or (row.others ~= nil and type(row.others) ~= "boolean") then
+		if type(row) ~= "table" or (row.others ~= nil and type(row.others) ~= "boolean")
+			or (row.ring ~= nil and type(row.ring) ~= "boolean") then
 			return { ok = false, error = "bad request" }
 		end
 		local basis = refsOf(row.basis, MAX_REFS.basis)
@@ -642,7 +645,7 @@ local function recommendRows(player: Player, raw: any): any
 		if not basis or not worn then
 			return { ok = false, error = "bad request" }
 		end
-		asks[index] = { basis = basis, worn = worn, others = row.others == true }
+		asks[index] = { basis = basis, worn = worn, others = row.others == true, ring = row.ring == true }
 	end
 	if not spend(engineRecent, player, ENGINE_BUDGET, ENGINE_WINDOW) then
 		return { ok = false, error = "busy" }
@@ -666,8 +669,10 @@ local function recommendRows(player: Player, raw: any): any
 		table.insert(queries, {
 			basis = ask.basis,
 			worn = ask.worn,
-			excludeTypes = limits.excludeTypes,
-			excludeKinds = limits.excludeKinds,
+			-- ring = true: the ring's first ring instead (every type but
+			-- skipTypes), asked alongside when the player joins.
+			excludeTypes = if ask.ring then excludeTypes else limits.excludeTypes,
+			excludeKinds = if ask.ring then nil else limits.excludeKinds,
 			count = MAX_COUNT_ASKED,
 		})
 		table.insert(queried, index)
